@@ -494,6 +494,7 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
   geriAlDurumu();
   bantKartlariniEsle({ sessiz: true });
   izEslePlanla();   // kayıtlı izlerin imzası alınır (değiştirilmez)
+  if (!gomulu) dilPlanla();
   if (mod === "koltuk") koltukGir(false);
   else zaman(ilkIpucuKenar, 900);
   bekciPlanla();   // açılış geçişi (görünüm geçişi, opaklık) bitince görünen sayfalar bir kez denetlenir
@@ -528,6 +529,7 @@ export function kapat() {
   try { d.koltuk?.kapat?.(); } catch { /* boş */ }
   try { sesKapat(d); } catch (e) { console.warn("[duzenleyici] ses:", e); }
   try { d.izlerPanel?.kapat(); } catch { /* boş */ }
+  try { d.ceviriNotu?.denetci.abort(); } catch { /* boş */ }
   kartTazelemeBitir();
   for (const f of d.temizlik) { try { f(); } catch { /* boş */ } }
   for (const id of d.z) clearTimeout(id);
@@ -752,7 +754,7 @@ function baglamCiz() {
     for (const d of son) ic.push(h("button", { class: "kalinlik damga-hizli", "aria-pressed": String(A.damga.secili === d), "aria-label": `Damga ${d}`,
       onclick: () => { A.damga.secili = d; ayarDegisti(); } }, h("span", { class: "damga-glif" }, d)));
     ic.push(h("button", { class: "metin-dugme damga-tumu", onclick: (e) => balonDegistir("damga", e.currentTarget) }, "Tümü"));
-  } else if (a === "kement") ic.push(h("span", { class: "baglam-ipucu" }, "Seçmek için çevresini çiz"));
+  } else if (a === "kement") ic.push(h("span", { class: "baglam-ipucu" }, D.belge.tur === "pdf" ? "Çizginin ya da yazının çevresini çiz" : "Seçmek için çevresini çiz"));
   else if (a === "kirp") {
     // Bırakınca ne olacağı kalem kalkmadan belli olsun: Kaydet | Sor
     const sec = (id, ad, ikon) => h("button", { type: "button", "aria-pressed": String(A.kirpBirakinca === id), onclick: () => { A.kirpBirakinca = id; ayarDegisti(); } },
@@ -1871,7 +1873,7 @@ function onDown(e) {
   if (D.secim && t.closest(".secim")) { e.preventDefault(); return secimJestiBasla(e, t.closest(".tutamak") ? "olcek" : "tasi"); }
   const tasiEl = t.closest(".metin-kutusu .tasi");
   if (tasiEl) { e.preventDefault(); return nesneTasiBasla(e, sayfaBul(t), tasiEl.closest(".metin-kutusu"), "metin"); }
-  if (t.closest("button, input, textarea, select, a, .sayfa-menu, .fis, .ilk-ipucu")) return;
+  if (t.closest("button, input, textarea, select, a, .sayfa-menu, .fis, .ilk-ipucu, .ceviri-notu")) return;
 
   const S = sayfaBul(t);
   if (D.okuma) {
@@ -1936,7 +1938,7 @@ function onDown(e) {
 }
 
 function aracBasla(e, S, arac, gecici = false) {
-  if (D.secim && arac !== "kement") secimKaldir();
+  if ((D.secim || D.metinSecim) && arac !== "kement") secimKaldir();
   nesneSecimKaldir();
   balonKapat();
   if (CIZIM.has(arac)) return cizimBasla(e, S, arac);
@@ -2460,7 +2462,13 @@ function kementBitir(j) {
   // Görsel ve damga: merkezi kementin içinde kalanlar
   const gorsel = (S.veri.gorseller || []).filter((g) => cokgenIcinde(g.x + g.w / 2, g.y + g.h / 2, c)).map((g) => g.id);
   const damga = S.veri.metinler.filter((m) => m.tur === "damga" && (({ w, h: hh }) => cokgenIcinde(m.x + w / 2, m.y + hh / 2, c))(damgaBoyut(m))).map((m) => m.id);
-  if (ind.length || gorsel.length || damga.length) secimKur(S, ind, { gorsel, damga });
+  if (ind.length || gorsel.length || damga.length) {
+    secimKur(S, ind, { gorsel, damga });
+    if (D.secim) secimMetniBul(D.secim, c);
+    return;
+  }
+  // Çizgisiz kement: basılı yazının çevresine çizildiyse metin seçilir (Kopyala, Çevir, Sor)
+  if (S.veri.tur === "pdf") metinSecimDene(S, c);
 }
 function cokgenIcinde(x, y, P) {
   let ic = false;
@@ -2505,10 +2513,14 @@ function secimMenusu() {
   // Yalnız görsel seçiliyken: saat yönünde 90 derece döndür
   const s0 = D.secim, yalnizGorsel = s0.gorsel.length && !s0.ind.length && !s0.damga.length;
   const dondur = yalnizGorsel ? h("button", { "aria-label": "Görseli saat yönünde döndür", onclick: () => gorselDondur() }, "Döndür") : null;
-  D.sayfaMenu = sayfaMenusu(S, [kopya, sor, dondur, kirp, silDugmesi("Sil", () => secimSil())].filter(Boolean),
+  // Seçimin altında basılı yazı varsa: Çevir (kitabın dili hedeften farklıysa)
+  const cevirD = s0.kelimeler?.length && ceviriVar(S)
+    ? h("button", { onclick: () => { const s = D.secim; if (s?.kelimeler) ceviriAc(s.S, s.kelimeler, s.kutu); } }, "Çevir") : null;
+  D.sayfaMenu = sayfaMenusu(S, [kopya, sor, cevirD, dondur, kirp, silDugmesi("Sil", () => secimSil())].filter(Boolean),
     { x: kutu.x0 * k, y: kutu.y0 * k, w: (kutu.x1 - kutu.x0) * k, h: (kutu.y1 - kutu.y0) * k }, 12);
 }
 function secimKaldir() {
+  metinSecimKaldir();
   if (!D?.secim) return;
   D.secim.el.remove();
   D.secim = null;
@@ -3317,7 +3329,8 @@ const BALONLAR = {
     };
   },
   kement(b) {
-    b.append(baslikSatiri(h("h3", {}, "Kement")), h("p", { class: "balon-not" }, "Seçmek istediğin çizgilerin çevresini çiz. Kutuyu sürükleyerek taşı, köşesinden orantılı büyüt."));
+    b.append(baslikSatiri(h("h3", {}, "Kement")), h("p", { class: "balon-not" }, "Seçmek istediğin çizgilerin çevresini çiz. Kutuyu sürükleyerek taşı, köşesinden orantılı büyüt."
+      + (D.belge.tur === "pdf" ? " Basılı yazının çevresine çizersen yazı seçilir: kopyalar, çevirir ya da sorarsın." : "")));
   },
 };
 
@@ -4388,6 +4401,264 @@ export function asistanNotuAl(v) {
   const onceki = s.metinler.filter((m) => m.tur === "asistan").length;
   s.metinler.push(asistanNotuVerisi(v, 96 + onceki * 180));
   bus.emit("belgeler", { tur: "not", id: b.id });
+}
+
+// ---------- çeviri (OZELLIKLER-6 §4) ----------
+// Kement basılı yazının çevresine çizilince yazı seçilir; "Çevir" çeviriyi seçimin yanında geçici bir yapışkan
+// notta açar. Geçici not kaydedilmez, "Not olarak bırak" ile gerçek nota döner. Defter sayfalarında metin yok, çeviri de yok.
+// ceviri.js ilk kullanımda yüklenir; motor (WASM) işçide, kalem beklemez.
+let ceviriSoz = null;
+const ceviriModulu = () => (ceviriSoz ||= import("./ceviri.js").catch((e) => { ceviriSoz = null; throw e; }));
+const dilKodu = (k) => String(k || "").trim().toLowerCase();
+const anaDil = (k) => dilKodu(k).split("-")[0];
+const hedefDil = () => dilKodu(store.ayarlar.ceviri?.hedef) || "tr";
+const CEVIRI_NOT_W = 288;
+// Kitabın dili hedefle aynıysa çeviri düğmesi görünmez; dil bilinmiyorsa görünür (seçilen metinden bulunur)
+function ceviriVar(S) {
+  if (!S || S.veri.tur !== "pdf" || D.belge.tur === "defter") return false;
+  const dil = anaDil(D.belge.dil);
+  return !dil || dil !== anaDil(hedefDil());
+}
+const kelimeIcinde = (w, cokgen) => cokgenIcinde(w.x + w.w / 2, w.y + w.h / 2, cokgen);
+// Kelimeleri satırlara toplar (okuma sırası): satır içinde soldan sağa, satırlar yukarıdan aşağı
+function kelimeSatirlari(kel) {
+  const sirali = [...kel].sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2));
+  const satirlar = [];
+  for (const w of sirali) {
+    const o = w.y + w.h / 2, s = satirlar[satirlar.length - 1];
+    if (s && Math.abs(o - s.o) < Math.max(s.h, w.h) * 0.55) { s.k.push(w); s.y0 = Math.min(s.y0, w.y); s.y1 = Math.max(s.y1, w.y + w.h); continue; }
+    satirlar.push({ o, h: w.h, k: [w], y0: w.y, y1: w.y + w.h });
+  }
+  for (const s of satirlar) { s.k.sort((a, b) => a.x - b.x); s.x0 = s.k[0].x; s.x1 = Math.max(...s.k.map((w) => w.x + w.w)); }
+  return satirlar;
+}
+// Düz metin: satır sonundaki tire birleşir, satır aralığı açılınca paragraf başlar
+function kelimelerdenMetin(kel) {
+  let metin = "", onceki = null;
+  for (const s of kelimeSatirlari(kel)) {
+    const satir = s.k.map((w) => w.str).join(" ").replace(/\s+/g, " ").trim();
+    if (!satir) continue;
+    if (!onceki) metin = satir;
+    else if (s.y0 - onceki.y1 > Math.max(onceki.h, s.h) * 0.9) metin += "\n" + satir;
+    else if (/\p{L}-$/u.test(metin) && /^\p{Ll}/u.test(satir)) metin = metin.slice(0, -1) + satir;
+    else metin += " " + satir;
+    onceki = s;
+  }
+  return metin.trim();
+}
+// Çizgili kement seçimi: altında yazı varsa menüye Çevir eklenir (kelimeler gelince menü tazelenir)
+function secimMetniBul(s, cokgen) {
+  const S = s.S;
+  if (!ceviriVar(S)) return;
+  sayfaKelimeleri(S).then((kel) => {
+    const secili = (kel || []).filter((w) => kelimeIcinde(w, cokgen));
+    if (!secili.length || D?.secim !== s) return;
+    s.kelimeler = secili;
+    if (D.jest?.tur !== "secim") secimMenusu();
+  });
+}
+function metinSecimDene(S, cokgen) {
+  const d = D;
+  sayfaKelimeleri(S).then((kel) => {
+    if (D !== d || D.secim || D.jest) return;
+    const secili = (kel || []).filter((w) => kelimeIcinde(w, cokgen));
+    if (secili.length) metinSecimKur(S, secili);
+  });
+}
+// Metin seçimi: satır satır soluk lacivert boya (seçili metin rengi), üstünde menü
+function metinSecimKur(S, kel) {
+  secimKaldir();
+  const satirlar = kelimeSatirlari(kel);
+  const kutu = { x0: Math.min(...satirlar.map((s) => s.x0)), y0: Math.min(...satirlar.map((s) => s.y0)),
+    x1: Math.max(...satirlar.map((s) => s.x1)), y1: Math.max(...satirlar.map((s) => s.y1)) };
+  const el = h("div", { class: "metin-secim", "aria-hidden": "true" },
+    satirlar.map((s) => h("i", { style: `--x:${s.x0 - 2};--y:${s.y0 - 1};--w:${s.x1 - s.x0 + 4};--h:${s.y1 - s.y0 + 2}` })));
+  S.nesneler.append(el);
+  D.metinSecim = { S, kel, kutu, el };
+  const k = D.k;
+  const kopya = h("button", { onclick: async () => {
+    const m = D.metinSecim;
+    if (!m) return;
+    bildir((await panoyaYaz(kelimelerdenMetin(m.kel))) ? "Metin kopyalandı" : "Kopyalanamadı");
+  } }, "Kopyala");
+  const cevirD = ceviriVar(S) ? h("button", { onclick: () => { const m = D.metinSecim; if (m) ceviriAc(m.S, m.kel, m.kutu); } }, "Çevir") : null;
+  const sor = h("button", { class: "sor", "aria-label": "Asistana sor", onclick: () => { const m = D.metinSecim; if (m) sorEt(m.S, pay(m.kutu, 6), null); } }, icon("sor"), "Sor");
+  D.sayfaMenu = sayfaMenusu(S, [kopya, cevirD, sor].filter(Boolean),
+    { x: kutu.x0 * k, y: kutu.y0 * k, w: (kutu.x1 - kutu.x0) * k, h: (kutu.y1 - kutu.y0) * k }, 10);
+}
+function metinSecimKaldir() {
+  if (!D?.metinSecim) return;
+  D.metinSecim.el.remove();
+  D.metinSecim = null;
+  sayfaMenusuKapat();
+}
+
+const CEVIRI_HATA = {
+  ag: "Bağlantı yok. İnternetsiz çeviri için Ayarlar’dan paket indir.",
+  anahtar: "Asistandaki API anahtarı geçmedi.",
+  sinir: "Sağlayıcının sınırı doldu. Biraz sonra yeniden dene.",
+  dil: "Metnin dili bulunamadı. Belge menüsünden kitabın dilini seç.",
+  bozuk: "Çeviri paketi bozuk. Ayarlar’dan silip yeniden indir.",
+};
+// Seçimin yanında geçici not: önce sağa, sığmazsa sola, o da olmazsa altına
+function ceviriAc(S, kel, kutu) {
+  const kaynakMetin = kelimelerdenMetin(kel);
+  if (!kaynakMetin) return;
+  ceviriKapat();
+  secimKaldir();
+  const sinir = S.veri.kenar ? TW : PW, W = CEVIRI_NOT_W;
+  let x = kutu.x1 + 18, y = kutu.y0 - 4;
+  if (x + W > sinir - 6) x = kutu.x0 - 18 - W;
+  if (x < 6) { x = sinirla(kutu.x0, 6, sinir - W - 6); y = kutu.y1 + 14; }
+  y = Math.round(sinirla(y, 8, Math.max(8, S.h - 160)));
+  x = Math.round(x);
+
+  const etiketEl = h("span", { class: "etiket" }, "Çeviri");
+  const internet = h("span", { class: "ceviri-notu__internet", hidden: true }, "internetten");
+  const govde = h("div", { class: "ceviri-notu__metin", "aria-live": "polite" }, h("span", { class: "ceviri-yer", "aria-label": "Çevriliyor" }));
+  const birak = h("button", { class: "nota-cevir", disabled: true }, "Not olarak bırak");
+  const kopya = h("button", { disabled: true }, "Kopyala");
+  const alt = h("div", { class: "ceviri-notu__alt" }, birak, kopya);
+  const el = h("div", { class: "ceviri-notu", role: "dialog", "aria-label": "Çeviri", style: `--x:${x};--y:${y};--w:${W}` },
+    h("div", { class: "ceviri-notu__ust" }, etiketEl, internet,
+      h("button", { class: "kapat", "aria-label": "Çeviriyi kapat", onclick: () => ceviriKapat() }, icon("kapat"))),
+    govde, alt);
+  S.nesneler.append(el);
+  if (!hareketAz()) animasyonBitince(el, "konuyor", 280);
+  const denetci = new AbortController();
+  const n = (D.ceviriNotu = { S, el, denetci, x, y, metin: "" });
+  const d = D;
+  const canli = () => D === d && D.ceviriNotu === n;
+  const yaz = (t) => { n.metin = t; govde.textContent = t; };
+  const hazir = () => { birak.disabled = kopya.disabled = !n.metin.trim(); };
+  birak.addEventListener("click", () => ceviriNotaCevir(n));
+  kopya.addEventListener("click", async () => bildir((await panoyaYaz(n.metin)) ? "Çeviri kopyalandı" : "Kopyalanamadı"));
+  const hataYaz = (metin, ...dugmeler) => {
+    govde.replaceChildren(h("p", { class: "ceviri-notu__hata" }, metin));
+    alt.replaceChildren(...dugmeler);
+    alt.hidden = !dugmeler.length;
+  };
+  const ayarDugmesi = () => h("button", { onclick: () => { ceviriKapat(); bus.emit("ayarlar:ac", { bolum: "ceviri" }); } }, "Çeviri ayarları");
+
+  (async () => {
+    const m = await ceviriModulu();
+    if (!canli()) return;
+    const kaynak = dilKodu(D.belge.dil) || (await m.dilBul(kaynakMetin));
+    if (!canli()) return;
+    if (!kaynak) { hataYaz(CEVIRI_HATA.dil); return; }
+    const hedef = hedefDil();
+    if (anaDil(kaynak) === anaDil(hedef)) { ceviriKapat(); bildir(`Bu metin zaten ${m.dilAdi(hedef)}`); return; }
+    etiketEl.textContent = `Çeviri · ${m.dilAdi(kaynak)}`;
+    const durum = await m.ceviriDurumu({ kaynak, hedef });
+    if (!canli()) return;
+    const motor = (id) => durum.motorlar.find((x) => x.id === id);
+    const etiketKoy = (id) => {
+      const mo = motor(id);
+      if (mo) etiketEl.textContent = `${mo.ad} · ${m.dilAdi(kaynak)}`;
+      internet.hidden = !mo || mo.cevrimdisi;
+    };
+    // Hesap yolu: metin asistan uygulamasına ya da Google Çeviri'ye gider; çeviri buraya yapıştırılır
+    const hesapYolu = () => {
+      etiketKoy("hesap");
+      const u = YZ_UYGULAMALAR.find((x) => x.id === store.ayarlar.yz?.uygulama) || YZ_UYGULAMALAR[0];
+      const alan = duzenlenebilir(h("div", { class: "ceviri-notu__yapistir", role: "textbox", "aria-multiline": "true", "aria-label": "Çeviri", "data-bos": "Çeviriyi buraya yapıştır" }));
+      alan.addEventListener("input", () => { n.metin = alan.innerText.replace(/\n$/, ""); hazir(); });
+      govde.replaceChildren(h("p", { class: "ceviri-notu__bilgi" }, "Bu cihazda internetsiz çeviri hazır değil. Hesabınla çevir, cevabı kopyalayıp buraya yapıştır."), alan);
+      const uygulama = h("button", { onclick: async () => {
+        try { const r = await m.hesapIleCevir(kaynakMetin, { kaynak, hedef, uygulama: u.id }); if (r?.kopyalandi) bildir("Metin panoda. Cevabı buraya yapıştır."); }
+        catch (e) { if (e?.name !== "AbortError") bildir("Açılamadı"); }
+      } }, `${u.ad} ile`);
+      const google = h("button", { onclick: () => m.googleCeviriAc(kaynakMetin, { kaynak, hedef }) }, "Google Çeviri");
+      alt.replaceChildren(birak, uygulama, google);
+    };
+    if (!durum.secilen) { hataYaz(`Hazır çeviri motoru yok. ${m.dilAdi(kaynak)} paketini indirince internetsiz çevrilir.`, ayarDugmesi()); return; }
+    if (durum.secilen === "hesap") { hesapYolu(); return; }
+    etiketKoy(durum.secilen);
+    try {
+      const r = await m.cevir(kaynakMetin, { kaynak, hedef, signal: denetci.signal, belgeId: D.belge.id,
+        parca: (kismi) => { if (canli()) yaz(kismi); } });
+      if (!canli()) return;
+      yaz(r.metin || n.metin);
+      if (r.motor) etiketKoy(r.motor);
+      hazir();
+      // Not ekranın altında kaldıysa düğmeleri görünsün diye masa biraz kayar
+      if (el.getBoundingClientRect().bottom > innerHeight - 8) el.scrollIntoView({ block: "nearest", behavior: hareketAz() ? "auto" : "smooth" });
+    } catch (e) {
+      if (e?.name === "AbortError" || !canli()) return;
+      if (e?.tur === "hesap") { hesapYolu(); return; }
+      if (n.metin) { hazir(); bildir("Çevirinin sonu gelmedi"); return; }
+      const yok = e?.tur === "motor-yok" || e?.tur === "paket-yok";
+      hataYaz(yok ? `Hazır çeviri motoru yok. ${m.dilAdi(kaynak)} paketini indirince internetsiz çevrilir.` : CEVIRI_HATA[e?.tur] || "Çevrilemedi.",
+        ...(yok || e?.tur === "bozuk" || e?.tur === "ag" ? [ayarDugmesi()] : []));
+    }
+  })().catch((e) => { if (canli()) { console.warn("[duzenleyici] çeviri:", e); hataYaz("Çeviri açılamadı."); } });
+}
+function ceviriKapat() {
+  const n = D?.ceviriNotu;
+  if (!n) return;
+  D.ceviriNotu = null;
+  n.denetci.abort();
+  n.el.remove();
+}
+// "Not olarak bırak": geçici not gerçek yapışkan nota döner (geri alınabilir)
+function ceviriNotaCevir(n) {
+  const S = n.S, metin = n.metin.trim();
+  if (!metin || !D.sayfalar.includes(S)) return;
+  ceviriKapat();
+  const once = structuredClone(S.veri.notlar), sinir = S.veri.kenar ? TW : PW;
+  const not = zamanla({ id: yeniId("n"), x: Math.round(sinirla(n.x, 0, sinir - NOT_W)), y: n.y, metin,
+    renk: A.not.renk, aci: +(Math.random() * 3 - 1.5).toFixed(2), kucuk: false });
+  S.veri.notlar.push(not);
+  gecmisKaydet(S, { notlar: once }, { notlar: structuredClone(S.veri.notlar) });
+  const el = notEl(S, not);
+  S.nesneler.append(el);
+  if (!hareketAz()) animasyonBitince(el, "konuyor", 280);
+  sayfaDegisti(S);
+}
+
+// Belgenin dili (OZELLIKLER-6 §2): belge.dil yoksa açılıştan sonra boşta bir kez ilk sayfaların metninden bulunur.
+// belge.dil: kısa dil kodu ("en"); null: bakıldı, bulunamadı. belge.dilElle: kullanıcı seçti, dokunulmaz.
+function dilPlanla() {
+  const b = D.belge;
+  if (b.dil !== undefined || b.dilElle || b.tur === "cizgi" || b.cizgi) return;
+  const d = D;
+  const dene = () => {
+    if (D !== d) return;
+    // Kalem yazarken ya da bir hareket sürerken beklenir
+    if (D.jest || kalemYaziyor() || performance.now() - D.sonKalem < 2000) { zaman(dene, 2000); return; }
+    const calis = () => { if (D === d) dilBulBelge().catch(() => {}); };
+    if (typeof requestIdleCallback === "function") requestIdleCallback(calis, { timeout: 3000 }); else calis();
+  };
+  zaman(dene, 2500);
+}
+async function dilBulBelge() {
+  const d = D, b = D.belge;
+  let metin = "";
+  if (b.tur === "defter") {
+    // Defter: yazılan metin kutuları ve notlar (el yazısının kendisi okunmaz)
+    for (const v of D.veri.sayfalar.slice(0, 8)) {
+      for (const m of v.metinler || []) if (m.metin && m.tur !== "damga" && m.tur !== "asistan") metin += m.metin + "\n";
+      for (const n of v.notlar || []) if (n.metin) metin += n.metin + "\n";
+    }
+  } else {
+    for (const S of D.sayfalar.filter((x) => x.veri.tur === "pdf").slice(0, 3)) {
+      const kel = await sayfaKelimeleri(S);
+      if (D !== d) return;
+      metin += kel.map((w) => w.str).join(" ") + "\n";
+      if (metin.length > 2500) break;
+    }
+  }
+  metin = metin.trim();
+  // Az metinle karar verilmez; defterde yazı arttıkça sonraki açılışta yeniden bakılır
+  if (metin.length < 40) {
+    if (b.tur !== "defter" && D === d && b.dil === undefined) { b.dil = null; bus.emit("belgeler", { tur: "dil", id: b.id }); }
+    return;
+  }
+  const m = await ceviriModulu();
+  const dil = await m.dilBul(metin);
+  if (D !== d || b.dilElle || b.dil) return;
+  b.dil = dil || null;
+  bus.emit("belgeler", { tur: "dil", id: b.id });
 }
 
 // ---------- bant → Tekrar kartı (5.4) ----------

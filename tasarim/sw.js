@@ -1,9 +1,17 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "5.0.0";
+const VERSION = "5.1.0";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
+// Çeviri motoru (lib/ceviri, wasm 5 MB): kabuğa girmez, ilk kullanımda alınır; sürüm artınca yeniden inmesin diye ayrı önbellekte
+const MOTOR_ONBELLEK = "kn-tasarim-ceviri-motor";
+// Çeviri paketleri (model dosyaları) ceviri.js'in kendi veritabanında durur; bu adresler SW önbelleğine hiç girmez
+const PAKET_KAYNAKLARI = /(^|\.)(huggingface\.co|hf\.co|services\.mozilla\.com)$/;
+// Paket dosyası uzantıları: ayna bu sitede olsa bile (?ceviriPaket=) önbelleğe girmez
+const PAKET_DOSYASI = /\.(bin|spm|gz)$/i;
+// lib/ceviri altında yalnız motorun kendi dosyaları önbelleğe girer
+const MOTOR_DOSYALARI = ["bergamot-translator-worker.js", "bergamot-translator-worker.wasm"];
 
 const KABUK = [
   "./", "./index.html", "./manifest.webmanifest",
@@ -12,6 +20,7 @@ const KABUK = [
   "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./tekrar.js", "./asistan.js",
   "./kayit.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
   "./arama.js", "./ses.js", "./izler.js", "./cizgi.js", "./cizgi-belge.js", "./cizgi-ornek.js",
+  "./ceviri.js", "./ceviri-isci.js",
   "./ikon/ikon.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
   "./ikon/ikon-maskable-192.png", "./ikon/ikon-maskable-512.png", "./ikon/apple-touch-icon.png",
   "../lib/jszip.min.js", "../lib/epub.min.js",
@@ -33,7 +42,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()
     .then((adlar) => Promise.all(adlar
-      .filter((a) => a.startsWith("kn-tasarim-") && a !== ONBELLEK && a !== YAZI_ONBELLEK)
+      .filter((a) => a.startsWith("kn-tasarim-") && a !== ONBELLEK && a !== YAZI_ONBELLEK && a !== MOTOR_ONBELLEK)
       .map((a) => caches.delete(a))))
     .then(() => self.clients.claim()));
 });
@@ -47,6 +56,8 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   if (istek.method !== "GET") return;
+  // Paket kaynakları ve parçalı (Range) indirmeler doğrudan ağa: önbelleğe girmez, başlık kaybolmaz
+  if (PAKET_KAYNAKLARI.test(url.hostname) || istek.headers.has("range") || PAKET_DOSYASI.test(url.pathname)) return;
 
   // Yazı tipleri: önce önbellek (Google Fonts adresleri sabit), yoksa ağ
   if (url.hostname === "fonts.gstatic.com" || url.hostname === "fonts.googleapis.com") {
@@ -58,11 +69,15 @@ self.addEventListener("fetch", (e) => {
   const kapsam = new URL(self.registration.scope).pathname;
   const lib = new URL("../lib/", self.registration.scope).pathname;
   if (!url.pathname.startsWith(kapsam) && !url.pathname.startsWith(lib)) return;
+  if (url.pathname.startsWith(lib + "ceviri/")) {
+    if (MOTOR_DOSYALARI.includes(url.pathname.slice((lib + "ceviri/").length))) e.respondWith(agOnce(istek, false, MOTOR_ONBELLEK));
+    return;
+  }
   e.respondWith(agOnce(istek, istek.mode === "navigate"));
 });
 
-async function agOnce(istek, gezinme) {
-  const c = await caches.open(ONBELLEK);
+async function agOnce(istek, gezinme, onbellek = ONBELLEK) {
+  const c = await caches.open(onbellek);
   const kok = new URL("./", self.registration.scope);
   const yol = new URL(istek.url).pathname;
   // index.html ile kök aynı kayıtta tutulur; kapsamdaki başka sayfalar kendi adresiyle

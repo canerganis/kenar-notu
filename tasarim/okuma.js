@@ -355,6 +355,7 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
     bekleyenAra: typeof ek.ara === "string" && ek.ara.trim() ? { ara: ek.ara, hedef } : null,
     izG: new WeakMap(), izBekleyen: null, izZ: 0, sonCizimZ: -1e9, kose: null, cp: null, halka: null,
     bekleyenIz: typeof ek.iz === "string" ? ek.iz : null,
+    co: null, cf: null, dilTahmin: "",   // çeviri: Çeviriyle oku, çeviri fişi, dili bilinmeyen kitabın tahmini
     // Kurdele ve "buradaydın": yalnız kaldığı yerden süren Koltuk açılışında
     acilisKonum: mod === "koltuk" && veri.konum && !hedef && !acilisKirpinti ? { ...veri.konum } : null,
     uzunAra: mod === "koltuk" && sonOkuma > 0 && Date.now() - sonOkuma > 8 * 3600e3,
@@ -375,6 +376,7 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
   olaylariBagla();
   if (mod === "koltuk") koltukAc({ ilk: true });
   if (tercih.aile === "el") playpenYukle();
+  if (!kitapDili()) zamanla(dilTahminEt, 1500);   // dc:language yoksa çeviri düğmeleri metnin dilinden karar verir
   // İlk ölçüm ResizeObserver'ın ilk çağrısında olur; yazı tipleri yüklenince düzen yeniden ölçülür.
   document.fonts?.ready.then(() => { if (!S) return; S.tvAnahtar = null; planla("yerlesim", yerlesimDegisti); });
 }
@@ -483,6 +485,9 @@ export function kapat() {
   try { s.izlerPanel?.kapat(); } catch { /* boş */ }
   s.koltuk?.kapat();
   s.koltuk = null;
+  s.co?.is?.ctrl.abort();
+  s.cf?.ctrl.abort();
+  s.anlam?.kIptal?.abort();   // anlam kartındaki karşılık çevirisi (API isteği olabilir)
   s.iptal.abort();
   s.ro?.disconnect();
   s.mo?.disconnect();
@@ -498,7 +503,7 @@ export function kapat() {
     s.meta.content = (t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches) ? "#221E18" : "#FAF6EE";
   }
   s.kap.replaceChildren();
-  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede");
+  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede", "ceviriyle");
   for (const r of VURGULAR) s.kap.style.removeProperty("--v-" + r.id);
   for (const ad of ["--aa-kay", "--sutun-x", "--sutun-g"]) s.kap.style.removeProperty(ad);
   delete s.kap.dataset.sayfa;
@@ -671,7 +676,7 @@ function metniKur() {
   const parca = document.createDocumentFragment();
   for (const b of BOLUMLER) {
     const bolum = h("section", { class: "bolum", "data-b": b.i, "aria-labelledby": "okuma-b" + b.i },
-      h("header", { class: "bolum-acilis" }, h("div", { class: "bolum-no" }, b.ad), fleuron(), h("h2", { id: "okuma-b" + b.i }, b.baslik)));
+      h("header", { class: "bolum-acilis" }, h("div", { class: "bolum-no", lang: "tr" }, b.ad), fleuron(), h("h2", { id: "okuma-b" + b.i }, b.baslik)));
     let ilk = true;
     for (const p of b.bloklar) {
       if (!p) { bolum.append(sahneSvg()); continue; }
@@ -818,16 +823,20 @@ function yerlesimOlc() {
 }
 // Satır ızgarasına uymayan bloklar: bölüm açılışı (numara, hedera, başlık bölünmez), sahne ayracı, kitap sonu
 // ve açık tuvaller. [üst, alt] içerik y'si, üste göre sıralı. Tuvalin satırı kenar boşluklarıyla tek parça sayılır.
+// Satır altı çeviri de bloktur ama kendi satır ızgarasıyla ([üst, alt, { ust, alt, lh }]): sayfa sonunda yalnız
+// kesilen satırı sonraki sayfaya geçer, bütün çeviri değil (yoksa sayfanın altında büyük boşluk kalıyordu).
 function bloklariOlc() {
   const icUst = S.el.ic.getBoundingClientRect().top, b = [];
-  for (const el of S.el.sutun.querySelectorAll(".bolum-acilis, .sahne, .kitap-sonu > *, .tuval:not(.kucuk)")) {
+  for (const el of S.el.sutun.querySelectorAll(".bolum-acilis, .sahne, .kitap-sonu > *, .tuval:not(.kucuk), .ceviri-satir")) {
     const acilis = el.classList.contains("bolum-acilis");
     const r = acilis ? el.firstElementChild.getBoundingClientRect() : el.getBoundingClientRect();
     const alt = acilis ? el.lastElementChild.getBoundingClientRect().bottom : r.bottom;
     if (alt <= r.top) continue;
     // Sıkı satır yüksekliğinde (başlık, numara) harfin kutusu satırdan taşar: 4px pay, İ'nin noktası kesilmez
-    const cs = el.classList.contains("tuval") ? getComputedStyle(el) : null;
-    b.push([r.top - icUst - (cs ? parseFloat(cs.marginTop) : 4), alt - icUst + (cs ? parseFloat(cs.marginBottom) : 4)]);
+    const cs = el.classList.contains("tuval") || el.classList.contains("ceviri-satir") ? getComputedStyle(el) : null;
+    const ic = el.classList.contains("ceviri-satir")
+      ? { ust: r.top - icUst, alt: r.bottom - icUst, lh: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 24 } : null;
+    b.push([r.top - icUst - (cs ? parseFloat(cs.marginTop) : 4), alt - icUst + (cs ? parseFloat(cs.marginBottom) : 4), ic]);
   }
   return b.sort((x, y) => x[0] - y[0]);
 }
@@ -838,9 +847,14 @@ function bloklariOlc() {
 function satirAl(y) {
   const { pUst, pAlt, lh, bloklar } = S.yer;
   let taban = -Infinity;
-  for (const [u, a] of bloklar) {
+  for (const [u, a, ic] of bloklar) {
     if (u > y) break;
-    if (y < a) return { ust: u, alt: a, blok: true };
+    if (y < a) {
+      if (!ic) return { ust: u, alt: a, blok: true };
+      if (y < ic.ust || y >= ic.alt) return { ust: y, alt: y, blok: false };   // çevirinin kenar boşluğu
+      const ust = ic.ust + Math.floor((y - ic.ust) / ic.lh + 1e-3) * ic.lh;
+      return { ust, alt: Math.min(ust + ic.lh, ic.alt), blok: false };
+    }
     taban = a;
   }
   const { p } = konumAl(y);
@@ -887,8 +901,11 @@ function koltukMaske() {
 // Ekrandaki ilk paragraf ve içindeki oran. Oran 0'ın altında olabilir (paragraf ekranın altında başlıyor).
 // Okunur alanın üst sınırı: Masa'da üstte yüzen araç çubuğu (üst çubuk + 12 + kendi boyu) bir satırı kapatmasın.
 // Koltukta ve okuma modunda çubuk yok, yalnız üst çubuk. Çubuğun boyu yerleşimde ölçülür (S.cubukH).
+// Koltuk'ta sayfanın ilk tam satırı KOLTUK_UST'tedir: konum onun içinden alınır. UST (56) bir önceki sayfanın son
+// satırına düşüyordu ve her yeniden yerleşim (Aa, satır altı çeviri) sayfayı bir satır geri kaydırıyordu.
 function ustPay() {
-  if (!S || S.mod === "koltuk" || S.okumaModu || !S.cubukH) return UST;
+  if (S?.mod === "koltuk") return KOLTUK_UST + 1;
+  if (!S || S.okumaModu || !S.cubukH) return UST;
   return UST + 12 + S.cubukH + 8;
 }
 function konumAl(y = S.el.kaydir.scrollTop + ustPay()) {
@@ -946,6 +963,8 @@ function yerlesimDegisti() {
   durumGuncelle();
   if (S.menu) menuKapat();
   if (S.panel) S.el.perde.hidden = !dar();   // döndürünce panel yanda ya da üstte: perde ona göre
+  if (ilk && coKayitli().has(S.belge.id) && ceviriVar()) ceviriyleOku(true, { sessiz: true });
+  if (S.co) planla("ceviri", coGuncelle);
 }
 
 function kaydirildi() {
@@ -953,6 +972,7 @@ function kaydirildi() {
   if (S.menu) { menuKapat(); S.menuGeri = true; }
   if (S.menuGeri) { clearTimeout(S.menuGeriZ); S.menuGeriZ = zamanla(() => { S.menuGeri = false; secimDegisti(); }, 220); }
   planla("kare", () => { durumGuncelle(); karolariGuncelle(false); });
+  if (S.co) planla("ceviri", coGuncelle);   // kapalıyken hiç iş yok
 }
 
 // Durum satırı, ilerleme, üst çubuk alt satırı, yer imi düğmesi (3.27.6)
@@ -1159,7 +1179,14 @@ function kenarNotlariniCiz() {
   }
   for (const n of S.veri.asistanNotlari || []) {
     const p = S.pEl[n.p];
-    if (p) ogeler.push({ y: p.offsetTop + 2, yap: () => asistanNotuEl(n, false) });
+    if (!p) continue;
+    // Kenara yazılan çeviri seçimin satırı hizasında durur; asistan notu paragrafın başında
+    let y = p.offsetTop + 2;
+    if (n.tur === "ceviri" && Number.isInteger(n.o) && n.o > 0 && n.o < P[n.p].metin.length) {
+      const r = aralikRange({ bas: { p: n.p, o: n.o }, son: { p: n.p, o: n.o + 1 } }).getClientRects()[0];
+      if (r) y = r.top - sR.top + 2;
+    }
+    ogeler.push({ y, yap: () => asistanNotuEl(n, false) });
   }
   ogeler.sort((a, b) => a.y - b.y);
   let alt = -Infinity;
@@ -1174,12 +1201,14 @@ function kenarNotlariniCiz() {
 // Dar ekran: asistan notları paragrafın hemen altında. Yalnız değişince yeniden kurulur (düzen gözlemcisi döngüye girmesin).
 function asistanSatirlari(goster) {
   const notlar = S.veri.asistanNotlari || [];
-  const imza = goster ? notlar.map((n) => n.id).join(",") : "";
+  // Kart durumu da imzada: karta çevrilince satır içi not "Tekrar'da" desin
+  const imza = goster ? notlar.map((n) => n.id + (n.kartId && store.kartlar.some((k) => k.id === n.kartId) ? "+k" : "")).join(",") : "";
   if (imza === S.anYer) return;
   S.anYer = imza;
   for (const e of S.el.sutun.querySelectorAll(".kenar-asistan.satir-ici")) e.remove();
   if (!goster) return;
-  for (const n of [...notlar].sort((a, b) => b.zaman - a.zaman)) S.pEl[n.p]?.after(asistanNotuEl(n, true));
+  // Çeviriyle okurken paragrafın çevirisi hemen altında kalır, not onun altına
+  for (const n of [...notlar].sort((a, b) => b.zaman - a.zaman)) (S.co?.bloklar.get(n.p)?.el || S.pEl[n.p])?.after(asistanNotuEl(n, true));
 }
 
 // ---------- yer imleri ----------
@@ -1284,6 +1313,15 @@ function secimMenusuAc({ tur, aralik, v, rects }) {
     document.getSelection()?.removeAllRanges();
     anlamAc(kelime, kaynakAralik, rs);
   }) }, icon("anlam"), h("span", {}, "Anlamı")));
+  // Çevir: kitabın dili hedef dilden farklıysa (OZELLIKLER-6 §3.1)
+  if (ceviriVar()) {
+    ceviriIkonu();
+    el.append(h("button", { type: "button", class: "yazi ikonlu cevir", "aria-label": "Çevir", onclick: kapatVe(() => {
+      const rs = rects;
+      document.getSelection()?.removeAllRanges();
+      ceviriFisiAc(kaynakAralik, rs);
+    }) }, icon("cevir"), h("span", {}, "Çevir")));
+  }
   el.append(h("button", { type: "button", class: "yazi ikonlu sor", "aria-label": "Asistana sor", onclick: kapatVe(() => {
     document.getSelection()?.removeAllRanges();
     asistanaSor(kaynakAralik);
@@ -1407,10 +1445,12 @@ function anlamAc(kelime, aralik, rects) {
     kelime, aralik, sayfa, baglam: baglamCumle(aralik), istek: yeniId("an"),
     anlam: "", durum: yzAyar().yol === "anahtar" ? "bekliyor" : "hesap", eklendi: false, vurgula: false,
   };
+  // Kitabın dili hedeften farklıysa kartın başında kelimenin karşılığı (en hızlı hazır motordan, OZELLIKLER-6 §3.2)
+  if (ceviriVar() && motorBilgi.get(ciftAnahtari()) !== false) { a.karsilik = { durum: "bekliyor", metin: "" }; a.kIptal = new AbortController(); }
   const el = h("div", { class: "anlam-fis fis-kart satirli nesne-acik", role: "dialog", "aria-label": `Anlamı: ${kelime}`, tabindex: "-1" });
   a.el = el;
   S.anlam = a;
-  katmanAc(el, { tur: "anlam", kapat: () => { if (S.anlam === a) S.anlam = null; clearTimeout(a.z); } });
+  katmanAc(el, { tur: "anlam", kapat: () => { if (S.anlam === a) S.anlam = null; clearTimeout(a.z); a.kIptal?.abort(); } });
   anlamCiz(a);
   // Kelimenin altında; yer yoksa üstünde
   const kR = S.kap.getBoundingClientRect();
@@ -1422,7 +1462,27 @@ function anlamAc(kelime, aralik, rects) {
   el.style.left = sol + "px";
   el.style.top = (asagi ? son.bottom - kR.top + 12 : Math.max(12, ilk.top - kR.top - hg - 12)) + "px";
   el.focus({ preventScroll: true });
+  if (a.karsilik) anlamKarsilik(a);
   if (a.durum === "bekliyor") anlamIste(a);
+}
+async function anlamKarsilik(a) {
+  const kaynak = kitapDili(), hedef = hedefDil();
+  try {
+    const m = await ceviriAl();
+    const d = await m.ceviriDurumu({ kaynak, hedef });
+    if (S?.anlam !== a) return;
+    const motor = satirMotoru(d.motorlar);
+    motorBilgi.set(ciftAnahtari(), !!motor);
+    if (!motor) throw new Error("motor yok");
+    const r = await m.cevir(a.kelime, { kaynak, hedef, motor: motor.id, signal: a.kIptal.signal, belgeId: S.belge.id });
+    if (S?.anlam !== a) return;
+    const mm = d.motorlar.find((x) => x.id === r.motor) || motor;
+    a.karsilik = { durum: "bitti", metin: tekSatir(r.metin), motorAd: mm.ad, internet: !mm.cevrimdisi };
+  } catch (e) {
+    if (e?.name === "AbortError" || S?.anlam !== a) return;
+    a.karsilik = null;   // motor yoksa satır hiç görünmez; asistan cevabı eskisi gibi
+  }
+  anlamCiz(a);
 }
 function anlamKapat() { if (S?.katman?.tur === "anlam") katmanKapat(false); }
 
@@ -1568,10 +1628,12 @@ function anlamCiz(a) {
     }
   }
   const ekle = h("button", {
-    type: "button", class: "metin-dugme vurgulu ekle", disabled: !a.anlam || a.eklendi || a.durum !== "bitti",
+    // Karşılık geldiyse asistan cevabı beklenmeden de eklenir: arka yüzde önce karşılık, varsa altında anlam
+    type: "button", class: "metin-dugme vurgulu ekle", disabled: a.eklendi || !((a.anlam && a.durum === "bitti") || a.karsilik?.durum === "bitti"),
     onclick: () => {
+      const karsilik = a.karsilik?.durum === "bitti" ? a.karsilik.metin : "", anlam = a.durum === "bitti" ? a.anlam : "";
       kartEkle({
-        tur: "kelime", on: { metin: a.kelime, baglam: a.baglam }, arka: { metin: a.anlam },
+        tur: "kelime", on: { metin: a.kelime, baglam: a.baglam }, arka: { metin: [karsilik, anlam].filter(Boolean).join("\n\n") },
         belgeId: S.belge.id, belgeAd: S.belge.ad, sayfa: a.sayfa,
       });
       a.eklendi = true;
@@ -1581,6 +1643,9 @@ function anlamCiz(a) {
   el.replaceChildren(...[
     a.eklendi ? h("span", { class: "damga" }, "Tekrar'a eklendi · Kutu I") : null,
     h("header", {}, h("h4", {}, a.kelime), h("span", { class: "anlam-sayfa" }, `S. ${a.sayfa}`)),
+    a.karsilik ? h("p", { class: "anlam-karsilik" + (a.karsilik.durum === "bitti" ? "" : " bekliyor"), title: a.karsilik.motorAd || null },
+      h("span", { class: "dil" }, hedefDil()), h("span", { class: "k", lang: hedefDil() }, a.karsilik.metin),
+      a.karsilik.internet ? h("small", {}, "internetten") : null) : null,
     anlamP,
     a.baglam ? h("p", { class: "anlam-baglam" }, `“${a.baglam}”`) : null,
     h("footer", {}, ekle, sag)].filter(Boolean));
@@ -1624,7 +1689,8 @@ function asistanNotuSil(id) {
   if (i < 0) return;
   const [n] = S.veri.asistanNotlari.splice(i, 1);
   kenarNotlariniCiz();
-  toast("Asistan notu kaldırıldı", { etiket: "Geri al", calistir: () => { if (!S) return; S.veri.asistanNotlari.splice(i, 0, n); kenarNotlariniCiz(); } });
+  belgeDegisti();
+  toast(n.tur === "ceviri" ? "Çeviri notu kaldırıldı" : "Asistan notu kaldırıldı", { etiket: "Geri al", calistir: () => { if (!S) return; S.veri.asistanNotlari.splice(i, 0, n); kenarNotlariniCiz(); } });
 }
 function asistanNotuEl(n, satirIci) {
   const z = new Date(n.zaman), tarih = `${String(z.getDate()).padStart(2, "0")}.${String(z.getMonth() + 1).padStart(2, "0")}`;
@@ -1633,19 +1699,522 @@ function asistanNotuEl(n, satirIci) {
   const kartVar = !!n.kartId && store.kartlar.some((k) => k.id === n.kartId);
   const kart = h("button", { type: "button", class: "kenar-asistan__kart", disabled: kartVar, onclick: () => asistanNotuKarta(n) },
     icon(kartVar ? "tik" : "karta-cevir"), kartVar ? "Tekrar'da" : "Karta çevir");
-  return h("aside", { class: "kenar-asistan" + (satirIci ? " satir-ici" : "") + (n.id === S.yeniAsistanNotu ? " yeni" : ""), "data-n": n.id, "aria-label": "Asistan notu" },
-    h("span", { class: "etiket" }, `Asistan · ${n.kaynak || "Asistan"} · ${tarih}`, sil),
-    h("span", { class: "metin" }, n.metin), kart);
+  // Kenara yazılan çeviri: kurşun kalemle yazılmış karşılık (asistan notuyla aynı kayıt, tur: "ceviri")
+  const ceviri = n.tur === "ceviri";
+  if (ceviri) sil.setAttribute("aria-label", "Çeviri notunu kaldır");
+  return h("aside", { class: "kenar-asistan" + (ceviri ? " kenar-ceviri" : "") + (satirIci ? " satir-ici" : "") + (n.id === S.yeniAsistanNotu ? " yeni" : ""), "data-n": n.id, lang: "tr", "aria-label": ceviri ? "Çeviri notu" : "Asistan notu" },
+    h("span", { class: "etiket" }, ceviri ? `Çeviri · ${tarih}` : `Asistan · ${n.kaynak || "Asistan"} · ${tarih}`, sil),
+    h("span", { class: "metin", lang: ceviri ? n.dil || null : null }, n.metin), kart);
 }
-// Asistan notu Tekrar kartı olur: ön yüz soru (yoksa paragrafın başı), arka yüz cevap
+// Asistan notu Tekrar kartı olur: ön yüz soru (yoksa paragrafın başı), arka yüz cevap. Çeviri notunda ön yüz asıl metin.
 function asistanNotuKarta(n) {
   const p = P[n.p], bas = p ? (p.metin.length > 160 ? p.metin.slice(0, 160).replace(/\s+\S*$/, "") + "…" : p.metin) : "";
-  const on = n.soru ? (bas ? `${n.soru}\n“${bas}”` : n.soru) : bas || "Asistan notu";
+  const on = n.tur === "ceviri" && n.asil ? n.asil : n.soru ? (bas ? `${n.soru}\n“${bas}”` : n.soru) : bas || "Asistan notu";
   const k = kartEkle({ tur: "soru", on: { metin: on }, arka: { metin: n.metin }, belgeId: S.belge.id, belgeAd: S.belge.ad, sayfa: p ? sanalSayfa(p.gi, 0) : n.sayfa || 1 });
   n.kartId = k.id;
   bus.emit("belge:degisti", { belgeId: S.belge.id });
   kenarNotlariniCiz();
   toast("Karta çevrildi · Kutu I", { etiket: "Geri al", calistir: () => { kartSil(k.id); if (S) kenarNotlariniCiz(); } });
+}
+
+// ---------- çeviri (OZELLIKLER-6 §3) ----------
+// ceviri.js yalnız gerektiğinde yüklenir: Çevir'e basınca, anlam kartında, Çeviriyle oku açılınca ya da kitabın dili
+// bilinmiyorsa dil tahmininde. Motor ceviri.js'in işi; burada yalnız etiketi (ad) görünür.
+let ceviriSoz = null, CV = null;   // CV: yüklenmiş modül (kullanıcı hareketinde beklemeden çağrılsın: cihazIndir, hesap yolu)
+const ceviriAl = () => (ceviriSoz ||= import("./ceviri.js").then((m) => (CV = m), (e) => { ceviriSoz = null; throw e; }));
+const kisaKod = (k) => String(k || "").trim().toLowerCase().split(/[-_]/)[0];
+const hedefDil = () => kisaKod(store.ayarlar.ceviri?.hedef) || "tr";
+// Kitabın dili: belge kaydındaki elle seçim, yoksa EPUB'un dc:language'i, yoksa metinden tahmin. Örnek kitap Türkçe.
+function kitapDili() {
+  const b = S.belge.dil;
+  if (typeof b === "string" && b && b !== "oto" && b !== "otomatik") return b;
+  return KITAP.dil || S.dilTahmin || (S.belge.dosya ? "" : "tr");
+}
+const ceviriVar = () => { const k = kisaKod(kitapDili()); return !!k && k !== hedefDil(); };
+// Dil çiftinde satır içi motor var mı (son bilinen): yoksa anlam kartı karşılık satırına yer açıp sonra kapatmaz
+const motorBilgi = new Map();
+const ciftAnahtari = () => kisaKod(kitapDili()) + "|" + hedefDil();
+const dilAdlari = {};
+const dilAdiTr = (kod) => { try { return (dilAdlari.tr ||= new Intl.DisplayNames(["tr"], { type: "language" })).of(kod) || kod; } catch { return kod; } };
+// Türkçe dil adına ek: İngilizce -> İngilizceden, Türkçe -> Türkçeye (ünlü uyumu, sert ünsüz)
+function dilEki(ad, tur) {
+  const sesli = [...ad.toLocaleLowerCase("tr")].reverse().find((c) => "aeıioöuü".includes(c)) || "e", kalin = "aıou".includes(sesli);
+  if (tur === "den") return ad + (/[çfhkpsşt]$/i.test(ad) ? "t" : "d") + (kalin ? "an" : "en");
+  return ad + ("aeıioöuü".includes(ad.slice(-1).toLocaleLowerCase("tr")) ? "y" : "") + (kalin ? "a" : "e");
+}
+const motorYokMetni = (k, hd) => `Bu cihazda ${dilEki(dilAdiTr(kisaKod(k)), "den")} ${dilEki(dilAdiTr(hd), "e")} çeviri motoru yok.`;
+const indirMetni = (sec) => (sec.tur === "cihaz" ? "Dil paketini indir" : `Paketi indir · ${boyutMetni(sec.boyut)}`);
+const tekSatir = (t) => String(t || "").replace(/\s+/g, " ").trim().replace(/^[\s"“”'‘’]+|[\s"“”'‘’.]+$/g, "");
+const boyutMetni = (b) => (b >= 1e6 ? Math.round(b / 1e6).toLocaleString("tr") + " MB" : Math.max(1, Math.round(b / 1e3)).toLocaleString("tr") + " kB");
+
+async function dilTahminEt() {
+  if (!S || kitapDili()) return;
+  const s = S, bas = Math.min(P.length - 1, Math.floor(P.length * 0.1));   // kapak ve künye sayfaları atlanır
+  let t = "";
+  for (let gi = bas; gi < P.length && t.length < 1500; gi++) t += P[gi].metin + " ";
+  try { const d = await (await ceviriAl()).dilBul(t); if (S !== s) return; S.dilTahmin = d || ""; } catch { return; }
+  if (S.yer && !S.co && coKayitli().has(S.belge.id) && ceviriVar()) ceviriyleOku(true, { sessiz: true });
+}
+
+// Satır içi çeviri veren motor: ayardaki tercih hazırsa o, yoksa otomatik sıra (çevrimdışı önce). Hesap yolu satıra çeviri getirmez.
+const SATIR_MOTORLARI = ["sahte", "cihaz", "paket", "anahtar"];
+function satirMotoru(motorlar = []) {
+  const hazir = (id) => motorlar.find((m) => m.id === id && m.durum === "hazir");
+  const t = store.ayarlar.ceviri?.motor;
+  return (SATIR_MOTORLARI.includes(t) && hazir(t)) || SATIR_MOTORLARI.map(hazir).find(Boolean) || null;
+}
+function hataMetni(e) {
+  return {
+    ag: "İnternete ulaşılamadı.", anahtar: "API anahtarı geçersiz ya da süresi dolmuş.", sinir: "Sağlayıcının sınırına takıldı. Biraz sonra yeniden dene.",
+    "motor-yok": "Çeviri motoru hazır değil.", "paket-yok": "Çeviri paketi yüklü değil.", bozuk: "Çeviri paketi bozuk. Ayarlar'dan silip yeniden indir.",
+    yer: "Cihazda yer kalmadı.", dil: "Kitabın dili bulunamadı.", hareket: "İndirmek için düğmeye yeniden dokun.",
+  }[e?.tur] || "Çeviri yapılamadı.";
+}
+// Kabuk sprite'ına eklemediyse Çevir simgesi buradan: A ve yazı işareti (24'lük ızgara, 1,6 çizgi)
+function ceviriIkonu() {
+  if (document.getElementById("i-cevir")) return;
+  const sprite = document.querySelector("svg symbol")?.parentNode;
+  if (!sprite) return;
+  const s = document.createElementNS(SVG_NS, "symbol");
+  s.id = "i-cevir";
+  s.setAttribute("viewBox", "0 0 24 24");
+  s.innerHTML = '<path d="M3.5 20 7.6 9.5 11.7 20M5.1 16.2h5"/><path d="M12.5 5.5h8M16.5 3.5v2M14 5.5c.7 2.5 2.7 4.5 6 5.4M19 5.5c-.7 2.5-2.6 4.5-5.5 5.4"/>';
+  sprite.append(s);
+}
+
+// İndirilebilecek şey: Chrome'un kendi dil paketi (cihaz) ya da çeviri paketleri (doğrudan çift ya da İngilizce üzerinden iki ayak)
+async function ceviriIndirSecenegi(kaynak, hedef) {
+  const m = await ceviriAl(), d = await m.ceviriDurumu({ kaynak, hedef });
+  const durum = (id) => d.motorlar.find((x) => x.id === id)?.durum;
+  if (durum("cihaz") === "indirilebilir") return { tur: "cihaz", boyut: 0 };
+  if (!["indirilebilir", "iniyor"].includes(durum("paket"))) return null;
+  const liste = await m.paketler({ bekleme: 3000 }), k = m.kisaDil(kaynak), hd = m.kisaDil(hedef);
+  const bul = (a, b) => liste.find((x) => x.kaynak === a && x.hedef === b);
+  const ayaklar = bul(k, hd) ? [bul(k, hd)] : [bul(k, "en"), bul("en", hd)].filter(Boolean);
+  const eksik = ayaklar.filter((x) => x.durum !== "yuklu");
+  return eksik.length ? { tur: "paket", ayaklar: eksik, boyut: eksik.reduce((t, x) => t + (x.indirme || x.boyut || 0), 0) } : null;
+}
+// Kullanıcı hareketinde çağrılır (cihaz paketi hareket ister). İniş arka planda sürer, fiş kapansa da.
+function ceviriIndir(sec, kaynak, hedef, ilerleme) {
+  if (!CV) return Promise.reject(new Error("modül yok"));
+  if (sec.tur === "cihaz") return CV.cihazIndir(kaynak, hedef, { ilerleme });
+  return sec.ayaklar.reduce((soz, a, i) => soz.then(() => CV.paketIndir(a.kaynak, a.hedef, {
+    ilerleme: (o) => ilerleme?.((i + o) / sec.ayaklar.length),
+  })), Promise.resolve());
+}
+
+// ----- seçip çevir: seçimin altında kâğıt fiş -----
+// c.durum: bekliyor | akiyor | bitti | hata | yok (motor yok) | iniyor | hesap | donus | yapistir
+function ceviriFisiAc(aralik, rects) {
+  menuKapat();
+  const c = {
+    aralik, metin: vurguMetni(aralik, "\n\n"), kelime: tekKelime(aralik), sayfa: sanalSayfa(aralik.bas.p, aralik.bas.o),
+    kaynak: kitapDili(), hedef: hedefDil(), durum: "bekliyor", ceviri: "", motorAd: "", internet: false,
+    ctrl: new AbortController(), notId: null, kartId: null,
+  };
+  c.el = h("div", { class: "ceviri-fis nesne-acik", role: "dialog", "aria-label": "Çeviri", tabindex: "-1" });
+  S.cf = c;
+  katmanAc(c.el, { tur: "ceviri", kapat: () => { c.ctrl.abort(); if (S?.cf === c) S.cf = null; } });
+  cfCiz(c);
+  cfKonumla(c, rects);
+  c.el.focus({ preventScroll: true });
+  cfCevir(c);
+}
+// Sütunla hizalı (fişin metni sütunun metniyle aynı kenarda). Yer: seçili paragrafın altı (paragraf okunur kalır);
+// sığmazsa seçimin altı; o da sığmazsa seçimin üstü (fiş yukarı büyür).
+function cfKonumla(c, rects) {
+  const el = c.el, kR = S.kap.getBoundingClientRect(), sR = S.el.sutun.getBoundingClientRect();
+  const rs = (rects?.length ? rects : [...aralikRange(c.aralik).getClientRects()]).filter((q) => q.width > 0);
+  const son = rs[rs.length - 1] || sR, ilk = rs[0] || sR;
+  const w = Math.min(sR.width + 40, 560, kR.width - 24);
+  el.style.width = w + "px";
+  el.style.left = sinirla(sR.left - kR.left - 20, 12, kR.width - w - 12) + "px";
+  // Çevirinin boyu kaynağınkine yakın: satır sayısı tahmini (16/26 Literata), başlık ve düğmelerle
+  const satir = Math.min(12, Math.ceil((c.metin.length * 1.08) / Math.max(20, (w - 40) / (16 * 0.47))));
+  const hg = Math.max(el.offsetHeight, 108 + satir * 26), taban = kR.bottom - (S.mod === "koltuk" ? KOLTUK_ALT : 12);
+  const pAlt = S.pEl[c.aralik.son.p].getBoundingClientRect().bottom;
+  const y = [pAlt + 12, son.bottom + 12].find((v) => v + hg < taban);
+  el.classList.toggle("ustte", y == null);
+  if (y != null) el.style.top = y - kR.top + "px";
+  else el.style.bottom = Math.max(12, kR.bottom - ilk.top + 12) + "px";
+}
+async function cfCevir(c) {
+  Object.assign(c, { durum: "bekliyor", ceviri: "", hata: "" });
+  cfCiz(c);
+  let m, d;
+  try { m = await ceviriAl(); d = await m.ceviriDurumu({ kaynak: c.kaynak, hedef: c.hedef }); }
+  catch { if (S?.cf !== c) return; c.durum = "hata"; c.hata = "Çeviri açılamadı."; cfCiz(c); return; }
+  if (S?.cf !== c) return;
+  const hesap = d.motorlar.some((x) => x.id === "hesap" && x.durum === "hazir");
+  const motor = store.ayarlar.ceviri?.motor === "hesap" && hesap ? null : satirMotoru(d.motorlar);
+  if (!motor) {
+    c.indir = await ceviriIndirSecenegi(c.kaynak, c.hedef).catch(() => null);
+    if (S?.cf !== c) return;
+    c.durum = hesap ? "hesap" : "yok";
+    cfCiz(c);
+    return;
+  }
+  Object.assign(c, { motorAd: motor.ad, internet: !motor.cevrimdisi });
+  try {
+    const r = await m.cevir(c.metin, {
+      kaynak: c.kaynak, hedef: c.hedef, motor: motor.id, signal: c.ctrl.signal, belgeId: S.belge.id,
+      parca: (kismi) => {
+        if (S?.cf !== c) return;
+        const ilk = c.durum !== "akiyor";
+        c.ceviri = kismi; c.durum = "akiyor";
+        if (ilk || !c.metinEl?.isConnected) cfCiz(c);
+        else c.metinEl.replaceChildren(kismi, h("span", { class: "imlec", "aria-hidden": "true" }));
+      },
+    });
+    if (S?.cf !== c) return;
+    const mm = d.motorlar.find((x) => x.id === r.motor) || motor;
+    Object.assign(c, { durum: "bitti", ceviri: r.metin, motorAd: mm.ad, internet: !mm.cevrimdisi });
+  } catch (e) {
+    if (e?.name === "AbortError" || S?.cf !== c) return;
+    Object.assign(c, { durum: "hata", hata: hataMetni(e) });
+  }
+  cfCiz(c);
+}
+function cfCiz(c) {
+  const uyg = uygulamaAl();
+  const dugme = (metin, ikon, fn, { birincil = false, kapali = false } = {}) => h("button", {
+    type: "button", class: birincil ? "birincil kucuk" : "metin-dugme", disabled: kapali || null, onclick: fn,
+  }, ikon ? icon(ikon) : null, metin);
+  const not = (metin) => h("p", { class: "cf-not" }, metin);
+  const indir = () => c.indir ? dugme(indirMetni(c.indir), null, () => cfIndir(c), { birincil: c.durum === "yok" }) : null;
+  const govde = h("div", { class: "cf-govde" });
+  let alt = [];
+  c.metinEl = null;
+  switch (c.durum) {
+    case "bekliyor":
+      govde.append(h("p", { class: "cf-metin bekliyor", "aria-busy": "true", "aria-label": "Çevriliyor" }, h("i"), h("i"), h("i")));
+      break;
+    case "akiyor":
+    case "bitti": {
+      c.metinEl = h("p", { class: "cf-metin", lang: c.hedef, "aria-live": "polite" }, c.ceviri);
+      if (c.durum === "akiyor") c.metinEl.append(h("span", { class: "imlec", "aria-hidden": "true" }));
+      govde.append(c.metinEl);
+      if (c.durum === "bitti") {
+        const kartVar = !!c.kartId && store.kartlar.some((k) => k.id === c.kartId);
+        alt = [
+          dugme("Kopyala", "kopyala", () => kopyala(c.ceviri)),
+          dugme(c.notId ? "Kenarda" : "Kenara yaz", c.notId ? "tik" : "kenara-not", () => cfKenaraYaz(c), { kapali: !!c.notId }),
+          dugme(kartVar ? "Tekrar'da" : "Karta çevir", kartVar ? "tik" : "karta-cevir", () => cfKarta(c), { kapali: kartVar }),
+        ];
+      }
+      break;
+    }
+    case "hata":
+      govde.append(not(c.hata || "Çeviri yapılamadı."));
+      alt = [dugme("Yeniden dene", "yeniden", () => cfCevir(c))];
+      break;
+    case "yok":
+      govde.append(not(motorYokMetni(c.kaynak, c.hedef) +
+        (c.indir ? " Paketi bir kez indirince internetsiz çevrilir." : " Ayarlar'daki Çeviri kartından bir paket indir.")));
+      alt = [indir()].filter(Boolean);
+      break;
+    case "iniyor":
+      govde.append(not("Çeviri paketi iniyor. Fişi kapatsan da arka planda sürer."),
+        h("div", { class: "cf-ilerleme", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round((c.oran || 0) * 100)) },
+          h("i", { style: `--o:${(c.oran || 0).toFixed(3)}` }), h("span", {}, yuzde(c.oran || 0))));
+      break;
+    case "hesap":
+      govde.append(not(`Bu cihazda internetsiz çeviri yok. Metni ${uyg.ad} ile ya da Google Çeviri'de çevir, sonucu kopyalayıp buraya dön.`));
+      alt = [indir(), dugme("Google Çeviri", null, () => cfHesap(c, "google")), dugme(`${bulunma(uyg.ad)} çevir`, "sor", () => cfHesap(c, uyg.id), { birincil: true })].filter(Boolean);
+      break;
+    case "donus":
+      govde.append(not(`Çeviri ${bulunma(c.motorAd)}. Bitince kopyala ve buraya dön.`));
+      alt = [dugme("Elle yapıştır", null, () => { c.durum = "yapistir"; cfCiz(c); }),
+        h("button", { type: "button", class: "birincil kucuk" + (c.vurgula ? " vurgula" : ""), onclick: () => cfGetir(c) }, icon("yapistir"), "Çeviriyi getir")];
+      break;
+    case "yapistir": {
+      const alan = h("textarea", { class: "cf-yapistir", rows: "3", placeholder: "Çeviriyi buraya yapıştır", "aria-label": "Çeviriyi yapıştır", lang: c.hedef });
+      const ekle = () => { const t = alan.value.trim(); if (!t) return alan.focus(); Object.assign(c, { ceviri: t, durum: "bitti" }); cfCiz(c); };
+      alan.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ekle(); });
+      govde.append(alan);
+      alt = [dugme("Ekle", "tik", ekle, { birincil: true })];
+      requestAnimationFrame(() => alan.isConnected && alan.focus({ preventScroll: true }));
+      break;
+    }
+  }
+  const yon = `${kisaKod(c.kaynak)} → ${c.hedef}`;
+  c.el.replaceChildren(...[
+    h("header", {}, h("span", { class: "cf-yon", "aria-label": `${dilAdiTr(kisaKod(c.kaynak))} → ${dilAdiTr(c.hedef)}` }, yon),
+      c.motorAd ? h("span", { class: "cf-motor" }, c.motorAd) : null,
+      c.internet ? h("span", { class: "cf-internet" }, "internetten") : null),
+    govde,
+    alt.length ? h("footer", {}, ...alt) : null].filter(Boolean));
+}
+function cfIndir(c) {
+  const sec = c.indir;
+  if (!sec) return;
+  Object.assign(c, { durum: "iniyor", oran: 0 });
+  cfCiz(c);
+  ceviriIndir(sec, c.kaynak, c.hedef, (o) => {
+    c.oran = o;
+    const b = S?.cf === c && c.el.querySelector(".cf-ilerleme");
+    if (b) { b.firstChild.style.setProperty("--o", o.toFixed(3)); b.lastChild.textContent = yuzde(o); b.setAttribute("aria-valuenow", String(Math.round(o * 100))); }
+  }).then(() => {
+    if (S?.cf === c) cfCevir(c); else toast("Çeviri paketi indi. Artık internetsiz çevrilir.");
+  }, (e) => {
+    if (S?.cf !== c) return;
+    Object.assign(c, { durum: "hata", hata: e?.name === "AbortError" ? "İndirme durdu." : hataMetni(e) });
+    cfCiz(c);
+  });
+}
+// Hesap yolu: soru uygulamaya ya da Google Çeviri'ye gider (kullanıcı hareketinde, beklemeden), cevap panodan döner
+function cfHesap(c, uygulama) {
+  if (!CV) return;
+  if (uygulama === "google") { CV.googleCeviriAc(c.metin, { kaynak: c.kaynak, hedef: c.hedef }); c.motorAd = "Google Çeviri"; }
+  else { CV.hesapIleCevir(c.metin, { kaynak: c.kaynak, hedef: c.hedef, uygulama }).catch(() => {}); c.motorAd = uygulamaAl().ad; }
+  Object.assign(c, { durum: "donus", internet: true, vurgula: false });
+  cfCiz(c);
+}
+async function cfGetir(c) {
+  let t = "";
+  try { t = (await navigator.clipboard.readText()).trim(); } catch { /* izin yok */ }
+  if (S?.cf !== c) return;
+  // Panoda hâlâ bizim istem duruyorsa (cevap kopyalanmadı) yapıştırma alanı açılır
+  if (t && !t.startsWith("Şu metni") && t !== c.metin.trim()) Object.assign(c, { ceviri: t, durum: "bitti" });
+  else c.durum = "yapistir";
+  cfCiz(c);
+}
+// Kenara yaz: asistan notlarıyla aynı yerde, kurşun kalem görünümünde (tur: "ceviri"); seçimin satırı hizasında
+function cfKenaraYaz(c) {
+  if (c.notId || !c.ceviri.trim()) return;
+  const asil = c.metin.length > 400 ? c.metin.slice(0, 400).replace(/\s+\S*$/, "") + "…" : c.metin;
+  const n = { id: yeniId("an"), tur: "ceviri", p: c.aralik.bas.p, o: c.aralik.bas.o, sayfa: c.sayfa, asil, metin: c.ceviri.trim(), dil: c.hedef, kaynak: c.motorAd, zaman: Date.now() };
+  if (c.kartId) n.kartId = c.kartId;   // fişten karta çevrildiyse kenardaki not da "Tekrar'da" der
+  S.veri.asistanNotlari.push(n);
+  c.notId = n.id;
+  S.yeniAsistanNotu = n.id;
+  kenarNotlariniCiz();
+  belgeDegisti();
+  cfCiz(c);
+  toast("Kenara yazıldı", { etiket: "Geri al", calistir: () => {
+    if (!S) return;
+    const i = S.veri.asistanNotlari.findIndex((x) => x.id === n.id);
+    if (i >= 0) { S.veri.asistanNotlari.splice(i, 1); kenarNotlariniCiz(); belgeDegisti(); }
+    if (S.cf === c) { c.notId = null; cfCiz(c); }
+  } });
+}
+// Karta çevir: ön yüz asıl metin, arka yüz çeviri. Tek kelime kelime kartı olur (bağlam cümlesiyle).
+function cfKarta(c) {
+  const ortakAlan = { belgeId: S.belge.id, belgeAd: S.belge.ad, sayfa: c.sayfa };
+  const k = kartEkle(c.kelime
+    ? { tur: "kelime", on: { metin: c.kelime, baglam: baglamCumle(c.aralik) }, arka: { metin: c.ceviri.trim() }, ...ortakAlan }
+    : { tur: "soru", on: { metin: c.metin }, arka: { metin: c.ceviri.trim() }, ...ortakAlan });
+  c.kartId = k.id;
+  const n = c.notId && S.veri.asistanNotlari.find((x) => x.id === c.notId);
+  if (n) { n.kartId = k.id; belgeDegisti(); kenarNotlariniCiz(); }
+  cfCiz(c);
+  toast("Karta çevrildi · Kutu I", { etiket: "Geri al", calistir: () => {
+    kartSil(k.id);
+    if (S && n) kenarNotlariniCiz();
+    if (S?.cf === c) { c.kartId = null; cfCiz(c); }
+  } });
+}
+
+// ----- Çeviriyle oku: her paragrafın altında soluk, küçük çevirisi (eski iki dilli baskılar gibi) -----
+// Yalnız görünen ve sıradaki sayfanın paragrafları çevrilir (sırayla, görünen önce). Gelmemiş çevirinin yeri
+// tahmini yükseklikle ayrılır ve ince yer tutucu çizgilerle durur: çeviri gelince sayfa zıplamaz. Kapalıyken hiç iş yok.
+// Çeviri satırları paragrafın kardeşidir (p'nin içinde değil): vurgu ofsetleri, izler ve seçim yalnız asıl metni görür.
+// S.co: { kaynak, hedef, durum: "hazirlaniyor"|"hazir"|"motor-yok", motor, motorAd, bloklar: Map(gi -> { el, durum, metin }), ... }
+const CO_DEPO = "kn-tasarim:ceviriyle-oku";
+function coKayitli() {
+  try { const d = JSON.parse(localStorage.getItem(CO_DEPO)); return new Set(Array.isArray(d) ? d : []); } catch { return new Set(); }
+}
+function coKaydet(acik) {
+  const s = coKayitli();
+  if (acik) s.add(S.belge.id); else s.delete(S.belge.id);
+  try { localStorage.setItem(CO_DEPO, JSON.stringify([...s].slice(-200))); } catch { /* gizli pencere */ }
+}
+const aaYenile = () => { if (S?.katman?.tur === "aa") katmanYenile(); };
+
+async function ceviriyleOku(acik, { sessiz = false } = {}) {
+  if (!S) return;
+  if (!acik) { coKapat(); coKaydet(false); aaYenile(); return; }
+  if (S.co || !ceviriVar()) return;
+  const co = S.co = {
+    kaynak: kitapDili(), hedef: hedefDil(), tercih: store.ayarlar.ceviri?.motor || "otomatik", durum: "hazirlaniyor",
+    bloklar: new Map(), kuyruk: [], is: null, yazilacak: new Set(), yazZ: 0, olcu: "", hataSay: 0,
+  };
+  if (!sessiz) coKaydet(true);
+  S.kap.classList.add("ceviriyle");
+  aaYenile();
+  await coMotorBul(co);
+}
+async function coMotorBul(co) {
+  try {
+    const m = await ceviriAl();
+    const d = await m.ceviriDurumu({ kaynak: co.kaynak, hedef: co.hedef });
+    if (S?.co !== co) return;
+    const motor = satirMotoru(d.motorlar);
+    motorBilgi.set(ciftAnahtari(), !!motor);
+    if (motor) {
+      Object.assign(co, { durum: "hazir", motor: motor.id, motorAd: motor.ad, internet: !motor.cevrimdisi, hata: "" });
+      if (motor.id === "paket") m.hazirla({ kaynak: co.kaynak, hedef: co.hedef }).catch(() => {});   // WASM ve model işçide önceden
+    } else {
+      co.durum = "motor-yok";
+      co.indir = await ceviriIndirSecenegi(co.kaynak, co.hedef).catch(() => null);
+    }
+  } catch { co.durum = "motor-yok"; }
+  if (S?.co !== co) return;
+  aaYenile();
+  if (co.durum === "hazir") planla("ceviri", coGuncelle);
+}
+function coKapat() {
+  const co = S?.co;
+  if (!co) return;
+  // Sayfanın başı bir çeviri satırındaysa okur bir sonraki paragrafın başında kalır (kapanınca geri fırlamaz)
+  if (S.yer && S.el.kaydir.scrollHeight === S.yer.kayYuk) { const k = konumAl(); S.veri.konum = k.oran < 0 ? { p: k.p, oran: 0 } : k; }
+  S.co = null;
+  co.is?.ctrl.abort();
+  for (const k of co.bloklar.values()) k.el.remove();
+  S.kap.classList.remove("ceviriyle");
+  S.anYer = null;   // satır içi asistan notları çevirinin altından paragrafın altına döner
+  if (S.yer) kenarNotlariniCiz();
+}
+// Görünen ve sıradaki sayfa: eksik bloklar yer tutucuyla eklenir, bekleyenler sıraya girer, aralık dışına düşen iş durur
+function coGuncelle() {
+  const co = S?.co;
+  if (!co || co.durum !== "hazir" || !S.yer) return;
+  // Kalem yazarken yer tutucu eklenmez, boyut değişmez: metin kalemin altında kaymasın
+  if (S.aktif) { co.guncelZ ||= zamanla(() => { co.guncelZ = 0; if (S?.co === co) planla("ceviri", coGuncelle); }, 250); return; }
+  const kay = S.el.kaydir, st = kay.scrollTop, H = kay.clientHeight;
+  const a = konumAl(st).p, b = konumAl(st + 2 * H).p;
+  const olcu = `${S.yer.em}|${S.yer.s}`;
+  if (co.olcu !== olcu) {   // yazı boyutu ya da sütun değişti: bekleyenlerin ayrılan yeri yeniden tahmin edilir
+    co.olcu = olcu;
+    for (const [gi, k] of co.bloklar) if (k.durum !== "bitti" && k.durum !== "hata") k.el.style.minHeight = coTahmin(gi);
+  }
+  let eklendi = false;
+  for (let gi = a; gi <= b; gi++) {
+    if (co.bloklar.has(gi)) continue;
+    const el = h("div", { class: "ceviri-satir bekliyor", "data-cp": gi, lang: co.hedef, style: `min-height:${coTahmin(gi)}` });
+    el.addEventListener("click", () => coYeniden(gi));
+    co.bloklar.set(gi, { el, durum: "bekliyor", metin: "" });
+    S.pEl[gi].after(el);
+    eklendi = true;
+  }
+  if (eklendi) S.anYer = null;   // satır içi asistan notları çevirinin altına yeniden dizilir (yerleşimde)
+  co.kuyruk = [];
+  for (let gi = a; gi <= b; gi++) if (co.bloklar.get(gi)?.durum === "bekliyor") co.kuyruk.push(gi);
+  if (co.is && (co.is.gi < a || co.is.gi > b)) co.is.ctrl.abort();
+  coSiradaki();
+}
+// Ayrılan yer: çeviri satırının yazısı .84em, satırı 1.5; Türkçe İngilizceden biraz uzun. Birim bloğun kendi em'i.
+function coTahmin(gi) {
+  const { em, s } = S.yer, gen = s * BIRIM, f = em * 0.84;
+  const harf = Math.max(12, gen / (f * 0.47));
+  const n = Math.max(1, Math.ceil((P[gi].metin.length * 1.08) / harf));
+  return (n * 1.5).toFixed(2) + "em";
+}
+function coYeniden(gi) {
+  const co = S?.co, k = co?.bloklar.get(gi);
+  if (!k || k.durum !== "hata") return;
+  k.durum = "bekliyor";
+  co.hataSay = 0;
+  k.el.style.minHeight = coTahmin(gi);
+  coYaz(co, gi);
+  planla("ceviri", coGuncelle);
+}
+async function coSiradaki() {
+  const co = S?.co;
+  if (!co || co.is || co.durum !== "hazir") return;
+  const gi = co.kuyruk.shift();
+  if (gi == null) return;
+  const k = co.bloklar.get(gi);
+  if (!k || k.durum !== "bekliyor") { coSiradaki(); return; }
+  const ctrl = new AbortController();
+  co.is = { gi, ctrl };
+  k.durum = "akiyor";
+  try {
+    const m = await ceviriAl();
+    const r = await m.cevir(P[gi].metin, {
+      kaynak: co.kaynak, hedef: co.hedef, motor: co.motor, signal: ctrl.signal, belgeId: S.belge.id,
+      parca: (kismi) => { if (S?.co === co && !ctrl.signal.aborted) { k.metin = kismi; coYaz(co, gi); } },
+    });
+    if (S?.co !== co) return;
+    Object.assign(k, { durum: "bitti", metin: r.metin });
+    co.hataSay = 0;
+  } catch (e) {
+    if (S?.co !== co) return;
+    if (e?.name === "AbortError") Object.assign(k, { durum: "bekliyor", metin: "" });
+    else if (["motor-yok", "paket-yok", "hesap"].includes(e?.tur)) {   // motor gitti: çeviri bekler, Aa'da durum yazar
+      Object.assign(k, { durum: "bekliyor", metin: "" });
+      co.durum = "motor-yok";
+      co.hata = hataMetni(e);
+      aaYenile();
+    } else {
+      Object.assign(k, { durum: "hata", metin: "" });
+      // Art arda üç hata (ağ, anahtar): sıra durur; satıra dokununca yeniden denenir
+      if (++co.hataSay >= 3) { co.kuyruk = []; toast("Çeviri durdu: " + hataMetni(e)); }
+    }
+  } finally {
+    if (S?.co === co && co.is?.gi === gi) co.is = null;
+  }
+  coYaz(co, gi);
+  if (S?.co === co && co.hataSay < 3) zamanla(coSiradaki, 0);
+}
+// Satırlar toplu yazılır (bir düzen hesabı); kalem yazarken düzen değişmez, kalkınca yazılır
+function coYaz(co, gi) {
+  co.yazilacak.add(gi);
+  if (!co.yazZ) co.yazZ = zamanla(() => coBosalt(co), 60);
+}
+function coBosalt(co) {
+  co.yazZ = 0;
+  if (S?.co !== co) return;
+  if (S.aktif) { co.yazZ = zamanla(() => coBosalt(co), 250); return; }
+  for (const gi of co.yazilacak) {
+    const k = co.bloklar.get(gi);
+    if (!k) continue;
+    const bekliyor = !k.metin && (k.durum === "bekliyor" || k.durum === "akiyor");
+    k.el.classList.toggle("bekliyor", bekliyor);
+    k.el.classList.toggle("hata", k.durum === "hata");
+    k.el.textContent = k.durum === "hata" ? "Çevrilemedi. Yeniden denemek için dokun." : bekliyor ? "" : k.metin;
+    if (k.durum === "bitti" || k.durum === "hata") k.el.style.minHeight = "";
+  }
+  co.yazilacak.clear();
+}
+// Aa'daki "Çeviri" bölümü: anahtar ve motorun durumu
+function aaCeviriBolumu() {
+  if (!ceviriVar()) return null;
+  const co = S.co, hd = hedefDil();
+  const b = h("button", { type: "button", class: "anahtar-satir", role: "switch", "aria-checked": String(!!co) },
+    h("span", {}, "Çeviriyle oku", h("small", {}, `Her paragrafın altında ${dilAdiTr(hd)} çevirisi`)), h("span", { class: "anahtar" }));
+  b.addEventListener("click", () => ceviriyleOku(!S.co));
+  let durum = null;
+  if (co?.durum === "hazirlaniyor") durum = h("p", { class: "aa-ceviri-durum" }, "Çeviri hazırlanıyor");
+  else if (co?.durum === "hazir") durum = h("p", { class: "aa-ceviri-durum" }, co.motorAd, h("span", {}, co.internet ? "internetten" : "bu cihazda"));
+  else if (co?.durum === "motor-yok") {
+    durum = h("div", { class: "aa-ceviri-durum yok" },
+      h("p", {}, co.hata || motorYokMetni(co.kaynak, hd)),
+      co.iniyor ? h("p", { class: "aa-ceviri-oran" }, `Paket iniyor · ${yuzde(co.oran || 0)}`)
+        : co.indir ? h("button", { type: "button", class: "ikincil", onclick: () => coIndir(co) }, indirMetni(co.indir))
+          : h("p", {}, "Ayarlar'daki Çeviri kartından bir paket indir."));
+  }
+  return h("div", { class: "aa-bolum aa-ceviri" }, etiket("Çeviri"), b, durum);
+}
+function coIndir(co) {
+  if (!co.indir || co.iniyor) return;
+  Object.assign(co, { iniyor: true, oran: 0 });
+  aaYenile();
+  ceviriIndir(co.indir, co.kaynak, co.hedef, (o) => {
+    co.oran = o;
+    const el = S?.katman?.el.querySelector(".aa-ceviri-oran");
+    if (el) el.textContent = `Paket iniyor · ${yuzde(o)}`;
+  }).then(() => { co.iniyor = false; if (S?.co === co) coMotorBul(co); },
+    (e) => { co.iniyor = false; if (S?.co === co) { co.hata = e?.name === "AbortError" ? "İndirme durdu." : hataMetni(e); aaYenile(); } });
+}
+// Hedef dil, motor tercihi ya da kitabın dili değişti: satır altı çeviri yeniden kurulur ya da kapanır
+function ceviriAyarDegisti() {
+  const co = S?.co;
+  if (!co) return;
+  if (kitapDili() === co.kaynak && hedefDil() === co.hedef && (store.ayarlar.ceviri?.motor || "otomatik") === co.tercih) return;
+  coKapat();
+  if (ceviriVar()) ceviriyleOku(true, { sessiz: true });
+  else aaYenile();
 }
 
 // ---------- not balonu ----------
@@ -1799,6 +2368,7 @@ function aaAc() {
         h("div", { class: "aa-bolum" }, etiket("Boyut"),
           h("div", { class: "cetvel-satir aa-boyut" }, h("span", { class: "aa-harf kucuk", "aria-hidden": "true" }, "A"), kaydirici, h("span", { class: "aa-harf buyuk", "aria-hidden": "true" }, "A"))),
         h("div", { class: "aa-bolum" }, etiket("Satır aralığı"), cipler(SATIRLAR, tercih.satir, (d) => degistir({ satir: d }), "Satır aralığı")),
+        aaCeviriBolumu(),
         ozel));
     const serit = balon.querySelector(".tema-numuneler");
     if (serit) serit.scrollLeft = kaydirma;
@@ -2507,11 +3077,21 @@ function olaylariBagla() {
   // Hesap yolunda uygulamadan dönünce "Cevabı getir" bir kez vurgulanır
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) tercihSakla();   // Android arka plandaki PWA'yı kapatırken pagehide gelmeyebilir
+    const c = S?.cf;
+    if (!document.hidden && c?.durum === "donus" && !c.vurgula) { c.vurgula = true; cfCiz(c); }
     const a = S?.anlam;
     if (document.hidden || !a || a.durum !== "donus" || a.vurgula) return;
     a.vurgula = true;
     anlamCiz(a);
   }, { signal: sinyal });
+  // Çeviri: hedef dil, motor tercihi ya da kitabın dili değişince; paket inince bekleyen satır altı çeviri başlar
+  S.bus.push(bus.on("ayarlar", () => ceviriAyarDegisti()));
+  S.bus.push(bus.on("belgeler", () => ceviriAyarDegisti()));
+  S.bus.push(bus.on("ceviri", (o) => {
+    if (o?.durum === "yuklu") motorBilgi.clear();
+    const co = S?.co;
+    if (co?.durum === "motor-yok" && !co.iniyor && o?.durum === "yuklu") coMotorBul(co);
+  }));
   S.bus.push(bus.on("kirpintilar", (e) => { if (S && e?.tur !== "not" && S.panel === "sag" && S.sekme === "kirpintilar") panelYenile(); }));
 }
 

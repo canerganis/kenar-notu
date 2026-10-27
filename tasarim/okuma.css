@@ -602,3 +602,84 @@
 .sayfa-kenari[data-sag="5"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc), 6px 0 0 var(--kc), 8px 0 0 var(--kc); }
 .sayfa-kenari[data-sag="6"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc), 6px 0 0 var(--kc), 8px 0 0 var(--kc), 10px 0 0 var(--kc); }
 @media (max-width: 699px) { .sayfa-kenari { display: none !important; } }
+
+/* ============ 10. tur · Çeviri (OZELLIKLER-6 §3) ============ */
+
+/* Çeviriyle oku: paragrafın altında soluk, küçük, italik; solunda ince çizgi (eski iki dilli baskılar gibi).
+   Paragrafın kardeşi, içinde değil: vurgu, iz ve seçim yalnız asıl metni görür. Yazı ailesi okurun seçtiği aile. */
+.okuma-sutun .ceviri-satir { position: relative; margin: .2em 0 .8em; padding: 0 0 0 .9em; text-indent: 0;
+  font-size: .84em; font-style: italic; font-weight: 400; line-height: 1.5; color: color-mix(in srgb, var(--metin) 62%, transparent);
+  white-space: pre-line; hyphens: auto; -webkit-hyphens: auto; text-wrap: pretty;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--metin) 20%, transparent);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Gelmemiş çeviri: ayrılan yerde her satırın hizasında ince yer tutucu çizgi (parıltı yok, CPU harcamaz) */
+.okuma-sutun .ceviri-satir.bekliyor { background:
+  repeating-linear-gradient(transparent 0 .8em, color-mix(in srgb, var(--metin) 14%, transparent) .8em calc(.8em + 1px), transparent calc(.8em + 1px) 1.5em)
+  .9em 0 / calc(82% - .9em) 100% no-repeat; }
+.okuma-sutun .ceviri-satir.hata { font: 400 var(--fs-13, 13px)/1.6 var(--f-arayuz); color: var(--ikincil); cursor: pointer; }
+/* Satır altı çeviri gelince ince bir solma; kalem ekrandayken hiçbir şey canlanmaz */
+.okuma-sutun .ceviri-satir:not(.bekliyor) { animation: perde-ac 160ms var(--egri-kagit, ease-out); }
+.okuma-ekrani.yaziyor .okuma-sutun .ceviri-satir { animation: none; }
+:root[data-hareket="sade"] .okuma-sutun .ceviri-satir { animation: none; }
+
+/* Seçip çevir: seçimin altında küçük kâğıt fiş (her temada açık kâğıt, anlam kartının kardeşi). Sütunla hizalı. */
+.ceviri-fis { position: absolute; z-index: var(--z-balon); max-width: calc(100% - 24px); padding: 12px 20px 8px; border-radius: var(--r-kagit, 2px);
+  background: var(--fis-kagit, #FFFDF7); color: var(--fis-yazi, #22201D); box-shadow: var(--golge-3); outline: none;
+  transform-origin: top left; animation: balon-ac 200ms var(--egri-kagit); }
+.ceviri-fis.ustte { transform-origin: bottom left; }
+.ceviri-fis header { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.ceviri-fis .cf-yon { font: 400 var(--fs-11, 11px)/14px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ceviri-fis .cf-motor { margin-left: auto; font: 400 var(--fs-12, 12px)/16px var(--f-arayuz); color: var(--muted); }
+.ceviri-fis .cf-internet { padding: 0 8px; border-radius: var(--r-tam, 999px); box-shadow: inset 0 0 0 .5px var(--line-strong); font: 500 var(--fs-11, 11px)/20px var(--f-arayuz); color: var(--ink-2); }
+.ceviri-fis .cf-metin { margin: 8px 0 4px; max-height: min(40vh, 312px); overflow-y: auto; overscroll-behavior: contain;
+  font: 400 var(--fs-16, 16px)/26px var(--f-okuma); font-variation-settings: "opsz" 16; white-space: pre-line; overflow-wrap: anywhere; color: var(--fis-yazi, #22201D); }
+.ceviri-fis .cf-metin .imlec { vertical-align: -.2em; }
+.ceviri-fis .cf-metin.bekliyor { display: grid; }
+.ceviri-fis .cf-metin.bekliyor i { display: block; height: 26px; background: linear-gradient(transparent 14px, color-mix(in srgb, var(--fis-yazi, #22201D) 14%, transparent) 14px 15px, transparent 15px); }
+.ceviri-fis .cf-metin.bekliyor i:nth-child(2) { width: 92%; }
+.ceviri-fis .cf-metin.bekliyor i:nth-child(3) { width: 58%; }
+.ceviri-fis .cf-not { margin: 8px 0 4px; font: 400 var(--fs-14, 14px)/20px var(--f-arayuz); color: var(--ink-2); }
+.ceviri-fis footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin: 4px -10px 0; }
+.ceviri-fis footer > :first-child:not(:only-child) { margin-right: auto; }
+.ceviri-fis footer .metin-dugme { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; }
+.ceviri-fis footer .metin-dugme:disabled { color: var(--muted); cursor: default; }
+.ceviri-fis footer .i { width: 18px; height: 18px; }
+.ceviri-fis footer .birincil { padding: 0 14px 0 12px; }
+.ceviri-fis footer .birincil.vurgula { animation: anlam-vurgu 480ms var(--egri-kagit); }
+.ceviri-fis .cf-ilerleme { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
+.ceviri-fis .cf-ilerleme i { position: relative; flex: 1; height: 2px; background: var(--line-strong); overflow: hidden; }
+.ceviri-fis .cf-ilerleme i::after { content: ""; position: absolute; inset: 0; background: var(--ink-2); transform-origin: left; transform: scaleX(var(--o, 0)); }
+.ceviri-fis .cf-ilerleme span { font: 400 var(--fs-12, 12px)/16px var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
+.ceviri-fis .cf-yapistir { display: block; width: 100%; min-height: 78px; margin: 8px 0 4px; padding: 0; border: 0; resize: none; background: transparent;
+  color: var(--fis-yazi, #22201D); font: 400 var(--fs-16, 16px)/26px var(--f-okuma); }
+.ceviri-fis .cf-yapistir:focus { outline: none; }
+.ceviri-fis .cf-yapistir::placeholder { color: var(--muted); font-style: italic; }
+:root[data-hareket="sade"] .ceviri-fis { animation: perde-ac 120ms; }
+
+/* Kenara yazılan çeviri: kurşun kalem (TASARIM-3 §7: açıkta #6E6A64, koyuda #A29D95). Asistan notunun yerinde, Caveat ile. */
+.okuma-ekrani .kenar-ceviri { --kursun: #6E6A64; border-left-color: color-mix(in srgb, var(--kursun) 38%, transparent); }
+.okuma-ekrani.tema-koyu .kenar-ceviri { --kursun: #A29D95; }
+.okuma-ekrani .kenar-ceviri .metin { font: 500 var(--fs-18, 18px)/1.15 var(--f-el); color: color-mix(in srgb, var(--kursun) 86%, transparent); }
+.okuma-ekrani .kenar-ceviri.satir-ici { background: none; }
+.okuma-ekrani .kenar-ceviri.satir-ici .metin { font-size: 20px; }
+
+/* Anlam kartının çizgileri yazının altına: metin satırları 60px'ten başlar (12 iç boşluk + 36 başlık + 12), çizgi her
+   24px'lik satırın dibinde. Önceden çizgiler satırların ortasından geçiyordu. */
+.anlam-fis.fis-kart.satirli { --satir-bas: 60px; background-position: 0 0, 0 12px; }
+/* Anlam kartında kelimenin karşılığı: kartın ilk satırında tek satır (index kartının çizgisine oturur) */
+.anlam-fis .anlam-karsilik { display: flex; align-items: baseline; gap: 8px; height: 24px; margin: 12px 0 0; overflow: hidden; white-space: nowrap; }
+.anlam-fis .anlam-karsilik + .anlam { margin-top: 0; }
+.anlam-fis .anlam-karsilik .dil { flex: none; font: 400 var(--fs-11, 11px)/24px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.anlam-fis .anlam-karsilik .k { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 500 17px/24px var(--f-okuma); font-variation-settings: "opsz" 18; color: var(--fis-yazi); }
+.anlam-fis .anlam-karsilik small { flex: none; margin-left: auto; font: 400 var(--fs-11, 11px)/24px var(--f-arayuz); color: var(--muted); }
+.anlam-fis .anlam-karsilik.bekliyor .k { flex: none; width: 96px; height: 1px; align-self: center; margin-top: 4px; background: color-mix(in srgb, var(--fis-yazi) 22%, transparent); }
+
+/* Aa: Çeviri bölümü */
+.aa-ceviri .anahtar-satir > span:first-child { display: grid; }
+.aa-ceviri-durum { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 0; font: 400 var(--fs-13, 13px)/18px var(--f-arayuz); color: var(--muted); }
+.aa-ceviri-durum > span::before { content: "·"; margin-right: 6px; }
+.aa-ceviri-durum.yok { display: grid; gap: 8px; }
+.aa-ceviri-durum.yok p { margin: 0; }
+.aa-ceviri-durum .ikincil { justify-self: start; }
+.aa-ceviri-durum .ikincil .i { width: 18px; height: 18px; }
+.aa-ceviri-oran { font-variant-numeric: tabular-nums; }

@@ -1,0 +1,5 @@
+Çeviri motoru: Bergamot (bergamot-translator, Marian tabanlı), Mozilla Firefox Translations'ın WASM motoru.
+Dosyalar npm paketinden aynen alındı: @browsermt/bergamot-translator 0.4.9 (worker/bergamot-translator-worker.js ve .wasm, glue v0.4.5+4917c11, emscripten 3.1.8).
+Lisans: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
+Kaynak kodu: https://github.com/browsermt/bergamot-translator
+Dil modelleri bu klasörde değildir; kullanıcı isteyince indirilir (Mozilla Firefox Translations modelleri, MPL 2.0).

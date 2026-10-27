@@ -76,6 +76,14 @@ const depo = {
     // Düzenleyicinin araç ayarları (kalem renkleri, araç çubuğu konumu) yapısı tamsa geri gelir
     const a = kayitli.araclar;
     if (a && Array.isArray(a.kalemler) && a.kalemler.length === 3 && a.fosforlu && a.silgi && a.metin && a.not && a.bant) store.ayarlar.araclar = a;
+    // Çeviri seçimleri (OZELLIKLER-6 §5): hedef dil ve motor tercihi
+    const c = kayitli.ceviri;
+    if (c && typeof c === "object") {
+      store.ayarlar.ceviri = {
+        hedef: typeof c.hedef === "string" && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(c.hedef) ? c.hedef : "tr",
+        motor: ["otomatik", "cihaz", "paket", "anahtar", "hesap"].includes(c.motor) ? c.motor : "otomatik",
+      };
+    }
   }
 }
 // Yapay zekâ ayarları (anahtarlar dahil) localStorage'a yazılmaz, IndexedDB'de ayrı kayıtta durur
@@ -1186,6 +1194,8 @@ function belgeFisi(b, capa) {
       fisSatir("yildiz", b.favori ? "Favorilerden çıkar" : "Favorilere ekle", null, () => { fisKapat(); favoriDegistir(b); }),
       fisSatir("metin", "Yeniden adlandır", null, adlandir),
       fisSatir("klasor", "Klasöre taşı", klasor ? `Şu an: ${klasor.ad}` : "Klasörsüz", klasorSec),
+      // Kitabın dili (OZELLIKLER-6 §2): çeviri düğmeleri hedef dilden farklıysa görünür
+      ...(dilDestekli(b) ? [fisSatir("ceviri", "Kitabın dili", dilOzet(b), dilSec)] : []),
       // Cep defteri: altı çizilen, yuvarlak içine alınan ve kenarına işaret konan yerler (OZELLIKLER-5)
       fisSatir("izler", "Cep defteri", "Kalemin değdiği yerler", () => { fisKapat(true); bus.emit("defter:ac", { belgeId: b.id }); }),
       // Bir PDF çizgi roman olarak da okunabilir: sayfa sayfa, panel panel (cizgi.js)
@@ -1231,6 +1241,22 @@ function belgeFisi(b, capa) {
       secenekSatir(icon("kapat", "i-20"), "Klasörsüz", !b.klasor, () => tasi(undefined)));
     aktifFis?.konumla();
     $("button", icerik)?.focus();
+  };
+  const dilSec = () => {
+    const otoAlt = h("small", {}, b.dilElle ? "Metinden bulunur" : b.dil ? `Bulunan: ${dilAdi(b.dil)}` : b.dil === null ? "Bulunamadı" : "Bakılıyor");
+    const sec = (kod) => { fisKapat(); dilAyarla(b, kod); };
+    const oto = h("button", { class: "fis-satir secenek", type: "button", role: "menuitemradio", "aria-checked": String(!b.dilElle), onclick: () => sec("oto") },
+      icon("tema-oto", "i-20"), h("span", {}, "Otomatik", otoAlt), !b.dilElle ? icon("tik", "i-20") : h("span"));
+    const listede = KITAP_DILLERI.includes(b.dil) || !b.dil ? KITAP_DILLERI : [b.dil, ...KITAP_DILLERI];
+    icerik.replaceChildren(
+      h("div", { class: "fis-baslik" }, "Kitabın dili"),
+      oto,
+      h("div", { class: "fis-ayrac" }),
+      ...listede.map((k) => secenekSatir(h("span", { class: "dil-kod" }, anaDil(k).toUpperCase()), dilAdi(k), !!b.dilElle && b.dil === k, () => sec(k))));
+    aktifFis?.konumla();
+    $("button", icerik)?.focus();
+    // Daha bakılmadıysa şimdi bakılır; menü açıkken sonuç alt satıra yazılır
+    if (!b.dilElle && b.dil === undefined) dilBak(b).then((dil) => { if (otoAlt.isConnected) otoAlt.textContent = dil ? `Bulunan: ${dilAdi(dil)}` : "Bulunamadı"; });
   };
   anaMenu();
   fisAc(capa, icerik, { hiza: "yan", etiket: `${b.ad} seçenekleri` });
@@ -1826,13 +1852,19 @@ function ayarlarFisi(capa, klavye) {
     icon("sor", "i-20"), h("span", {}, "Yapay zekâ"), yzAlt);
   yzSatir.addEventListener("click", () => { fisKapat(true); yzPenceresi(); });
   const yz = { el: yzSatir, guncelle: () => { yzAlt.textContent = yzOzet(); } };
+  // Çeviri: hedef dil ve motor alt satırda, dokununca ayrı pencere (OZELLIKLER-6 §5)
+  const cvAlt = h("small", {}, ceviriOzet());
+  const cvSatir = h("button", { class: "fis-satir yz-satir", type: "button", "aria-haspopup": "dialog" },
+    icon("ceviri", "i-20"), h("span", {}, "Çeviri"), cvAlt);
+  cvSatir.addEventListener("click", () => { fisKapat(true); ceviriPenceresi(); });
+  const cv = { el: cvSatir, guncelle: () => { cvAlt.textContent = ceviriOzet(); } };
   // S Pen kartı (OZELLIKLER-5, TASARIM-3 6.8): yan tuş silgi, basınç eğrisi ve canlı önizleme, Air Command ipucu
   const yanTus = anahtarSatiri("Yan tuş silgi", "Yan tuş basılıyken kalem siler", () => store.ayarlar.yanTusSilgi !== false, (v) => ayarla({ yanTusSilgi: v }));
   const egri = parcali([["yumusak", "Yumuşak"], ["orta", "Orta"], ["sert", "Sert"]], "Basınç eğrisi",
     () => store.ayarlar.basincEgrisi || "orta", (v) => ayarla({ basincEgrisi: v }));
   const onizleme = basincOnizleme();
   const spen = { el: null, guncelle: () => { yanTus.guncelle(); egri.guncelle(); onizleme.ciz(); } };
-  ayarDenetimleri = [tema, sayfa, sade, parmak, elYazisi, sekil, yz, spen];
+  ayarDenetimleri = [tema, sayfa, sade, parmak, elYazisi, sekil, yz, cv, spen];
   // Prototipte yapılan her şey tarayıcıda saklanır; baştan denemek için iki dokunuşla örneklere dönülür
   const sifirEtiket = h("span", {}, "Örnek verilere dön");
   const sifir = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
@@ -1859,7 +1891,7 @@ function ayarlarFisi(capa, klavye) {
       h("div", { class: "spen-egri" }, h("span", { class: "spen-egri__ad" }, "Basınç eğrisi", h("small", {}, "Önizlemeye kalemle yaz")), egri.el, onizleme.el),
       h("p", { class: "spen-ipucu" }, "Kalem havadayken yan tuş Samsung menüsünü açar. Önce ekrana değdir, sonra bas.")),
     h("div", { class: "fis-ayrac" }),
-    yzSatir,
+    yzSatir, cvSatir,
     h("div", { class: "fis-ayrac" }),
     h("span", { class: "t-etiket" }, "Yedekle"),
     h("div", { class: "ayar-yedek" }, depoGostergesi(), h("div", { class: "ayar-yedek__dugmeler" }, yedekAl, yedekYukle)),
@@ -2079,6 +2111,334 @@ function yzPenceresi() {
   guncelle();
   pencereKur(dlg);
   (yz.yol === "anahtar" ? anahtarRadyo : hesapRadyo).focus();
+}
+
+/* ---------- Çeviri: ayarlar ve kitabın dili (OZELLIKLER-6 §2, §5) ---------- */
+// ceviri.js ilk kullanımda yüklenir (Çeviri penceresi, kitabın dili); açılışta değil
+let ceviriSoz = null;
+const ceviriModulu = () => (ceviriSoz ||= import("./ceviri.js").catch((e) => { ceviriSoz = null; throw e; }));
+const CEVIRI_MOTORLARI = [["otomatik", "Otomatik"], ["cihaz", "Cihazda"], ["paket", "Paket"], ["anahtar", "Anahtarla"], ["hesap", "Hesabımla"]];
+// Hedef dil seçenekleri ve "Kitabın dili" listesi (kısa kod); adları tarayıcı Türkçe verir
+const HEDEF_DILLER = ["tr", "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ru", "uk", "ar", "fa", "el", "bg", "cs", "da", "fi", "hu", "ro", "sv", "ja", "ko", "zh-Hans", "hi"];
+const KITAP_DILLERI = ["en", "tr", "de", "fr", "es", "it", "pt", "nl", "ru", "ar", "ja", "zh-Hans"];
+let dilAdlari = null;
+function dilAdi(kod) {
+  if (!kod) return "";
+  let ad = kod;
+  try { ad = (dilAdlari ||= new Intl.DisplayNames(["tr"], { type: "language" })).of(kod) || kod; } catch { /* eski tarayıcı: kod */ }
+  return ad.charAt(0).toLocaleUpperCase("tr") + ad.slice(1);
+}
+const anaDil = (k) => String(k || "").toLowerCase().split("-")[0];
+function ceviriAyari() {
+  const c = (store.ayarlar.ceviri ||= {});
+  c.hedef ||= "tr";
+  c.motor ||= "otomatik";
+  return c;
+}
+const anahtarVar = () => YZ_SAGLAYICILAR.some((s) => s.id !== "deneme" && String(store.ayarlar.yz?.anahtarlar?.[s.id] || "").trim());
+function ceviriOzet() {
+  const c = ceviriAyari();
+  const motor = CEVIRI_MOTORLARI.find(([id]) => id === c.motor)?.[1] || "Otomatik";
+  return `${dilAdi(c.hedef)}, ${motor === "Otomatik" ? "motor otomatik" : motor.toLocaleLowerCase("tr")}`;
+}
+const paketAdi = (p) => `${dilAdi(p.kaynak)} → ${dilAdi(p.hedef)}`;
+function ceviriHataMetni(e) {
+  return { ag: "Bağlantı yok; internet gelince yeniden dene.", yer: "Cihazda yer yetmiyor.", bozuk: "İnen dosya doğrulanamadı; yeniden dene.",
+    "paket-yok": "Bu dil çifti için paket bulunamadı.", "motor-yok": "Bu Chrome bu dili cihazda çeviremiyor.",
+    hareket: "İndirme için düğmeye yeniden dokun." }[e?.tur] || "İndirilemedi.";
+}
+
+// İndirmeler pencere kapansa da sürer; iptal denetçileri burada durur
+const paketInisleri = new Map();   // "en-tr" -> AbortController
+let cihazInisi = null;             // { kaynak, hedef, oran }
+
+function ceviriPenceresi() {
+  cekmeceKapat();
+  const ayar = ceviriAyari();
+  const kaydet = (d) => { Object.assign(ayar, d); ayarla({ ceviri: ayar }); };
+  let M = null;   // ceviri.js; "İndir" tıklaması kullanıcı hareketi düşmeden çağırabilsin diye önceden yüklenir
+  const ornekKaynak = () => (anaDil(ayar.hedef) === "en" ? "tr" : "en");
+
+  // Hedef dil
+  const hedefSec = h("select", { "aria-label": "Hedef dil" });
+  const secenekleriKur = () => {
+    const liste = HEDEF_DILLER.includes(ayar.hedef) ? HEDEF_DILLER : [ayar.hedef, ...HEDEF_DILLER];
+    const [ilk, ...diger] = liste;
+    hedefSec.replaceChildren(...[ilk, ...diger.sort((a, b) => (a === "en" ? -1 : b === "en" ? 1 : dilAdi(a).localeCompare(dilAdi(b), "tr")))]
+      .map((k) => h("option", { value: k }, dilAdi(k))));
+    hedefSec.value = ayar.hedef;
+  };
+  secenekleriKur();
+  hedefSec.addEventListener("change", () => { kaydet({ hedef: hedefSec.value }); tazele(true); });
+  const hedefAlan = h("label", { class: "cv-secim" }, hedefSec, icon("asagi"));
+
+  // Motor tercihi
+  const motor = parcali(CEVIRI_MOTORLARI, "Motor", () => ayar.motor || "otomatik", (v) => { kaydet({ motor: v }); motor.guncelle(); tazele(); });
+  const anahtarDugme = motor.el.children[3];
+  const motorNotu = h("p", { class: "cv-not", role: "status" }, " ");
+
+  // Cihaz motoru (Chrome Translator API)
+  const cihazDurum = h("span", {}, "Bakılıyor");
+  const cihazIlerleme = h("i", { class: "cv-ilerleme", hidden: true }, h("b"));
+  const cihazDugme = h("button", { class: "metin-dugme cv-dugme", type: "button", hidden: true });
+  cihazDugme.addEventListener("click", () => {
+    if (!M) return;
+    const k = ornekKaynak(), hd = ayar.hedef;
+    cihazInisi = { kaynak: k, hedef: hd, oran: 0 };
+    // create tıklamanın içinde çağrılır: Chrome indirmeyi kullanıcı hareketiyle başlatır
+    M.cihazIndir(k, hd, { ilerleme: (o) => { if (cihazInisi) cihazInisi.oran = o; } })
+      .then(() => toast(`${dilAdi(k)} cihazda hazır`), (e) => { if (e?.name !== "AbortError") toast(ceviriHataMetni(e)); })
+      .finally(() => { cihazInisi = null; if (dlg.isConnected) tazele(); });
+    tazele();
+  });
+  const cihazKart = h("div", { class: "cv-kart" }, icon("ceviri", "cv-kart__ikon"),
+    h("div", { class: "cv-kart__govde" }, h("b", {}, "Chrome’un yerleşik çevirisi"), cihazDurum, cihazIlerleme), cihazDugme);
+
+  // Paketler
+  const toplamYer = h("span", { class: "cv-toplam" });
+  const paketListe = h("div", { class: "cv-paketler", role: "list" });
+  const digerSayi = h("span", { class: "cv-sayi" });
+  const digerListe = h("div", { class: "cv-paketler", role: "list" });
+  const diger = h("details", { class: "yz-gelismis cv-diger" }, h("summary", {}, "Diğer dil çiftleri", digerSayi, icon("asagi")), digerListe);
+  const satirlar = new Map();   // "en-tr" -> { el, ilerleme, yuzde }
+  let sonPaketler = [];
+
+  const paketSatiri = (p) => {
+    const id = `${p.kaynak}-${p.hedef}`;
+    const yuzde = h("span", { class: "cv-yuzde" });
+    const ilerleme = h("i", { class: "cv-ilerleme" }, h("b"));
+    const bilgi = p.durum === "yuklu" ? `Yüklü · ${boyutMetni(p.boyut)}` : `${boyutMetni(p.indirme || p.boyut)} indirilir`;
+    let eylem;
+    if (p.durum === "yuklu") {
+      const etiket = h("span", {}, "Sil");
+      eylem = h("button", { class: "metin-dugme cv-dugme cv-sil", type: "button" }, etiket);
+      onayla(eylem, etiket, "Emin misin?", () => M?.paketSil(p.kaynak, p.hedef).then(() => toast(`${paketAdi(p)} paketi silindi`)).catch(() => toast("Silinemedi.")));
+    } else if (p.durum === "iniyor") {
+      const dc = paketInisleri.get(id);
+      eylem = h("button", { class: "metin-dugme cv-dugme", type: "button", hidden: !dc, onclick: () => paketInisleri.get(id)?.abort() }, "İptal");
+    } else {
+      eylem = h("button", { class: "metin-dugme cv-dugme", type: "button", disabled: !navigator.onLine,
+        title: navigator.onLine ? null : "İnternet gelince indirilir", onclick: () => paketYukle(p) }, icon("indir"), "Yükle");
+    }
+    const el = h("div", { class: "cv-paket", role: "listitem", dataset: { durum: p.durum } },
+      h("span", { class: "cv-paket__ad" }, h("b", {}, paketAdi(p)), h("small", {}, bilgi)),
+      p.durum === "iniyor" ? h("span", { class: "cv-paket__inis" }, ilerleme, yuzde) : null, eylem);
+    satirlar.set(id, { el, ilerleme, yuzde });
+    if (p.durum === "iniyor") ilerlemeYaz(id, p.ilerleme || 0);
+    return el;
+  };
+  const ilerlemeYaz = (id, oran) => {
+    const s = satirlar.get(id);
+    if (!s) return;
+    s.ilerleme.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, oran))})`;
+    s.yuzde.textContent = `%${Math.floor(oran * 100)}`;
+  };
+  const paketYukle = (p) => {
+    if (!M) return;
+    const id = `${p.kaynak}-${p.hedef}`;
+    if (paketInisleri.has(id)) return;
+    const dc = new AbortController();
+    paketInisleri.set(id, dc);
+    M.paketIndir(p.kaynak, p.hedef, { signal: dc.signal })
+      .then(() => toast(`${paketAdi(p)} paketi yüklendi; artık internetsiz çevrilir`),
+        (e) => { if (e?.name !== "AbortError") toast(ceviriHataMetni(e)); })
+      .finally(() => { if (paketInisleri.get(id) === dc) paketInisleri.delete(id); if (dlg.isConnected) paketleriCiz(); });
+    paketleriCiz();
+  };
+  const onde = (p) => p.durum !== "indirilebilir" || (anaDil(p.kaynak) === "en" && anaDil(p.hedef) === anaDil(ayar.hedef))
+    || (anaDil(p.kaynak) === anaDil(ayar.hedef) && anaDil(p.hedef) === "en");
+  // Üst üste gelen istekler birleşir: çizim sürerken gelen istek bitince bir kez daha çizer
+  let cizim = null, yeniden = false;
+  function paketleriCiz(bekleme = 0) {
+    if (cizim) { yeniden = true; return cizim; }
+    cizim = paketleriCizAsil(bekleme).finally(() => { cizim = null; if (yeniden) { yeniden = false; paketleriCiz(); } });
+    return cizim;
+  }
+  async function paketleriCizAsil(bekleme) {
+    if (!M) return;
+    let liste;
+    try { liste = await M.paketler({ bekleme }); } catch { liste = sonPaketler; }
+    if (!dlg.isConnected) return;
+    sonPaketler = liste;
+    satirlar.clear();
+    const ust = liste.filter(onde), alt = liste.filter((p) => !onde(p));
+    paketListe.replaceChildren(...ust.map(paketSatiri));
+    if (!ust.length) paketListe.append(h("p", { class: "cv-not" }, "Bu dile çeviren paket yok; Cihazda ya da Hesabımla çevrilir."));
+    digerSayi.textContent = alt.length ? String(alt.length) : "";
+    diger.hidden = !alt.length;
+    // Uzun liste yalnız açılınca çizilir
+    if (diger.open) digerListe.replaceChildren(...alt.map(paketSatiri));
+    else digerListe.replaceChildren();
+    yerYaz();
+  }
+  diger.addEventListener("toggle", () => { if (diger.open) paketleriCiz(); });
+
+  // Önbellek
+  const onbellekYazi = h("small", {}, "Çevrilen paragraflar burada saklanır; gerekince yeniden çevrilir.");
+  const onbellekEtiket = h("span", {}, "Çeviri önbelleğini temizle");
+  const onbellekDugme = h("button", { class: "fis-satir onayli cv-onbellek", type: "button" }, icon("sil", "i-20"), h("span", {}, onbellekEtiket, onbellekYazi));
+  onayla(onbellekDugme, onbellekEtiket, "Emin misin? Tekrar dokun", () => {
+    M?.ceviriOnbellekTemizle().then(() => { toast("Çeviri önbelleği temizlendi"); yerYaz(); }).catch(() => toast("Temizlenemedi."));
+  });
+  async function yerYaz() {
+    if (!M) return;
+    const y = await M.ceviriYeri().catch(() => null);
+    if (!y || !dlg.isConnected) return;
+    toplamYer.textContent = y.paket ? `Toplam ${boyutMetni(y.paket)}` : "";
+    onbellekYazi.textContent = y.onbellek ? `Çevrilen paragraflar, ${boyutMetni(y.onbellek)}. Gerekince yeniden çevrilir.` : "Önbellek boş.";
+  }
+
+  // Motor durumu: örnek yön (İngilizceden hedefe) için hangi motorun çalışacağı
+  async function durumYaz() {
+    if (!M) return;
+    const k = ornekKaynak(), hd = ayar.hedef;
+    let d;
+    try { d = await M.ceviriDurumu({ kaynak: k, hedef: hd }); } catch { return; }
+    if (!dlg.isConnected) return;
+    const m = (id) => d.motorlar.find((x) => x.id === id);
+    const yon = `${dilAdi(k)} → ${dilAdi(hd)}`;
+    const s = m(d.secilen);
+    const tercih = ayar.motor || "otomatik";
+    let not = !s ? `${yon}: hazır motor yok. Aşağıdan paketi yükle.`
+      : `${yon}: ${s.ad}, ${s.cevrimdisi ? "internetsiz" : "metin internete gider"}.`;
+    if (tercih !== "otomatik" && d.secilen !== tercih) not += " Seçtiğin motor hazır değil, sıradaki kullanılıyor.";
+    motorNotu.textContent = not;
+    // Cihaz kartı
+    const c = m("cihaz")?.durum || "yok";
+    const iniyor = cihazInisi && cihazInisi.hedef === hd;
+    cihazIlerleme.hidden = !(c === "iniyor" || iniyor);
+    if (!cihazIlerleme.hidden) cihazIlerleme.firstChild.style.transform = `scaleX(${cihazInisi?.oran || 0})`;
+    cihazDugme.hidden = c !== "indirilebilir" || iniyor;
+    cihazDugme.textContent = `${dilAdi(k)} paketini indir`;
+    cihazKart.dataset.durum = c;
+    cihazDurum.textContent = c === "hazir" ? `Bu cihazda var. ${yon} hazır, internetsiz.`
+      : c === "indirilebilir" ? `Bu cihazda var. ${dilAdi(k)} paketi Chrome’dan bir kez iner.`
+      : c === "iniyor" || iniyor ? "Chrome paketi indiriyor."
+      : "Bu Chrome’da yok. Çeviri paketleri aynı işi internetsiz görür.";
+    anahtarDugme.disabled = !anahtarVar() && tercih !== "anahtar";
+    anahtarDugme.title = anahtarVar() ? "" : "Asistanda kayıtlı API anahtarı yok";
+  }
+  function tazele(hepsi = false) {
+    durumYaz();
+    if (hepsi) paketleriCiz();
+  }
+
+  const dlg = h("dialog", { class: "pencere yz-pencere ceviri-pencere", "aria-labelledby": "cvBaslik" },
+    h("div", { class: "yz-ust" },
+      h("h2", { class: "t-b1", id: "cvBaslik" }, "Çeviri"),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => dlg.close() }, icon("kapat"))),
+    h("div", { class: "cv-ikili" },
+      h("div", {}, h("span", { class: "t-etiket" }, "Hedef dil"), hedefAlan),
+      h("div", {}, h("span", { class: "t-etiket" }, "Motor"), motor.el)),
+    motorNotu,
+    h("span", { class: "t-etiket" }, "Cihazda"), cihazKart,
+    h("div", { class: "cv-baslik" }, h("span", { class: "t-etiket" }, "Çeviri paketleri"), toplamYer),
+    paketListe, diger,
+    h("p", { class: "yz-uyari" }, icon("kilit"), h("span", {}, "Paketler Mozilla’nın açık çeviri modelleridir. Bir kez iner, sonra internetsiz çalışır; metin cihazdan çıkmaz.")),
+    h("div", { class: "fis-ayrac" }),
+    onbellekDugme);
+
+  // İlerleme olayları: satır yerinde güncellenir; bitince ya da silinince liste yeniden çizilir
+  let durumZaman = 0;
+  const dinle = bus.on("ceviri", (o) => {
+    if (!o || !dlg.isConnected) return;
+    if (o.tur === "paket") {
+      const id = `${o.kaynak}-${o.hedef}`;
+      if (o.durum === "iniyor" && satirlar.get(id)?.el.dataset.durum === "iniyor") ilerlemeYaz(id, o.ilerleme || 0);
+      else { paketleriCiz(); clearTimeout(durumZaman); durumZaman = setTimeout(durumYaz, 120); }
+    } else if (o.tur === "cihaz") {
+      if (o.durum === "iniyor") { if (cihazInisi) cihazInisi.oran = o.ilerleme || 0; cihazIlerleme.hidden = false; cihazIlerleme.firstChild.style.transform = `scaleX(${o.ilerleme || 0})`; }
+      else durumYaz();
+    } else if (o.tur === "onbellek") yerYaz();
+  });
+  const agDegisti = () => { tazele(true); };
+  addEventListener("online", agDegisti);
+  addEventListener("offline", agDegisti);
+  dlg.addEventListener("close", () => { dinle(); removeEventListener("online", agDegisti); removeEventListener("offline", agDegisti); });
+
+  pencereKur(dlg);
+  hedefSec.focus();
+  ceviriModulu().then((m) => {
+    M = m;
+    if (!dlg.isConnected) return;
+    tazele(true);
+    // Uzak katalog (101 çift) ilk kez geliyorsa biraz sonra liste tamamlanır
+    setTimeout(() => { if (dlg.isConnected) paketleriCiz(6000); }, 400);
+  }, () => { motorNotu.textContent = "Çeviri yüklenemedi."; });
+}
+
+// Kitabın dili: belge.dil (kısa kod; null: bakıldı, bulunamadı), belge.dilElle (kullanıcı seçti)
+const dilDestekli = (b) => b.tur !== "cizgi" && !b.cizgi;
+function dilOzet(b) {
+  if (b.dilElle && b.dil) return dilAdi(b.dil);
+  if (b.dil) return `${dilAdi(b.dil)}, otomatik`;
+  return b.dil === null ? "Otomatik, bulunamadı" : "Otomatik";
+}
+// İlk sayfaların metninden (EPUB'da paket bilgisinden) dil bulunur. Örnek belgeler Türkçedir.
+async function dilBelirle(b) {
+  if (!dilDestekli(b)) return null;
+  if (b.tur === "defter") {
+    let metin = "";
+    for (const v of (b.veri?.sayfalar || []).slice(0, 8)) {
+      for (const m of v.metinler || []) if (m.metin && m.tur !== "damga" && m.tur !== "asistan") metin += m.metin + "\n";
+      for (const n of v.notlar || []) if (n.metin) metin += n.metin + "\n";
+    }
+    if (metin.trim().length < 40) return null;
+    return (await ceviriModulu()).dilBul(metin);
+  }
+  if (!b.dosya) return "tr";
+  const blob = await kayit.dosyaGetir(b.id);
+  if (!blob) return null;
+  if (b.tur === "epub") return kayit.epubDili(blob);
+  if (b.tur !== "pdf") return null;
+  const { pdfAc } = await import("./pdf-belge.js");
+  const pdf = await pdfAc(blob);
+  try {
+    let metin = "";
+    for (let i = 0; i < Math.min(3, pdf.sayfaSayisi) && metin.length < 2500; i++) {
+      metin += (await pdf.metinKutulari(i)).map((k) => k.str).join(" ") + "\n";
+    }
+    return metin.trim().length < 40 ? null : (await ceviriModulu()).dilBul(metin);
+  } finally { pdf.kapat(); }
+}
+const dilBakilan = new Map();   // belgeId -> Promise
+function dilBak(b) {
+  if (!dilBakilan.has(b.id)) {
+    const soz = dilBelirle(b).catch(() => null).then((dil) => {
+      if (!b.dilElle && !b.dil && belgeBul(b.id)) {
+        b.dil = dil || null;
+        bus.emit("belgeler", { tur: "dil", id: b.id });
+      }
+      return b.dil;
+    }).finally(() => dilBakilan.delete(b.id));
+    dilBakilan.set(b.id, soz);
+  }
+  return dilBakilan.get(b.id);
+}
+function dilAyarla(b, kod) {
+  if (kod === "oto") {
+    if (!b.dilElle) return;
+    delete b.dilElle;
+    b.dil = undefined;
+    bus.emit("belgeler", { tur: "dil", id: b.id });
+    dilBak(b).then((dil) => toast(dil ? `Kitabın dili: ${dilAdi(dil)}` : "Dil bulunamadı; elle seçebilirsin"));
+    return;
+  }
+  b.dil = kod;
+  b.dilElle = true;
+  bus.emit("belgeler", { tur: "dil", id: b.id });
+}
+// Önceki turlarda içe aktarılan EPUB'ların dili açılıştan sonra boşta, birer birer okunur (yalnız paket bilgisi)
+function eskiDilleriTamamla() {
+  const sira = store.belgeler.filter((b) => b.tur === "epub" && b.dosya && b.dil === undefined && !b.dilElle).slice(0, 12);
+  const sonraki = () => {
+    const b = sira.shift();
+    if (!b) return;
+    if (acik.ekran === "belge") { sira.unshift(b); setTimeout(sonraki, 10000); return; }   // okurken beklenir
+    const calis = () => (belgeBul(b.id) && b.dil === undefined ? dilBak(b) : Promise.resolve()).finally(() => setTimeout(sonraki, 400));
+    if (typeof requestIdleCallback === "function") requestIdleCallback(calis, { timeout: 4000 }); else calis();
+  };
+  sonraki();
 }
 
 /* ---------- Çekmece (dikey ve dar ekran) ---------- */
@@ -2578,7 +2938,7 @@ async function kitapligaDon({ gecmis = null, animasyon = true } = {}) {
 
 /* ================= Olaylar ve kısayollar ================= */
 // Asistanın "Ayarları aç" eylemi: belge açıkken de doğrudan Yapay zekâ penceresi
-bus.on("ayarlar:ac", (o) => { if (!o?.bolum || o.bolum === "yz") yzPenceresi(); });
+bus.on("ayarlar:ac", (o) => { if (o?.bolum === "ceviri") ceviriPenceresi(); else if (!o?.bolum || o.bolum === "yz") yzPenceresi(); });
 // İzler (OZELLIKLER-5): Koltuk ve Masa üst çubuğundaki defter simgesi "defter:ac", Notlar panelinin
 // İzler sekmesi "izler:ac" yayınlar; izler.js kendi defterini ya da panelini açık ekranın üstünde açar.
 const izlerModulu = () => import("./izler.js");
@@ -2592,7 +2952,7 @@ bus.on("izler:ac", (o) => {
   if (!b) return;
   izlerModulu().then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); toast("İzler açılamadı."); });
 });
-bus.on("belgeler", () => { if (!sessiz) kitaplikYenile(); });
+bus.on("belgeler", (o) => { if (!sessiz && o?.tur !== "dil") kitaplikYenile(); });
 bus.on("kirpintilar", () => { if (!sessiz) kitaplikYenile(); });
 // Kart eklenince camın son hanesi yuvarlanır (imza anı 9.7); ders şeritlerindeki kart sayısı da değişir
 bus.on("kartlar", (olay) => {
@@ -3088,6 +3448,8 @@ try {
 } catch { /* gizli pencere */ }
 // Karşılama açıksa seçim yapılınca başlar (silinecek örnekler dizinlenmesin)
 if (!karsilama) aramaDizininiBaslat();
+// Önceki turlarda alınmış EPUB'ların dili (çeviri düğmeleri için) boşta tamamlanır
+setTimeout(eskiDilleriTamamla, 6000);
 // İçe aktarırken kapağı çıkmamış belgeler sırayla tamamlanır (açılışı yavaşlatmadan)
 setTimeout(async () => {
   for (const b of store.belgeler.filter((x) => x.dosya && !x.kapakGorsel && !x.kapakDenendi)) {

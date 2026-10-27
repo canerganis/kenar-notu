@@ -8,6 +8,8 @@
 //             "kapak:<id>"   -> içe aktarılan belgenin kapak görseli (dataURL)
 //             "kartlar", "kirpintilar", "yz" (yapay zekâ ayarları, anahtarlar dahil; yedeğe girmez)
 //             "derlemeler"   -> İzlerim'de birleştirilen defterler: [{ id, ad, olusturma, girdiler: [{ belgeId, izId }] }]
+//   Belge kaydında dil (10. tur): belge.dil kısa dil kodu ("en"; null: bakıldı, bulunamadı), belge.dilElle kullanıcı seçtiyse true.
+//   Çeviri önbelleği ve paketleri ceviri.js'in kendi veritabanında ("kenar-notu-ceviri"); yedeğe girmez.
 //   dosyalar: <id>           -> ham PDF/EPUB/CBZ (Blob)
 //             "ek/<id>/<ad>" -> belgenin ek dosyaları (ses kaydı, görsel; OZELLIKLER-4)
 // 1. sürümde bütün kitaplık "kitaplik" altında tek kayıttı (surum: 1); ilk açılışta bir kez bölünür.
@@ -417,6 +419,19 @@ export async function silinmisBelgeyiTemizle(id) {
   if (!id || kilit || belgeBul(id)) return;
   if (!(await hemenKaydet()) || belgeBul(id)) return;
   dosyaSil(id).catch(() => {});
+  ceviriTemizle({ belgeId: id });
+}
+
+// Çeviri önbelleği (ceviri.js): belge silinince o belgeninki, sıfırlamada hepsi; "Her şeyi temizle" paketleri de siler.
+// Veritabanı hiç açılmadıysa dokunulmaz (ceviri.js boşuna yüklenmesin, boş veritabanı kurulmasın).
+const CEVIRI_VT = "kenar-notu-ceviri";
+async function ceviriTemizle({ belgeId = null, hepsi = false } = {}) {
+  try {
+    if (typeof indexedDB.databases === "function" && !(await indexedDB.databases()).some((d) => d.name === CEVIRI_VT)) return;
+    if (hepsi) { indexedDB.deleteDatabase(CEVIRI_VT); return; }
+    const m = await import("./ceviri.js");
+    await (belgeId ? m.ceviriOnbellekSil(belgeId) : m.ceviriOnbellekTemizle());
+  } catch { /* önbellek yeniden üretilebilir; silinemezse de olur */ }
 }
 
 // "Örnek verilere dön": kitaplık, veriler, dosyalar ve ekler silinir; yapay zekâ ayarları (anahtarlar) kalır.
@@ -437,6 +452,7 @@ export async function sifirla({ hepsi = false } = {}) {
   } catch (hata) { console.warn("[kenar-notu] Sıfırlanamadı:", hata); }
   // Açık bağlantı varsa silme sayfa yenilenince tamamlanır; beklenmez
   try { indexedDB.deleteDatabase("kenar-notu-arama"); } catch { /* yoksa da olur */ }
+  await ceviriTemizle({ hepsi });
 }
 
 // İlk açılış karşılaması seçilene kadar örnek durum yazılmaz (seçmeden çıkan bir dahaki açılışta yine görür)
@@ -591,6 +607,7 @@ export async function belgeIceAktar(file, { klasor } = {}) {
     kapak: renkSec(belgeAd), dosya: true, parmakIzi: iz, boyut: file.size, eklenme: Date.now(), veri: null,
   };
   if (tur === "cizgi") cizgiBilgisiYaz(belge, bilgi);
+  if (tur === "epub") { const dil = await zamanAsimi(epubDili(file), 8000).catch(() => null); if (dil) belge.dil = dil; }
   if (!bilgi.hata) belge.kapakDenendi = true;   // bilgi okunamadıysa kapak sonraki açılışta yeniden denenir
   if (kapakGorsel) belge.kapakGorsel = kapakGorsel;
   // Dosya türü sabitlenir: Android bazen EPUB'u türsüz verir
@@ -649,6 +666,28 @@ export async function depoDurumu() {
     s.kalici = !!(await navigator.storage?.persisted?.());
   } catch { /* desteklenmiyor */ }
   return s;
+}
+
+// EPUB'un dili (OPF dc:language), kısa koda indirgenmiş: "en-US" -> "en". Yalnız paket dosyası okunur.
+export async function epubDili(blob) {
+  const JSZip = await jszipYukle();
+  const zip = await JSZip.loadAsync(blob);
+  const oku = (yol) => zip.file(yol)?.async("string");
+  const kap = (await oku("META-INF/container.xml")) || "";
+  let opfYol = kap.match(/full-path\s*=\s*["']([^"']+)["']/i)?.[1] || "";
+  if (!opfYol || !zip.file(opfYol)) opfYol = Object.keys(zip.files).find((y) => /\.opf$/i.test(y)) || "";
+  const opf = opfYol ? (await oku(opfYol)) || "" : "";
+  const ham = opf.match(/<(?:[\w-]+:)?language(?:\s[^>]*)?>\s*([^<\s]+)\s*</i)?.[1] || "";
+  return dilKisalt(ham);
+}
+// "en-US" -> "en", "zh-Hant-TW" -> "zh-Hant", "und" ve bozuk değer -> null
+export function dilKisalt(kod) {
+  const s = String(kod || "").trim().replace(/_/g, "-");
+  const [ana, ...geri] = s.split("-");
+  const a = (ana || "").toLowerCase();
+  if (!/^[a-z]{2,3}$/.test(a) || a === "und" || a === "mul" || a === "zxx") return null;
+  if (a === "zh") { const y = geri.find((x) => /^han[st]$/i.test(x)); return y ? "zh-" + y[0].toUpperCase() + y.slice(1).toLowerCase() : "zh-Hans"; }
+  return a === "no" ? "nb" : a;
 }
 
 /* ---------- yedek ---------- */
