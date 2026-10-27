@@ -19,8 +19,14 @@
 //   mesgul: () => bool                   balon, fiş ya da panel açık mı (çubuk çekilmez, saat durur)
 //   dokunmaGecerli: (e) => bool          false dönerse dokunuş bölge sayılmaz
 //   geri: () => void                     varsayılan kitaplığa dönüş
+//   izler: () => [{ id, oran }]          cetvelde kalem izlerinin mürekkep çentikleri (OZELLIKLER-5, İzler)
+//   izeGit: (id) => void                 çentiğe dokununca o ize gidiş
+//   izAtla: (yon: -1 | 1) => void        önceki ve sonraki iz okları (izler varsa görünür)
+// Dönen nesnede izleriYenile(): izler değişince çentikleri yeniden çizer.
 
 import { h, icon, bus, store, ayarla, hareketAz } from "./ortak.js";
+
+const KALEM_AVUC = 600;   // kalem görüldükten (temas ya da hava) sonra bu kadar ms dokunuş sayfa çevirmez (S Pen 3)
 
 // index.html bağlamadıysa stil dosyası buradan eklenir
 if (!document.querySelector('link[href$="koltuk.css"]')) {
@@ -122,14 +128,18 @@ export function koltukKur(kok, s) {
   el.etiket = h("span", { class: "cetvel-etiket cam cam-k" });
   el.iz = h("div", { class: "cetvel-iz" }, h("i", { class: "cetvel-imlec" }), el.etiket);
   el.dolu = h("i", { class: "cetvel-dolu" });
+  el.izCentik = h("span", { class: "cetvel-izler", "aria-hidden": "true" });
+  el.izAtla = h("span", { class: "iz-atla", hidden: true },
+    h("button", { type: "button", class: "ikon-dugme", "aria-label": "Önceki iz", title: "Önceki iz ( [ )", onclick: () => s.izAtla?.(-1) }, icon("sol")),
+    h("button", { type: "button", class: "ikon-dugme", "aria-label": "Sonraki iz", title: "Sonraki iz ( ] )", onclick: () => s.izAtla?.(1) }, icon("sag")));
   el.cetvel = h("div", {
     class: "koltuk-cetvel", role: "slider", tabindex: "0", "aria-label": s.tur === "pdf" ? "Belgede konum" : "Kitapta konum",
     "aria-valuemin": "0", "aria-valuemax": "100",
   },
   ...(s.bolumler || []).filter((b) => b.oran > 0.001).map((b) => h("i", { class: "cetvel-bolum", style: `left:${(b.oran * 100).toFixed(3)}%`, title: b.ad })),
   ...(s.yerImleri || []).map((o) => h("i", { class: "cetvel-yer-imi", style: `left:${(o * 100).toFixed(3)}%` })),
-  el.dolu, el.iz);
-  el.alt = h("div", { class: "koltuk-alt" }, el.sol, el.sag, el.cetvel);
+  el.izCentik, el.dolu, el.iz);
+  el.alt = h("div", { class: "koltuk-alt" }, el.sol, el.sag, el.izAtla, el.cetvel);
   el.cizgi = h("div", { class: "koltuk-cizgi", "aria-hidden": "true" }, h("i"));
 
   // Gizli kalem (4.9)
@@ -157,6 +167,7 @@ export function koltukKur(kok, s) {
     kok.classList.toggle("cubuk-gorunur", goster);
     iptalEt(cekZ);
     if (!goster) { fisKapat(); return; }
+    izleriYenile();
     guncelle();
     if (!oturdu) {   // 9.1: oturumda ilk açılışta imleç camı soldan yerine kayar
       oturdu = true;
@@ -189,7 +200,7 @@ export function koltukKur(kok, s) {
     sonEtkilesim = Date.now();
     // Avuç içi reddi: kalem yazarken, kalemden hemen sonra ya da geniş temasta dokunuş sayılmaz
     if (e.pointerType === "pen") { sonKalem = performance.now(); kalemBasili++; }
-    else if (e.pointerType === "touch" && (kalemBasili > 0 || performance.now() - sonKalem < 400 || (e.width > 44 && e.height > 44))) {
+    else if (e.pointerType === "touch" && (kalemBasili > 0 || performance.now() - sonKalem < KALEM_AVUC || (e.width > 44 && e.height > 44))) {
       if (bas) bas.gecersiz = true;
       return;
     }
@@ -204,6 +215,8 @@ export function koltukKur(kok, s) {
   }, { capture: true, ...sinyal });
   const kalemBirak = (e) => { if (e.pointerType === "pen") { sonKalem = performance.now(); kalemBasili = Math.max(0, kalemBasili - 1); } };
   addEventListener("pointerup", kalemBirak, { capture: true, ...sinyal });
+  // Havadaki kalem de avuç içi süresini başlatır
+  addEventListener("pointermove", (e) => { if (e.pointerType === "pen") sonKalem = performance.now(); }, { capture: true, passive: true, ...sinyal });
   addEventListener("pointercancel", kalemBirak, { capture: true, ...sinyal });
   addEventListener("pointerup", (e) => {
     const b = bas;
@@ -255,8 +268,11 @@ export function koltukKur(kok, s) {
     surukle = null;
     el.cetvel.classList.remove("suruklen");
     if (e.type === "pointerup") {
-      el.cetvel.style.setProperty("--p", oran.toFixed(4));   // gidilen yer beklemeden görünsün
-      s.git?.(oran);
+      // Çentiğe dokunuş (6 px içinde) o ize gider; iz bir an parlar
+      const R = el.cetvel.getBoundingClientRect(), x = e.clientX - R.left;
+      const centik = izListe.reduce((m, z) => { const d = Math.abs(z.oran * R.width - x); return d < 6 && (!m || d < m.d) ? { d, z } : m; }, null);
+      el.cetvel.style.setProperty("--p", (centik ? centik.z.oran : oran).toFixed(4));   // gidilen yer beklemeden görünsün
+      if (centik && s.izeGit) s.izeGit(centik.z.id); else s.git?.(oran);
       sifirla();
     }
     el.iz.style.removeProperty("--p");
@@ -275,6 +291,18 @@ export function koltukKur(kok, s) {
     sifirla();
     cekmeyiKur();
   }, sinyal);
+
+  // ---------- izlerin çentikleri ----------
+  let izListe = [], izImza = "";
+  function izleriYenile() {
+    izListe = s.izler ? s.izler() : [];
+    const imza = izListe.map((z) => z.oran.toFixed(4)).join(",");
+    el.izAtla.hidden = !izListe.length || !s.izAtla;
+    if (imza === izImza) return;
+    izImza = imza;
+    el.izCentik.replaceChildren(...izListe.map((z) => h("i", { style: `left:${(z.oran * 100).toFixed(3)}%` })));
+  }
+  izleriYenile();
 
   // ---------- gizli kalem ----------
   let ucZ = 0;
@@ -414,7 +442,7 @@ export function koltukKur(kok, s) {
   }
 
   return {
-    el, guncelle, sayfaBitti, sifirla, cubuk, kapat,
+    el, guncelle, sayfaBitti, sifirla, cubuk, kapat, izleriYenile,
     gorunur: () => gorunur,
     kalemAcik,
     kalemKapat: () => { if (kalemAcik()) kalemAc(false); },

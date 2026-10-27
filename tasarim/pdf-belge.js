@@ -51,9 +51,13 @@ export async function pdfAc(blob) {
           if (!it.str) { if (it.hasEOL && sonuc.length) sonuc[sonuc.length - 1].eol = true; continue; }
           const t = pdfjsLib.Util.transform(vp.transform, it.transform);
           const boy = Math.hypot(t[2], t[3]) || 1, en = Math.hypot(t[0], t[1]) || 1;
+          // asc: yazı tipinin taban üstü payı (PDF.js metin katmanıyla aynı kural); metinKutulari için
+          const st = tc.styles?.[it.fontName] || {};
+          const asc = st.ascent ? st.ascent : st.descent ? 1 + st.descent : 0.8;
           sonuc.push({ t: it.str, x: t[4] * s, y: t[5] * s, w: Math.abs(it.width) * gs, boyut: boy * s, eol: !!it.hasEOL,
-            dx: t[0] / en, dy: t[1] / en, ux: t[2] / boy, uy: t[3] / boy });
+            dx: t[0] / en, dy: t[1] / en, ux: t[2] / boy, uy: t[3] / boy, asc });
         }
+        sonuc.oran = vp.height / vp.width;
         return sonuc;
       })().catch((e) => { metinler.delete(i); throw e; }));
     }
@@ -135,6 +139,39 @@ export async function pdfAc(blob) {
     },
     satirlar,
 
+    // Metin parçalarının kutuları: [{ str, x, y, w, h }], sayfaya göre 0..1 oransal, y aşağı (OZELLIKLER-5).
+    // Kutu PDF.js metin katmanı gibi: tabandan asc kadar yukarı, yazı boyu kadar yüksek; döndürülmüş metinde
+    // eksene hizalı dış kutu. kelime: true ise parçalar kelimelere bölünür (genişlik harf ölçüsüyle orantılanır).
+    async metinKutulari(i, { kelime = false } = {}) {
+      let r;
+      try { r = await satirlar(i); } catch { return []; }
+      const W = 800, H = 800 * (r.oran || 1);
+      const kutu = (x, y, w, boyut, it) => {
+        const ax = it.ux * boyut * it.asc, ay = it.uy * boyut * it.asc;              // tabandan üste
+        const bx = -it.ux * boyut * (1 - it.asc), by = -it.uy * boyut * (1 - it.asc); // tabandan alta
+        const ex = it.dx * w, ey = it.dy * w;
+        const xs = [x + ax, x + bx, x + ax + ex, x + bx + ex], ys = [y + ay, y + by, y + ay + ey, y + by + ey];
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        return { x: x0 / W, y: y0 / H, w: (x1 - x0) / W, h: (y1 - y0) / H };
+      };
+      const sonuc = [];
+      for (const it of r) {
+        if (!it.t.trim()) continue;
+        if (!kelime || !/\s/.test(it.t.trim())) { sonuc.push({ str: it.t, ...kutu(it.x, it.y, it.w, it.boyut, it) }); continue; }
+        // Kelimelere bölme: her kelimenin başı, önündeki metnin ölçülen eniyle orantılı
+        const olc = metinOlcer(), tum = olc(it.t) || it.t.length;
+        let bas = 0;
+        for (const p of it.t.split(/(\s+)/)) {
+          if (p && !/^\s+$/.test(p)) {
+            const o0 = (olc(it.t.slice(0, bas)) / tum) * it.w, o1 = (olc(it.t.slice(0, bas + p.length)) / tum) * it.w;
+            sonuc.push({ str: p, ...kutu(it.x + it.dx * o0, it.y + it.dy * o0, o1 - o0, it.boyut, it) });
+          }
+          bas += p.length;
+        }
+      }
+      return sonuc;
+    },
+
     async kapak(genislik = 360) {
       const b = boyutlar[0], cv = document.createElement("canvas");
       const tamam = await pdf.ciz(0, cv, genislik / b.w, { arka: true });
@@ -151,6 +188,17 @@ export async function pdfAc(blob) {
     },
   };
   return pdf;
+}
+
+// Kelime genişliği oranı için ölçer (yazı tipi bilinmez; düz sans-serif oranları yeter)
+let olcerBaglam = null;
+function metinOlcer() {
+  if (!olcerBaglam) {
+    const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(1, 1) : document.createElement("canvas");
+    olcerBaglam = cv.getContext("2d");
+    olcerBaglam.font = "100px sans-serif";
+  }
+  return (m) => (m ? olcerBaglam.measureText(m).width : 0);
 }
 
 export async function pdfBilgi(blob) {

@@ -3,7 +3,7 @@
 // arayüz gerçek bir ders kitabı sayfası üstünde denenebilsin.
 // Tüm ölçüler "sayfa birimi": sayfa genişliği 800 birim, yüksekliği 1131 (A4 oranı).
 //
-// Dizgi: başlık Fraunces, gövde Literata. Formüller küçük bir dizgi motoruyla kurulur (değişken italik,
+// Dizgi: başlık ve gövde Literata. Formüller küçük bir dizgi motoruyla kurulur (değişken italik,
 // rakam ve işleç dik, kesir üst üste). Görünen parçalar kaydedilmeden çizilir; her satır için bir kez
 // saydam "kayıt" metni yazılır. fillText'i dinleyen modüller (arama, tanıtım süsleri, Tekrar kesitleri)
 // böylece parça parça değil, satırın tamamını gerçek konumu ve genişliğiyle görür.
@@ -24,7 +24,8 @@ function font(ctx, size, { weight = 400, italic = false, family = SERIF } = {}) 
 
 // ---------- yazı tipleri ----------
 
-const AILE = { baslik: "Fraunces, Georgia, serif", govde: "Literata, Georgia, serif", etiket: '"Instrument Sans", system-ui, sans-serif' };
+// TASARIM-3: başlık da Literata (tek kitap sesi), etiket Inter
+const AILE = { baslik: "Literata, Georgia, serif", govde: "Literata, Georgia, serif", etiket: '"Inter", system-ui, sans-serif' };
 const yazi = (boy, { aile = "govde", w = 400, i = false } = {}) => `${i ? "italic " : ""}${w} ${boy}px ${AILE[aile]}`;
 
 // Sayfalar eşzamanlı çizilir; yazı tipleri modül yüklenirken istenir. Çizen taraf ilk çizimden önce

@@ -2,16 +2,20 @@
   "id": "./",
   "name": "Kenar Notu",
   "short_name": "Kenar Notu",
-  "description": "PDF ve EPUB okuma, kalemle not alma ve tekrar.",
+  "description": "PDF, EPUB ve çizgi roman okuma, kalemle not alma ve tekrar.",
   "lang": "tr",
   "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "theme_color": "#FAF6EE",
-  "background_color": "#F4EEE3",
-  "categories": ["education", "productivity", "books"],
+  "theme_color": "#F7F5F0",
+  "background_color": "#F7F5F0",
+  "categories": [
+    "education",
+    "productivity",
+    "books"
+  ],
   "icons": [
     { "src": "ikon/ikon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "ikon/ikon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
@@ -28,8 +32,35 @@
       "text": "text",
       "url": "url",
       "files": [
-        { "name": "dosya", "accept": [".pdf", ".epub", "application/pdf", "application/epub+zip", "image/*"] }
+        {
+          "name": "dosya",
+          "accept": [
+            ".pdf",
+            ".epub",
+            ".cbz",
+            "application/pdf",
+            "application/epub+zip",
+            "application/vnd.comicbook+zip",
+            "image/*"
+          ]
+        }
       ]
     }
-  }
+  },
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/pdf": [
+          ".pdf"
+        ],
+        "application/epub+zip": [
+          ".epub"
+        ],
+        "application/vnd.comicbook+zip": [
+          ".cbz"
+        ]
+      }
+    }
+  ]
 }

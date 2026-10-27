@@ -11,7 +11,7 @@ import * as ORTAK from "./ortak.js";
 import { PW, PH, PDF_PAGES, drawTemplate } from "./sayfalar.js";
 import * as SAYFALAR from "./sayfalar.js";
 import { cizgiCiz, hepsiniCiz, CanliKatman, islakBitir, islakAktar, silgi, kementSec, sinirKutusu, tasi,
-  duzlestir, Gecmis, bolgeYakala, ornekDalga, sekilTani, cizgiyeDokunuyor, bolgeyiCiz, cizgilerKutusu } from "./kalem.js";
+  duzlestir, Gecmis, bolgeYakala, ornekDalga, sekilTani, cizgiyeDokunuyor, bolgeyiCiz, cizgilerKutusu, izSinifla, satirlaraTopla } from "./kalem.js";
 
 // ---------- sabitler ----------
 const KW = 272, TW = PW + KW;                 // kenar alanı genişliği, kenarlı toplam
@@ -192,6 +192,13 @@ function ornekSayfalariAl(belgeId) {
 }
 const ornekListe = () => D?.ornekler || PDF_PAGES;
 
+// Sayfası olmayan önceki veri (ör. çizgi roman okuyucusunun yazdığı { cizgi, izler }) yeni sayfalarla birleşir: alanları korunur
+function veriHazirla(belge, pdf = null) {
+  const eski = belge.veri && typeof belge.veri === "object" ? belge.veri : null;
+  const v = ilkVeri(belge, pdf);
+  if (eski) for (const [k, x] of Object.entries(eski)) if (!(k in v)) v[k] = x;
+  return v;
+}
 function ilkVeri(belge, pdf = null) {
   // Gerçek PDF: her sayfa dosyanın kendi sayfası (pdf: 0'dan sıra), kesit ve ek sayfa yok
   if (pdf) {
@@ -285,7 +292,7 @@ function difdenkSusle(veri) {
 // Önbellek anahtarı sayfa nesnesidir: belgeye göre farklı örnek listeleri karışmaz
 let metinOnbellegi = new WeakMap();
 
-// Örnek sayfaların yazı tipleri (Fraunces, Literata) gelmeden çizilen sayfa yedek fontla ölçülür ve çizilir.
+// Örnek sayfaların yazı tipleri (Literata, Inter) gelmeden çizilen sayfa yedek fontla ölçülür ve çizilir.
 // Yazı tipleri gelince metin önbelleği boşalır, açık belgenin örnek sayfaları ve o açılışta kurulan
 // Kalkülüs süsleri yeni ölçülere göre yeniden kurulur (kimlikler aynı kalır, kart bağları kopmaz).
 let yaziHazir = false;
@@ -402,8 +409,10 @@ export function ac(kap, belge, sayfaArg = null, modArg = null, ek = null) {
 }
 
 // Açık belgede başka sayfaya ya da arama sonucuna gider (kabuk aynı belge için "git" gelince çağırır)
-export function git({ sayfa = null, ara = null } = {}) {
+export function git({ sayfa = null, ara = null, iz = null } = {}) {
   if (!D) return;
+  // İzler panelinden: iz kimliği verilirse o ize gidilir, çevresine kalem halkası çizilir
+  if (iz && izeGit(D.veri.izler?.find((x) => x?.id === iz))) return;
   const i = sayfa == null ? -1 : sinirla(siraNo(sayfa), 0, D.sayfalar.length - 1);
   if (ara) { araGoster(ara, i >= 0 ? i : Math.max(0, D.gecerli)); return; }
   if (i >= 0) sayfayaGit(i);
@@ -448,7 +457,7 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
   A.damga.son = (A.damga.son || []).map(rx);
   if (A.sekilDuzelt === undefined) A.sekilDuzelt = true;
   A.fosforlu.renk = vurguRengi(A.fosforlu.renk);
-  if (!belge.veri || !Array.isArray(belge.veri.sayfalar)) belge.veri = ilkVeri(belge, pdf);
+  if (!belge.veri || !Array.isArray(belge.veri.sayfalar)) belge.veri = veriHazirla(belge, pdf);
   vurgulariTazele(belge.veri);
   D = {
     pdf, pdfBekleyen: new Set(), pdfSuren: new Set(), ornekler: pdf ? PDF_PAGES : ornekSayfalariAl(belge.id),
@@ -459,6 +468,7 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
     raf: {}, z: new Set(), temizlik: [], sonKalem: -1e9, yanTus: false, renk: sayfaRengi(), renkHam: hamRenk(),
     ucan: null, ipucuEl: null, ilkIpucu: null,
   };
+  izKur();
   arayuzKur();
   D.k = kSinirla(D.veri.sigdir === false && D.veri.k ? D.veri.k : sigdirK());
   // Asistan yanda açıkken açılan elle yakınlaştırılmış belge de kalan genişliğe sığar (asistanYeri ile aynı kural)
@@ -474,6 +484,7 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
   if (hedef >= 0 && hedef < D.sayfalar.length) sayfayaGit(hedef, { yumusak: false });
   gorunenleriCiz();
   sesBagla();
+  if (D.veri.sesSerit && !gomulu) sesCubukDegistir();
   gozlemcileriKur();
   olaylariKur();
   aracCubuguGuncelle();
@@ -482,19 +493,23 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
   yuzdeYaz(false);
   geriAlDurumu();
   bantKartlariniEsle({ sessiz: true });
+  izEslePlanla();   // kayıtlı izlerin imzası alınır (değiştirilmez)
   if (mod === "koltuk") koltukGir(false);
   else zaman(ilkIpucuKenar, 900);
+  bekciPlanla();   // açılış geçişi (görünüm geçişi, opaklık) bitince görünen sayfalar bir kez denetlenir
   if (pdf) {
     const d = D;
     pdf.boyutlarHazir.then((tamam) => { if (tamam && D === d) pdfBoyutlariUygula(); });
   }
   if (ek?.ara) { const d = D; zaman(() => { if (D === d) araGoster(ek.ara, hedef >= 0 && hedef < D.sayfalar.length ? hedef : Math.max(0, D.gecerli)); }, 120); }
+  else if (ek?.iz) { const d = D; zaman(() => { if (D === d) izeGit(D.veri.izler?.find((x) => x?.id === ek.iz)); }, 160); }
 }
 
 // app.js durumu saklamadan önce çağırır: ıslak mürekkep kalıcı katmana, konum ve sayfa belgeye yazılır
 export function kaydet() {
   if (!D) return;
   islakAktar();
+  try { izKuyruguBosalt(); } catch { /* boş */ }
   try { konumKaydet(); } catch { /* yerleşim yoksa geç */ }
   try { D.yan?.modul?.kaydet?.(); } catch { /* bölme yarım kurulduysa geç */ }
   D.belge.sayfaSayisi = toplamNo();
@@ -506,11 +521,13 @@ export function kapat() {
   if (!D) return;
   const d = D;
   islakAktar();
+  try { izKuyruguBosalt(); } catch (e) { console.warn("[duzenleyici] iz:", e); }
   try { konumKaydet(); } catch { /* yerleşim yoksa geç */ }
   try { odagiBirak(); } catch { /* boş */ }
   try { yanYanaKapat(); } catch { /* boş */ }
   try { d.koltuk?.kapat?.(); } catch { /* boş */ }
   try { sesKapat(d); } catch (e) { console.warn("[duzenleyici] ses:", e); }
+  try { d.izlerPanel?.kapat(); } catch { /* boş */ }
   kartTazelemeBitir();
   for (const f of d.temizlik) { try { f(); } catch { /* boş */ } }
   for (const id of d.z) clearTimeout(id);
@@ -816,6 +833,7 @@ function sayfaKur(veri) {
     S.kenarKap, S.tutamak, S.sayfaEl, S.gorselKatman, S.murekkepCv, S.canliCv, S.kurdele, S.nesneler);
   if (S.h !== PH) S.kap.style.setProperty("--ph", S.h);
   D.kapS.set(S.kap, S);
+  tuvalDinle(S);
   tutamakGuncelle(S);
   nesneleriCiz(S);
   return S;
@@ -1157,6 +1175,80 @@ function uzaklikPlanla() {
   }, 160);
 }
 
+// Bekçi: ekranda durup boş kalan sayfayı yeniden çizer. Gözlemci geri çağrısı kaçarsa (sekme arkadayken,
+// geçiş sırasında), Android GPU belleği için tuval içeriğini atarsa ya da çizim yarıda kalırsa sayfa
+// "çizildi" sanılıp boş kalıyordu. yokla: tuvalin ortasından bir piksel okunur (yalnız arkadan dönüşte, pahalı).
+function sayfaBekci({ yokla = false } = {}) {
+  if (!D || document.hidden) return;
+  const mr = D.masa.getBoundingClientRect();
+  if (!mr.height) return;
+  for (const S of D.sayfalar) {
+    const r = S.kap.getBoundingClientRect();
+    const ekranda = r.bottom > mr.top && r.top < mr.bottom;
+    if (!ekranda) {
+      // Arkadan dönüşte komşu sayfalar da: gözlemci yeniden haber vermez, kaydırınca boş girerlerdi
+      if (yokla && S.gorunur && tuvalKayip(S, true)) { S.cizildi = {}; sayfayiHazirla(S); }
+      continue;
+    }
+    if (!S.gorunur) { S.gorunur = true; uzaklikYaz(S); }
+    if (tuvalKayip(S, yokla)) S.cizildi = {};
+    const pdfBekliyor = pdfSayfaMi(S) && (D.pdfBekleyen.has(S) || D.pdfSuren.has(S));
+    if (!pdfBekliyor) sayfayiHazirla(S);
+  }
+  // Sayfalar paneli açıksa görünen küçük resimler de: boş kalan sonra yeniden çizilir
+  if (D.panelSol.hidden) return;
+  let kirli = false;
+  for (const S of D.sayfalar) {
+    if (!S.kucukGorunur || !S.kucukCv) continue;
+    const cv = S.kucukCv;
+    if (cv.width && yokla && ortaBos(cv)) S.kucukKirli = true;
+    if (S.kucukKirli) { S.kucukDeneme = 0; kirli = true; }   // çizimi süren küçük resim kirli değildir, beklenir
+  }
+  if (kirli) kucukResimPlanla();
+}
+// Geçişten sonra yerleşim oturunca (iki kare ve kısa pay) bir kez
+function bekciPlanla(sec = {}) {
+  if (!D) return;
+  zamanIptal(D.bekciZ);
+  if (sec.yokla) D.bekciYokla = true;
+  const d = D;
+  D.bekciZ = zaman(() => requestAnimationFrame(() => {
+    if (D !== d) return;
+    if (kalemYaziyor() || D.jest) { bekciPlanla(); return; }   // kalem ve parmak hareketi beklemez
+    const yokla = !!D.bekciYokla;
+    D.bekciYokla = false;
+    sayfaBekci({ yokla });
+  }), 250);
+}
+function tuvalKayip(S, yokla) {
+  const cv = S.sayfaCv;
+  if (!cv.width || !cv.height) return !pdfSayfaMi(S);   // PDF'i boşken kuyruk çizer; örnek ve kâğıt hemen çizilir
+  const ctx = cv.getContext("2d");
+  if (ctx.isContextLost?.()) return true;
+  return yokla && !!S.cizildi.sayfa && ortaBos(cv);
+}
+// Tuvalin orta pikseli saydam mı: ayrı 1x1 tuvale kopyalanıp okunur. Kaynak tuvalden doğrudan okumak
+// Chrome'da onu GPU'dan çıkarabilir (willReadFrequently uyarısı).
+let yoklaCtx = null;
+function ortaBos(cv) {
+  try {
+    yoklaCtx ||= Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d", { willReadFrequently: true });
+    yoklaCtx.clearRect(0, 0, 1, 1);
+    yoklaCtx.drawImage(cv, cv.width >> 1, cv.height >> 1, 1, 1, 0, 0, 1, 1);
+    return yoklaCtx.getImageData(0, 0, 1, 1).data[3] === 0;
+  } catch { return false; }
+}
+// GPU bağlamı dönünce (Android arka plandan dönüş) tuval boş gelir: sayfa çizilmemiş sayılır
+function tuvalDinle(S) {
+  const sifirla = () => {
+    if (!D || D.kapS.get(S.kap) !== S) return;
+    S.cizildi = {};
+    S.canliAnahtar = null;
+    if (S.gorunur) sayfayiHazirla(S);
+  };
+  for (const cv of [S.sayfaCv, S.murekkepCv, S.canliCv]) cv.addEventListener("contextrestored", sifirla);
+}
+
 function gozlemcileriKur() {
   D.io = new IntersectionObserver((girdiler) => {
     if (!D) return;
@@ -1179,10 +1271,16 @@ function gozlemcileriKur() {
       D.perde.hidden = !(dar() && (!D.panelSol.hidden || !D.panelSag.hidden));
       sigdirGerekirse(false);
       cubukTasmaGuncelle();
+      bekciPlanla();
     });
   });
   D.ro.observe(D.masaKap);
   D.temizlik.push(() => cancelAnimationFrame(plan));
+  // Arkadan dönüş: tarayıcı tuvalleri boşaltmış olabilir, görünen sayfalar yoklanır
+  const donus = () => { if (!document.hidden) bekciPlanla({ yokla: true }); };
+  dinle(document, "visibilitychange", donus);
+  dinle(window, "pageshow", donus);
+  dinle(window, "focus", donus);
 }
 
 // ---------- nesne katmanı: notlar, metin kutuları, bantlar ----------
@@ -1614,6 +1712,7 @@ function gecmisKaydet(S, once, sonra) {
   D.gecmis.kaydet({ sayfa: S.veri.id, once, sonra });
   geriAlDurumu();
   icerikDegisti();
+  if (once.cizgiler) izEslePlanla();
 }
 // Çizgi ve nesne değişiklikleri belgeyi damgalar (yedek birleşimi hangi sürümün yeni olduğuna bakar)
 function icerikDegisti() { if (D) bus.emit("belge:degisti", { belgeId: D.belge.id }); }
@@ -1629,6 +1728,7 @@ function kayitUygula(r, yon) {
   const durum = r[yon];
   secimKaldir();
   nesneSecimKaldir();
+  if (r.sayfa === "*" || durum.cizgiler) izEslePlanla();
   if (r.sayfa === "*") {
     D.veri.sayfalar = durum.sayfalar.slice();
     sayfalariKur();
@@ -1668,17 +1768,21 @@ function olaylariKur() {
   dinle(m, "pointermove", onMove);
   dinle(m, "pointerup", onUp);
   dinle(m, "pointercancel", onCancel);
-  dinle(m, "pointerleave", (e) => { if (!D.jest) { silgiImleciGizle(); yakinTemizle(); } if (e.pointerType === "pen" && !e.buttons) yanTusAyarla(false); });
+  dinle(m, "pointerleave", (e) => { if (!D.jest) { silgiImleciGizle(); yakinTemizle(); } if (e.pointerType === "pen") { halkaGizle(); if (!e.buttons) yanTusAyarla(false); } });
+  // Kalemle uzun basma bağlam menüsü, seçim balonu ve büyüteç açmaz (CSS: user-select, -webkit-touch-callout)
   dinle(m, "contextmenu", (e) => { if (!yaziAlani(e.target)) e.preventDefault(); });
   dinle(m, "wheel", onWheel, { passive: false });
   dinle(m, "scroll", () => {
     uyandir();
     // Kaydırma hızı: hızlıysa PDF çizimi bekler (pdfBeklesin)
     const t = performance.now(), y = m.scrollTop;
-    if (D.kayT != null && Math.abs(y - D.kayY) / Math.max(1, t - D.kayT) > HIZLI_KAYDIRMA) D.hizliKaydirmaT = t;
+    if (D.kayT != null && Math.abs(y - D.kayY) / Math.max(1, t - D.kayT) > HIZLI_KAYDIRMA) {
+      D.hizliKaydirmaT = t;
+      if (D.veri.izler?.length) { D.masaKap.classList.add("hizli-kaydir"); zamanIptal(D.hizliZ); D.hizliZ = zaman(() => D.masaKap.classList.remove("hizli-kaydir"), 450); }
+    }
     D.kayY = y; D.kayT = t;
     if (D.raf.kaydirma) return;
-    D.raf.kaydirma = requestAnimationFrame(() => { D.raf.kaydirma = 0; sayfaNoGuncelle(); if (D.koltuk) koltukGuncelle(); });
+    D.raf.kaydirma = requestAnimationFrame(() => { D.raf.kaydirma = 0; sayfaNoGuncelle(); if (D.koltuk) koltukGuncelle(); bekciPlanla(); });
   }, { passive: true });
   dinle(m, "dragstart", (e) => e.preventDefault());
   dinle(m, "selectstart", (e) => { if (!yaziAlani(e.target) && !e.target.closest?.("[contenteditable]")) e.preventDefault(); });
@@ -1704,7 +1808,15 @@ function olaylariKur() {
 }
 
 const cizerMi = (e) => (e.pointerType === "pen" ? true : e.pointerType === "mouse" ? e.button === 0 : !!store.ayarlar.parmaklaCiz);
-const basinc = (e) => (e.pointerType === "pen" ? (e.pressure > 0 ? e.pressure : 0.5) : 0.5);
+// S Pen ayarları (Ayarlar > S Pen): basınç eğrisi "yumusak" | "orta" | "sert", yan tuş silgi (varsayılan açık)
+const BASINC_US = { yumusak: 0.6, orta: 1, sert: 1.7 };   // ortak.js basincUygula ile aynı
+const basinc = (e) => {
+  if (e.pointerType !== "pen") return 0.5;
+  const p = e.pressure > 0 ? e.pressure : 0.5, us = BASINC_US[store.ayarlar.basincEgrisi] || 1;
+  return us === 1 ? p : Math.round(Math.pow(p, us) * 1000) / 1000;
+};
+// Silgi ucu (buttons 32) her zaman, yan tuş (buttons 2) ayar kapalı değilse siler
+const silgiTusu = (e) => e.pointerType === "pen" && ((e.buttons & 32) !== 0 || ((e.buttons & 2) !== 0 && store.ayarlar.yanTusSilgi !== false));
 const sayfaBul = (t) => { const kap = t?.closest?.(".sayfa-kap"); return kap ? D.kapS.get(kap) : null; };
 function noktaAl(e, j) {
   return [Math.round(((e.clientX - j.r.left) / D.k) * 100) / 100, Math.round(((e.clientY - j.r.top) / D.k) * 100) / 100, basinc(e)];
@@ -1739,13 +1851,14 @@ function avucBirak() {
   D.dokunmalar.clear();
 }
 
+const AVUC_MS = 600;   // kalem görüldükten (havada ya da temasta) sonra dokunuş çizmez, kaydırmaz, çevirmez
 function onDown(e) {
   const tip = e.pointerType, simdi = performance.now();
   uyandir();
-  if (tip === "pen") { D.sonKalem = simdi; kalemiAlgila(); if (D.coklu || D.jest?.tip === "touch") avucBirak(); }
+  if (tip === "pen") { D.sonKalem = simdi; kalemiAlgila(); halkaGizle(); if (D.coklu || D.jest?.tip === "touch") avucBirak(); }
   if (tip === "touch") {
     if (D.jest && D.jest.tip === "pen") return;                                  // kalem yazarken avuç
-    if (simdi - D.sonKalem < 400 || (e.width > 44 && e.height > 44)) return;     // avuç içi reddi
+    if (simdi - D.sonKalem < AVUC_MS || (e.width > 44 && e.height > 44)) return;     // avuç içi reddi
     D.dokunmalar.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
     if (D.dokunmalar.size >= 2) { e.preventDefault(); cokluBasla(); return; }
   } else if (D.jest) return;
@@ -1763,10 +1876,10 @@ function onDown(e) {
   const S = sayfaBul(t);
   if (D.okuma) {
     e.preventDefault();
-    // Koltukta kalem ucu açıksa S Pen son kalemle yazar; parmak her zaman kaydırır
-    if (tip === "pen" && D.koltukKalem && S && !t.closest(".bant")) {
-      const yan = (e.buttons & 34) !== 0;
-      return aracBasla(e, S, yan ? "silgi" : CIZIM.has(A.etkin) ? A.etkin : "kalem" + (A.sonKalem || 0), yan);
+    // Koltukta S Pen dokunur dokunmaz son kalemle yazar (kâğıt kitap gibi, kalem ucunu açmak gerekmez); parmak kaydırır
+    if (tip === "pen" && S && !t.closest(".bant, .not, .metin-kutusu, .asistan-notu")) {
+      const yan = silgiTusu(e);
+      return aracBasla(e, S, yan ? "silgi" : koltukKalemi(), yan);
     }
     // Okurken de bant soyulur: ezber için kendini sınama okuma modunda yapılır
     const b = t.closest(".bant");
@@ -1818,7 +1931,7 @@ function onDown(e) {
   if (tip === "mouse" && e.button !== 0 && e.button !== 1) return;
   e.preventDefault();
   if (!S || !cizer) return kaydirBasla(e, { bos: true });
-  const yanTus = tip === "pen" && (e.buttons & 34) !== 0;
+  const yanTus = tip === "pen" && silgiTusu(e);
   aracBasla(e, S, yanTus ? "silgi" : A.etkin, yanTus && A.etkin !== "silgi");
 }
 
@@ -1918,7 +2031,7 @@ function jestBitir(j, e) {
 
 // Havadaki kalem ve fare: yan tuş, kenar tutamağı, ekleme aralığı, silgi imleci
 function hover(e) {
-  if (e.pointerType === "pen") yanTusAyarla((e.buttons & 34) !== 0);
+  if (e.pointerType === "pen") yanTusAyarla(silgiTusu(e));
   const t = e.target, S = sayfaBul(t);
   if (e.pointerType === "pen") {
     yakinTemizle();
@@ -1928,12 +2041,100 @@ function hover(e) {
     }
     const ara = t.closest?.(".ara-ekle");
     if (ara) { ara.classList.add("yakin"); D.yakinAra = ara; }
-    // Kalem havadayken canlı tuval önceden açılır: büyük tuvalin ayrılması kalemin inişini geciktirmesin
-    if (S && !e.buttons && !D.jest && !D.okuma && CIZIM.has(A.etkin) && (D.canliS !== S || !S.canliCv.width || !S.canliAnahtar)) canliHazirla(S);   // yakınlaştırma anahtarı sıfırlar
+    // Kalem havadayken canlı tuval önceden açılır: büyük tuvalin ayrılması kalemin inişini geciktirmesin.
+    // Koltuk'ta da: kalem orada doğrudan yazar.
+    if (S && !e.buttons && !D.jest && (D.okuma || CIZIM.has(A.etkin)) && (D.canliS !== S || !S.canliCv.width || !S.canliAnahtar)) canliHazirla(S);   // yakınlaştırma anahtarı sıfırlar
+    if (!e.buttons) halkaGoster(e, S, t); else halkaGizle();
   }
-  if (e.pointerType === "pen" && D.mod === "koltuk" && !e.buttons && !D.koltuk) kalemUcuGoster();   // koltuk.js kendi kalem ucunu gösterir
-  const silgiMi = !D.okuma && (A.etkin === "silgi" || D.yanTus) && S && !t.closest(".not, .metin-kutusu, .bant, .secim");
+  const silgiMi = e.pointerType !== "pen" && !D.okuma && (A.etkin === "silgi" || D.yanTus) && S && !t.closest(".not, .metin-kutusu, .bant, .secim");
   if (silgiMi) silgiImleci(S, e.clientX, e.clientY); else silgiImleciGizle();
+}
+
+// Koltuk'ta kalem son seçilen kalemle yazar (silgi ya da başka araç seçiliyse de)
+const koltukKalemi = () => (CIZIM.has(A.etkin) ? A.etkin : "kalem" + (A.sonKalem || 0));
+
+// ---------- S Pen imleç halkası (TASARIM-3 8) ve kenarda satır çizgileri (nüans 7) ----------
+// Tek bir div.kalem-halka belgede bir kez durur (kabuk ya da başka ekran koyduysa o kullanılır); havadaki
+// kalemle yalnız transform değişir, rAF'ta bir kez. Boyu araç boyudur (kalınlık × yakınlaştırma, en az 6px).
+function halkaGoster(e, S, t) {
+  const arac = D.yanTus ? "silgi" : D.okuma ? koltukKalemi() : A.etkin;
+  if (!S || (arac !== "silgi" && !CIZIM.has(arac)) || t.closest?.(".not, .metin-kutusu, .bant, .secim, .asistan-notu, .sayfa-menu")) { halkaGizle(); return; }
+  let el = D.halka;
+  if (!el) {
+    el = document.querySelector("body > .kalem-halka");
+    if (!el) { const yeni = (el = h("div", { class: "kalem-halka", "aria-hidden": "true" })); document.body.append(yeni); D.temizlik.push(() => yeni.remove()); }
+    const o = el;
+    D.halka = el;
+    D.temizlik.push(() => o.classList.remove("gorunur"));
+  }
+  const tur = arac === "silgi" ? "silgi" : arac === "fosforlu" ? "fosforlu" : "kalem";
+  const k = arac === "silgi" ? A.silgi.r * 2 : arac === "fosforlu" ? A.fosforlu.w : A.kalemler[+arac.slice(5)].mm * 5;
+  const renk = arac === "silgi" ? "" : renkSayfaya(arac === "fosforlu" ? A.fosforlu.renk : A.kalemler[+arac.slice(5)].renk);
+  const anahtar = `${tur}|${Math.round(k * D.k * 2)}|${renk}`;
+  if (el.dataset.anahtar !== anahtar) {
+    el.dataset.anahtar = anahtar;
+    el.dataset.arac = tur;
+    el.style.setProperty("--c", Math.max(6, Math.round(k * D.k)) + "px");
+    if (renk) el.style.setProperty("--halka", renk); else el.style.removeProperty("--halka");
+  }
+  D.halkaX = e.clientX; D.halkaY = e.clientY;
+  el.classList.add("gorunur");
+  if (!D.raf.halka) D.raf.halka = requestAnimationFrame(() => {
+    if (!D) return;
+    D.raf.halka = 0;
+    D.halka.style.transform = `translate3d(${D.halkaX}px, ${D.halkaY}px, 0)`;
+  });
+  kenarSatir(S, e);
+}
+function halkaGizle() {
+  if (!D) return;
+  D.halka?.classList.remove("gorunur");
+  D.kenarSatirEl?.classList.remove("acik");
+}
+
+// Nüans 7: kalem PDF sayfasının ya da boş defter yaprağının kenar boşluğuna gelince kalemin hizasında
+// üç soluk yazı çizgisi (laboratuvar defterinin silik çizgileri). Kenar sütunu zaten çizgili, orada yok.
+function kenarSatir(S, e) {
+  const b = kenarBosluk(S);
+  const el0 = D.kenarSatirEl;
+  if (!b || D.okuma) { el0?.classList.remove("acik"); return; }
+  const r = S.kap.getBoundingClientRect(), u = (e.clientX - r.left) / D.k, v = (e.clientY - r.top) / D.k;
+  const yan = b.find(([x0, x1]) => u >= x0 && u <= x1);
+  if (!yan || v < 8 || v > S.h - 8) { el0?.classList.remove("acik"); return; }
+  const el = el0 || (D.kenarSatirEl = h("div", { class: "kenar-satir gecici", "aria-hidden": "true" }));
+  if (el.parentNode !== S.nesneler) S.nesneler.append(el);
+  const anahtar = `${yan[0]}|${yan[1]}|${b.aralik}|${D.k}`;
+  if (el.dataset.anahtar !== anahtar) {
+    el.dataset.anahtar = anahtar;
+    el.style.left = yan[0] * D.k + "px";
+    el.style.width = (yan[1] - yan[0]) * D.k + "px";
+    el.style.setProperty("--aralik", b.aralik * D.k + "px");
+  }
+  // Ortadaki çizgi kalemin ucunun biraz altında: yazılan satırın tabanı
+  el.style.transform = `translateY(${((v - b.aralik * 1.25) * D.k).toFixed(1)}px)`;
+  el.classList.add("acik");
+}
+// Sayfanın yazısız kenar şeritleri [[x0, x1], ...] ve satır aralığı; metin henüz ölçülmediyse ölçülür, null döner
+function kenarBosluk(S) {
+  const v = S.veri;
+  if (v.tur === "kagit") return v.kagit === "blank" ? Object.assign([[6, PW * 0.12], [PW * 0.88, PW - 6]], { aralik: 30 }) : null;
+  if (v.tur !== "pdf") return null;
+  D.kenarBolge ||= new WeakMap();
+  const b = D.kenarBolge.get(v);
+  if (b !== undefined) return b;
+  D.kenarBolge.set(v, null);
+  const d = D;
+  sayfaKelimeleri(S).then((kel) => {
+    if (D !== d) return;
+    const P = satirlaraTopla(kel);
+    if (P.length < 3) return;
+    const sira = (a, p) => { const x = a.slice().sort((m, n) => m - n); return x[Math.min(x.length - 1, Math.floor(p * x.length))]; };
+    const sx0 = sira(P.map((p) => p.x0), 0.1), sx1 = sira(P.map((p) => p.x1), 0.9);
+    const aralik = sinirla(sira(P.map((p) => p.h), 0.5) * 1.5, 18, 48);
+    const seritler = [[6, sx0 - 10], [sx1 + 10, PW - 6]].filter(([a, z]) => z - a >= 28);
+    D.kenarBolge.set(v, seritler.length ? Object.assign(seritler, { aralik }) : null);
+  });
+  return null;
 }
 function yakinTemizle() {
   D.yakinTutamak?.classList.remove("yakin"); D.yakinTutamak = null;
@@ -2134,7 +2335,7 @@ function durgunlukBak(j) {
   j.canli.ciz(j.cizgi);
 }
 function cizimDevam(j, e) {
-  if (e.pointerType === "pen" && (e.buttons & 34) && j.tip === "pen") {
+  if (e.pointerType === "pen" && silgiTusu(e) && j.tip === "pen") {
     // Çizerken yan tuşa basıldı: çizgi biter, silgi başlar
     D.jest = null; cizimBitir(j); yanTusAyarla(true);
     return silmeBasla(e, j.S, true);
@@ -2171,6 +2372,7 @@ function cizimBitir(j) {
   islakBitir(j.canli, c, (cz) => kaliciyaAktar(S, cz));
   yaziyorBitir();
   sayfaDegisti(S);
+  izKuyrugaAl(S, c, j.bas);   // boşta: biçimi ve altındaki metin
 }
 function cizimIptal(j) {
   zamanIptal(j.durgunZ);
@@ -2189,14 +2391,15 @@ function kaliciyaAktar(S, c) {
 
 // ---------- silgi ----------
 function silmeBasla(e, S, gecici) {
-  const j = { tur: "sil", id: e.pointerId, tip: e.pointerType, S, r: S.kap.getBoundingClientRect(), once: S.veri.cizgiler.slice(), silindi: false, gecici, son: null };
+  const j = { tur: "sil", id: e.pointerId, tip: e.pointerType, S, r: S.kap.getBoundingClientRect(), once: S.veri.cizgiler.slice(), silindi: false, gecici, son: null,
+    yarilanan: new Set() };   // kurşun kalem bir geçişte yarıya iner (nüans 3)
   D.jest = j;
   yakala(e);
   yaziyorBasla();
   silmeDevam(j, e);
 }
 function silmeDevam(j, e) {
-  if (j.gecici && e.pointerType === "pen" && !(e.buttons & 34) && e.buttons) {
+  if (j.gecici && e.pointerType === "pen" && !silgiTusu(e) && e.buttons) {
     // Yan tuş bırakıldı: silme biter, kalem kaldığı yerden yazar
     yanTusAyarla(false);
     D.jest = null; silmeBitir(j);
@@ -2207,7 +2410,7 @@ function silmeDevam(j, e) {
   let bu = null;   // yalnız bu olayda silinenlerin kutusu yeniden çizilir; j.silindi kalıcıdır, her karede tüm sayfayı çizdirirdi
   for (const o of olaylar(e)) {
     const [x, y] = noktaAl(o, j);
-    const giden = silgi(S.veri.cizgiler, x, y, A.silgi.r, { sadeceFosforlu: A.silgi.sadeceFosforlu, onceki: j.son });
+    const giden = silgi(S.veri.cizgiler, x, y, A.silgi.r, { sadeceFosforlu: A.silgi.sadeceFosforlu, onceki: j.son, yarilanan: j.yarilanan });
     j.son = [x, y];
     if (giden.length) bu = kutuBirlestir(bu, cizgilerKutusu(giden));
   }
@@ -2514,7 +2717,7 @@ function bantDokunDevam(j, e) {
   D.jest = null;
   if (!j.cizer) { kaydirBasla(j.ilk, { okuma: D.okuma }); D.jest.basladi = true; return kaydirDevam(D.jest, e); }
   if (j.cizer) {
-    const yanTus = j.tip === "pen" && (j.ilk.buttons & 34) !== 0;
+    const yanTus = j.tip === "pen" && silgiTusu(j.ilk);
     aracBasla(j.ilk, j.S, yanTus ? "silgi" : A.etkin, yanTus);
     if (D.jest) onMove(e);
   }
@@ -3477,7 +3680,7 @@ function solPanelCiz() {
       const S = D.sayfalar.find((x) => x.kucukBtn === g.target);
       if (!S) continue;
       S.kucukGorunur = g.isIntersecting;
-      if (g.isIntersecting) { if (S.kucukKirli || !S.kucukCv.width) kucukResimCiz(S); }
+      if (g.isIntersecting) { S.kucukDeneme = 0; if (S.kucukKirli || !S.kucukCv.width) kucukResimCiz(S); }
       else {
         if (S.kucukTampon) { D.pdf?.iptal(S.kucukTampon); S.kucukTampon = null; }
         S.kucukCv.width = S.kucukCv.height = 0; S.kucukKirli = true;
@@ -3524,7 +3727,9 @@ async function kucukResimCiz(S) {
     d.kucukZincir = is.catch(() => false);
     const tamam = await is.catch(() => false);
     if (D !== d || S.kucukTampon !== t || !S.kucukGorunur || S.kucukCv !== cv) return;
-    if (!tamam) { S.kucukKirli = true; return; }
+    // Kalem yazarken atlanan ya da yarıda kalan küçük resim sonra yeniden denenir (yoksa panelde boş kalıyordu)
+    if (!tamam) { S.kucukKirli = true; if ((S.kucukDeneme = (S.kucukDeneme || 0) + 1) <= 6) kucukResimPlanla(); return; }
+    S.kucukDeneme = 0;
     zemin = t;
   }
   cv.width = Math.round(w * dpr); cv.height = Math.round(((w * S.h) / PW) * dpr);
@@ -3561,12 +3766,13 @@ function kucukResimPlanla() {
   zamanIptal(D.kucukZ);
   D.kucukZ = zaman(() => {
     if (D.panelSol.hidden) return;
+    if (kalemYaziyor()) { kucukResimPlanla(); return; }
     for (const S of D.sayfalar) if (S.kucukKirli && S.kucukGorunur && S.kucukBtn?.isConnected) kucukResimCiz(S);
   }, 450);
 }
 
-// ---------- sağ panel: Notlar, Kırpılanlar, Yer imleri, Arama ----------
-const SEKMELER = [["notlar", "Notlar"], ["kirpilanlar", "Kırpılanlar"], ["yerimleri", "Yer imleri"], ["arama", "Arama"]];
+// ---------- sağ panel: Notlar, İzler, Kırpılanlar, Yer imleri, Arama ----------
+const SEKMELER = [["notlar", "Notlar"], ["izler", "İzler"], ["kirpilanlar", "Kırpılanlar"], ["yerimleri", "Yer imleri"], ["arama", "Arama"]];
 function sagPanelCiz() {
   const sekmeler = h("div", { class: "sekmeler", role: "tablist" }, ...SEKMELER.map(([id, ad]) =>
     h("button", { class: "sekme", role: "tab", "aria-selected": String(D.sekme === id), "data-sekme": id, onclick: () => { D.sekme = id; sagPanelCiz(); } }, ad)));
@@ -3586,8 +3792,19 @@ function bos(ikon, baslik, aciklama) {
 function sagGovdeCiz() {
   if (!D || !D.sagGovde || D.panelSag.hidden) return;
   const g = D.sagGovde, st = g.scrollTop;
+  D.izlerPanel?.kapat(); D.izlerPanel = null;
   g.replaceChildren();
   const s = D.sekme;
+  // İzler sekmesi (OZELLIKLER-5): izler.js listesi panelin içine çizilir, kendi "belge:degisti" dinleyicisiyle tazelenir
+  if (s === "izler") {
+    const kap = h("div", { class: "izler-sekme" }), d = D;
+    g.append(kap);
+    import("./izler.js").then((m) => {
+      if (D !== d || D.sagGovde !== g || D.sekme !== "izler" || !kap.isConnected) return;
+      D.izlerPanel = m.izlerPaneli(kap, D.belge);
+    }).catch((e) => console.warn("[duzenleyici] izler:", e));
+    return;
+  }
   if (s === "notlar") {
     const satirlar = [], sayfaNo = [];
     D.sayfalar.forEach((S, i) => {
@@ -3751,6 +3968,7 @@ function onKey(e) {
     return;
   }
   if (e.altKey) return;
+  if (tus === "[" || tus === "]") { e.preventDefault(); izeAtla(tus === "]" ? 1 : -1); return; }
   if ((tus === " " || tus === "Enter") && t.closest?.("button, a, [role=button], [role=switch]")) return;
   const kaydir = (dy) => { e.preventDefault(); kaydirAnim(D.masa.scrollTop + dy, D.masa.scrollLeft, 220); };
   switch (tus) {
@@ -3833,6 +4051,7 @@ function koltukGir(anim) {
   yanYanaKapat();
   okumaModu(true);
   modAnahtariGuncelle();
+  bekciPlanla();
   // Geçişte masanın kenarları kararır (okuma modu lamba odağı), araç çubuğu aşağı çekilir: ikisi de CSS'te
   const d = D;
   koltukYukle().then((m) => {
@@ -3857,6 +4076,7 @@ function koltukCik() {
   D.kok.dataset.mod = "masa";
   okumaModu(false);
   modAnahtariGuncelle();
+  bekciPlanla();
 }
 
 // Dokunma bölgeleri 25 / 50 / 25 (TASARIM-2 4.1): kenarlar ekranın %85'i kadar kaydırır, orta çubukları açar
@@ -3914,6 +4134,11 @@ function koltukSecenekleri() {
     bolumler: [],
     // PDF'te bölüm yerine yer imleri cetvelde bordo çentik olur
     yerImleri: D.sayfalar.map((S, i) => (S.veri.yerImi ? (etiketNo(i) - 1) / toplam : null)).filter((x) => x != null),
+    // İzler cetvelde mürekkep çentiği: yer (0..1), çentiğe dokununca o ize gidilir; önceki / sonraki iz okları
+    izler: () => (D?.veri.izler || []).filter((iz) => iz?.sayfa && Array.isArray(iz.kutu))
+      .map((iz) => ({ id: iz.id, oran: sinirla((iz.sayfa - 1 + iz.kutu[1] + iz.kutu[3] / 2) / toplamNo(), 0, 1) })),
+    izeGit: (id) => { if (D) izeGit(D.veri.izler?.find((x) => x?.id === id)); },
+    izAtla: (yon) => { if (D) izeAtla(yon); },
     konum: koltukKonum,
     git: koltukGit,
     etiket: (oran) => `s. ${oranSayfa(oran)} / ${toplamNo()}`,
@@ -3921,9 +4146,12 @@ function koltukSecenekleri() {
     modDegistir: modSec,
     geri: () => bus.emit("git", { ekran: "kitaplik" }),
     araclar: [ud("Sayfalar", "sayfalar", () => panelDegistir("sol"))],
-    // Dokunma bölgeleri yalnız masada; bant, not ve rozet kendi dokunuşunu alır
+    // Dokunma bölgeleri yalnız masada; bant, not ve rozet kendi dokunuşunu alır. Kalem sayfa çevirmez (yazar);
+    // kalem havada görüldükten sonra 600 ms parmak da çevirmez (avuç içi)
     sahne: D.masaKap,
-    dokunmaGecerli: (e) => !e.target.closest?.(".bant, .bant-kutu, .not, .metin-kutusu, .asistan-notu, .sayfa-menu, .ara-ekle, .kenar-tutamak"),
+    dokunmaGecerli: (e) => e.pointerType !== "pen" && !(e.pointerType === "touch" && D && performance.now() - D.sonKalem < AVUC_MS)
+      && !e.target.closest?.(".bant, .bant-kutu, .not, .metin-kutusu, .asistan-notu, .sayfa-menu, .ara-ekle, .kenar-tutamak"),
+    kalemUcu: false,   // kalem doğrudan yazar: gizli kalem ucu düğmesi gerekmez
     mesgul: () => !!(D && (D.fis || D.balon || D.sayfaMenu || !D.panelSol.hidden || !D.panelSag.hidden)),
     // Gizli kalem açıkken S Pen son kalemle yazar (onDown)
     kalem: (acik) => { if (D) D.koltukKalem = !!acik; },
@@ -4154,7 +4382,7 @@ export function asistanNotuAl(v) {
   if (D && D.belge.id === v.belgeId) return asistanNotuKoy(v);
   const b = belgeBul(v.belgeId);
   if (!b || (b.tur !== "pdf" && b.tur !== "defter")) return;
-  if (!b.veri || !Array.isArray(b.veri.sayfalar)) b.veri = ilkVeri(b);
+  if (!b.veri || !Array.isArray(b.veri.sayfalar)) b.veri = veriHazirla(b);
   const i = sinirla((v.sayfa || 1) - (b.veri.ilkNo || 1), 0, b.veri.sayfalar.length - 1), s = b.veri.sayfalar[i];
   s.kenar = true;
   const onceki = s.metinler.filter((m) => m.tur === "asistan").length;
@@ -4768,6 +4996,7 @@ function sayfaKaydi(once, { dogan = null } = {}) {
   if (!D.panelSol.hidden) solPanelCiz();
   sagPanelPlanla();
   bantKartlariniEsle();
+  izEslePlanla();
   bus.emit("belge:degisti", { belgeId: D.belge.id });
 }
 function sayfaCogalt(i) {
@@ -4777,12 +5006,14 @@ function sayfaCogalt(i) {
   const once = D.veri.sayfalar.slice(), k = structuredClone(v);
   k.id = yeniId("s");
   k.yerImi = false;
-  for (const c of k.cizgiler) c.id = yeniId("c");
+  const idEsle = new Map();
+  for (const c of k.cizgiler) { const yeni = yeniId("c"); if (c.id) idEsle.set(c.id, yeni); c.id = yeni; }
   for (const n of k.notlar) n.id = yeniId("n");
   for (const m of k.metinler) { m.id = yeniId("m"); delete m.kartId; }
   for (const b of k.bantlar) { b.id = yeniId("b"); delete b.kartId; delete b.kartYapildi; }
   for (const g of k.gorseller || []) g.id = yeniId("g");   // görsel dosyası paylaşılır (ad aynı)
   D.veri.sayfalar.splice(i + 1, 0, k);
+  izleriCogalt(v.id, k.id, idEsle);
   sayfaKaydi(once, { dogan: k.id });
   sayfayaGit(i + 1);
   bildir("Sayfa çoğaltıldı", { etiket: "Geri al", calistir: () => D && geriAl() });
@@ -4911,6 +5142,270 @@ function kucukSurukleKur(S) {
   btn.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!j?.basladi) sayfaMenusuAc(kap.querySelector(".kucuk-menu"), D.sayfalar.indexOf(S)); });
 }
 
+// ---------- İzler: kalemin değdiği yerler (OZELLIKLER-5, İzler sözleşmesi) ----------
+// Kalem kalkınca çizgi kuyruğa girer; boşta (kalem yazmıyorken) biçimi sınıflanır, altındaki metin bulunur ve
+// belge.veri.izler'e yazılır: { id, tur, zaman, renk, metin, sayfa, kutu, cizgiIdleri } + sayfaId, arac.
+// Çizgiler sayfanın kendi listesinde kalır; iz yalnız id'lerini tutar. Silgi, geri al / yinele ve sayfa
+// sil / çoğalt / taşı sonrası izleriEsle() izleri çizgilerle eşler: çizgisi kalmayan iz bellekteki çöpe
+// gider (geri alınınca çizgisiyle döner), sayfa numarası ve kutu güncellenir, taşınan iz yeniden sınıflanır.
+const IZ_BIRLES_MS = 1500;   // bu süreden kısa arayla ve yakına çizilen çizgiler tek iz (yıldız, ünlem, el yazısı)
+const IZ_BIRLES_ARA = 24;    // birim
+const METINLI_IZ = new Set(["alt", "daire"]);
+const yuvarla4 = (v) => Math.round(v * 1e4) / 1e4;
+const bosta = (fn) => (typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 60));
+
+function izKur() {
+  D.izKuyruk = [];
+  D.izCop = new Map();      // id -> iz: çizgileri şu an sayfada olmayan izler
+  D.izTam = new Map();      // id -> bütün çizgi id'leri: bir kısmı silinmiş izin geri gelebilecek çizgileri
+  D.izImza = new Map();     // id -> çizgi id'leri ve kutu: değişince iz yeniden sınıflanır
+  D.izSon = null;           // son yazılan iz ve zamanı (birleştirme için)
+  D.kelimeler = new Map();  // sayfa verisi -> Promise<kelimeler>
+  if (D.veri.izler && !Array.isArray(D.veri.izler)) D.veri.izler = [];
+  // Önceki oturum kapanırken metni bulunamamış izler boşta tamamlanır
+  const gecici = (D.veri.izler || []).filter((iz) => iz?.gecici && iz.sayfaId);
+  if (gecici.length) { for (const iz of gecici) D.izKuyruk.push({ yenile: true, iz }); izPlanla(1500); }
+}
+
+// Sayfanın kelimeleri, sayfa biriminde: gerçek PDF'te metinKutulari, örnek sayfalarda sayfalar.js'in çizdiği metin
+function sayfaKelimeleri(S) {
+  const v = S.veri;
+  let s = D.kelimeler.get(v);
+  if (s) return s;
+  if (v.tur !== "pdf") s = Promise.resolve([]);   // defter ve araya eklenen kâğıt: metin yok
+  else if (D.pdf) {
+    const pdf = D.pdf, H = S.h;
+    s = (typeof pdf.metinKutulari === "function" ? pdf.metinKutulari(v.pdf, { kelime: true }) : Promise.resolve([]))
+      .then((l) => (l || []).map((k) => ({ str: k.str, x: k.x * PW, y: k.y * H, w: k.w * PW, h: k.h * H })))
+      .catch(() => []);
+  } else {
+    const l = [];
+    for (const r of sayfaMetinleri(v.pdf)) {
+      if (!r.t || !r.t.trim() || !(r.w > 0)) continue;
+      const ust = r.y - r.boyut * 0.8, boy = r.boyut;
+      let bas = 0;
+      for (const p of r.t.split(/(\s+)/)) {
+        if (p && !/^\s+$/.test(p)) { const o = altDizeOlc(r, bas, bas + p.length); l.push({ str: p, x: o.x, y: ust, w: o.w, h: boy }); }
+        bas += p.length;
+      }
+    }
+    s = Promise.resolve(l);
+  }
+  D.kelimeler.set(v, s);
+  return s;
+}
+
+function izKuyrugaAl(S, c, bas) {
+  if (!c || c.tur === "sekil" || !c.id) return;
+  D.izKuyruk.push({ S, id: c.id, bas, son: performance.now(), zaman: Date.now() });
+  izPlanla();
+}
+function izEslePlanla() { if (!D?.izKuyruk) return; D.izEsle = true; izPlanla(); }
+function izPlanla(ms = 0) {
+  if (!D || D.izZ) return;
+  const d = D;
+  D.izZ = zaman(() => bosta(() => { if (D === d) { D.izZ = 0; izIsle(); } }), ms);
+}
+async function izIsle() {
+  const d = D;
+  // Kalem yazarken ya da parmak hareketi sürerken beklenir: kalem yolunda iş yok
+  const mesgul = () => kalemYaziyor() || !!D.jest;
+  if (mesgul()) { izPlanla(300); return; }
+  if (D.izEsle) { D.izEsle = false; izleriEsle(); }
+  while (D === d && D.izKuyruk.length) {
+    if (mesgul()) { izPlanla(300); return; }
+    const g = D.izKuyruk.shift();
+    try { await (g.yenile ? izYenile(g) : izYaz(g)); } catch (e) { console.warn("[duzenleyici] iz:", e); }
+  }
+}
+
+const sayfaBilgi = (sayfaId) => { const i = D.sayfalar.findIndex((S) => S.veri.id === sayfaId); return i < 0 ? null : { S: D.sayfalar[i], i }; };
+const izKutusu = (k, S) => (k ? [yuvarla4(k.x0 / PW), yuvarla4(k.y0 / S.h), yuvarla4((k.x1 - k.x0) / PW), yuvarla4((k.y1 - k.y0) / S.h)] : [0, 0, 0, 0]);
+const izImzasi = (ids, k) => ids.join(",") + (k ? `|${Math.round(k.x0)},${Math.round(k.y0)},${Math.round(k.x1)},${Math.round(k.y1)}` : "");
+function sayfaCizgileri(S, ids) {
+  const m = new Map();
+  for (const c of S.veri.cizgiler) if (c.id) m.set(c.id, c);
+  return ids.map((id) => m.get(id)).filter(Boolean);
+}
+
+async function izYaz(g) {
+  const S = g.S, d = D;
+  if (!D.sayfalar.includes(S)) return;
+  const c = S.veri.cizgiler.find((x) => x.id === g.id);
+  if (!c) return;   // yazılmadan geri alındı
+  const kelimeler = await sayfaKelimeleri(S);
+  if (D !== d || !S.veri.cizgiler.includes(c)) return;
+  izYazHemen(g, S, c, kelimeler);
+}
+// Belge kapanırken kuyrukta kalan çizgiler metin beklenmeden ize yazılır; gerçek PDF'te metni
+// sonraki açılışta tamamlansın diye iz "gecici" işaretlenir (izKur kuyruğa geri koyar)
+function izKuyruguBosalt() {
+  if (!D?.izKuyruk?.length) return;
+  for (const g of D.izKuyruk.splice(0)) {
+    try {
+      if (g.yenile) continue;
+      const S = g.S;
+      if (!D.sayfalar.includes(S)) continue;
+      const c = S.veri.cizgiler.find((x) => x.id === g.id);
+      if (!c) continue;
+      const iz = izYazHemen(g, S, c, []);
+      if (iz && S.veri.tur === "pdf") iz.gecici = true;
+    } catch (e) { console.warn("[duzenleyici] iz:", e); }
+  }
+}
+function izYazHemen(g, S, c, kelimeler) {
+  const v = D.veri;
+  v.izler ||= [];
+  // Az önceki izin yanına hemen çizildiyse aynı iz (yıldızın ikinci çizgisi, ünlemin noktası, kenara yazılan söz)
+  let iz = null;
+  const son = D.izSon;
+  if (son && son.sayfaId === S.veri.id && g.bas - son.t < IZ_BIRLES_MS && v.izler.includes(son.iz)) {
+    const a = cizgilerKutusu([c]), b = cizgilerKutusu(sayfaCizgileri(S, son.iz.cizgiIdleri));
+    const ara = a && b ? Math.max(a.x0 - b.x1, b.x0 - a.x1, a.y0 - b.y1, b.y0 - a.y1, 0) : Infinity;
+    if (ara < IZ_BIRLES_ARA) {
+      // Alt çizgi ve daire kendi başına bitmiş işarettir: yanına hemen çizilen yıldız ya da yuvarlak ayrı iz.
+      // Yalnız ikinci alt çizgi (çift çizgi) aynı ize katılır.
+      if (!METINLI_IZ.has(son.iz.tur)) iz = son.iz;
+      else if (son.iz.tur === "alt" && izSinifla([c], { kelimeler, W: PW }).tur === "alt") iz = son.iz;
+    }
+  }
+  const ids = iz ? [...iz.cizgiIdleri, c.id] : [c.id];
+  const sonuc = izSinifla(sayfaCizgileri(S, ids), { kelimeler, W: PW });
+  const i = D.sayfalar.indexOf(S);
+  const alanlar = { tur: sonuc.tur, metin: sonuc.metin, kutu: izKutusu(sonuc.kutu, S), cizgiIdleri: ids, sayfa: etiketNo(i), sayfaId: S.veri.id };
+  if (iz) Object.assign(iz, alanlar);
+  else {
+    iz = { id: yeniId("iz"), zaman: g.zaman, renk: c.renk, ...alanlar, arac: c.tur };
+    v.izler.push(iz);
+  }
+  D.izSon = { iz, sayfaId: S.veri.id, t: g.son };
+  D.izImza.set(iz.id, izImzasi(ids, sonuc.kutu));
+  izlerDegisti();
+  return iz;
+}
+
+// Çizgileri taşınan ya da bir kısmı silinen iz yeniden sınıflanır (türü ve metni değişebilir)
+async function izYenile(g) {
+  const { iz } = g, d = D;
+  const yer = sayfaBilgi(iz.sayfaId);
+  if (!yer || !D.veri.izler?.includes(iz)) return;
+  const kelimeler = await sayfaKelimeleri(yer.S);
+  if (D !== d || !D.veri.izler.includes(iz)) return;
+  const C = sayfaCizgileri(yer.S, iz.cizgiIdleri);
+  if (!C.length) return;
+  const s = izSinifla(C, { kelimeler, W: PW });
+  const gecici = !!iz.gecici;
+  delete iz.gecici;
+  if (!gecici && s.tur === iz.tur && s.metin === iz.metin) return;
+  iz.tur = s.tur; iz.metin = s.metin;
+  izlerDegisti();
+}
+
+function izleriEsle() {
+  const v = D.veri;
+  if (!v.izler?.length && !D.izCop.size) return;
+  v.izler ||= [];
+  const yerler = new Map(D.sayfalar.map((S, i) => [S.veri.id, { S, i }]));
+  const haritalar = new Map();
+  const harita = (S) => {
+    let m = haritalar.get(S);
+    if (!m) { m = new Map(); for (const c of S.veri.cizgiler) if (c.id) m.set(c.id, c); haritalar.set(S, m); }
+    return m;
+  };
+  let degisti = false, dondu = false;
+  // Çöptekiler: çizgileri sayfaya geri geldiyse (geri al, yinele, silinen sayfanın geri alınması) yerine döner
+  for (const [id, iz] of D.izCop) {
+    const y = yerler.get(iz.sayfaId);
+    if (y && (D.izTam.get(id) || iz.cizgiIdleri).some((cid) => harita(y.S).has(cid))) { D.izCop.delete(id); v.izler.push(iz); dondu = degisti = true; }
+  }
+  const kalan = [];
+  for (const iz of v.izler) {
+    if (!iz || !iz.sayfaId || !Array.isArray(iz.cizgiIdleri)) { kalan.push(iz); continue; }   // tanınmayan kayıt olduğu gibi kalır
+    const y = yerler.get(iz.sayfaId);
+    const tam = D.izTam.get(iz.id) || iz.cizgiIdleri;
+    const m = y && harita(y.S), varolan = m ? tam.filter((cid) => m.has(cid)) : [];
+    if (!varolan.length) { D.izCop.set(iz.id, iz); if (D.izSon?.iz === iz) D.izSon = null; degisti = true; continue; }
+    if (varolan.length !== tam.length) D.izTam.set(iz.id, tam); else D.izTam.delete(iz.id);
+    if (varolan.join() !== iz.cizgiIdleri.join()) { iz.cizgiIdleri = varolan; degisti = true; }
+    const no = etiketNo(y.i);
+    if (iz.sayfa !== no) { iz.sayfa = no; degisti = true; }
+    const k = cizgilerKutusu(varolan.map((cid) => m.get(cid))), imza = izImzasi(varolan, k);
+    const eski = D.izImza.get(iz.id);
+    if (eski !== imza) {
+      D.izImza.set(iz.id, imza);
+      if (eski !== undefined) {   // açılıştaki ilk eşleme yalnız imzayı kaydeder
+        iz.kutu = izKutusu(k, y.S);
+        D.izKuyruk.push({ yenile: true, iz });
+        degisti = true;
+      }
+    }
+    kalan.push(iz);
+  }
+  if (dondu) kalan.sort((a, b) => (a?.zaman || 0) - (b?.zaman || 0));
+  if (degisti) { v.izler.splice(0, v.izler.length, ...kalan); izlerDegisti(); }
+  else izSeritleri();   // sayfalar yeniden kurulduysa (açılış, sayfa taşıma) çizgiler yerine konur
+}
+
+function izlerDegisti() {
+  if (!D) return;
+  izSeritleri();
+  try { D.koltuk?.izleriYenile?.(); } catch { /* koltuk.js eski sürüm */ }
+  bus.emit("izler", { belgeId: D.belge.id });
+  icerikDegisti();
+}
+
+// Kâğıt kitabı hızlıca çevirirken kenarda kalem izlerini görmek gibi: hızlı kaydırmada izli sayfaların sol
+// kenarında, izlerin hizasında ince mürekkep çizgileri belirir (CSS .hizli-kaydir). Yalnız izler değişince kurulur.
+function izSeritleri() {
+  const gruplar = new Map();
+  for (const iz of D.veri.izler || []) if (iz?.sayfaId && Array.isArray(iz.kutu)) (gruplar.get(iz.sayfaId) || gruplar.set(iz.sayfaId, []).get(iz.sayfaId)).push(iz);
+  for (const S of D.sayfalar) {
+    const l = gruplar.get(S.veri.id) || [];
+    const duraklar = l.slice().sort((a, b) => a.kutu[1] - b.kutu[1]).map((iz) => {
+      const a = sinirla(iz.kutu[1] * 100, 0, 99), z = sinirla(Math.max(a + 1.2, (iz.kutu[1] + iz.kutu[3]) * 100), 0, 100);
+      const r = renkSayfaya(iz.renk || "#1F3A68");
+      return `transparent ${a.toFixed(1)}%, ${r} ${a.toFixed(1)}% ${z.toFixed(1)}%, transparent ${z.toFixed(1)}%`;
+    });
+    const anahtar = duraklar.join(",");
+    if (S.izSeritAnahtar === anahtar && (!anahtar || S.izSerit?.parentNode === S.kap)) continue;
+    S.izSeritAnahtar = anahtar;
+    if (!anahtar) { S.izSerit?.remove(); continue; }
+    S.izSerit ||= h("i", { class: "iz-serit", "aria-hidden": "true" });
+    S.izSerit.style.setProperty("--iz-cizgileri", `linear-gradient(${duraklar.join(", ")})`);
+    if (S.izSerit.parentNode !== S.kap) S.kap.append(S.izSerit);
+  }
+}
+
+// İzin yerine kayar ve çevresine bir kez kalem halkası çizilir
+function izeGit(iz, halka = true) {
+  const yer = iz && sayfaBilgi(iz.sayfaId);
+  if (!yer || !Array.isArray(iz.kutu)) return false;
+  const [x, y, w, hh] = iz.kutu, S = yer.S;
+  hedefeGit(S, { x: x * PW, y: y * S.h, w: Math.max(8, w * PW), h: Math.max(8, hh * S.h) }, { halka });
+  return true;
+}
+// "[" önceki iz, "]" sonraki iz: ekranın ortasındaki konuma göre
+function izeAtla(yon) {
+  const l = (D.veri.izler || []).map((iz) => ({ iz, yer: iz && sayfaBilgi(iz.sayfaId) })).filter((o) => o.yer && Array.isArray(o.iz.kutu))
+    .map((o) => ({ ...o, konum: o.yer.S.kap.offsetTop + (o.iz.kutu[1] + o.iz.kutu[3] / 2) * o.yer.S.h * D.k }))
+    .sort((a, b) => a.konum - b.konum);
+  if (!l.length) { bildir("Bu belgede henüz kalem izi yok."); return; }
+  const orta = D.masa.scrollTop + D.masa.clientHeight * 0.42;
+  const hedef = yon > 0 ? l.find((o) => o.konum > orta + 4) : [...l].reverse().find((o) => o.konum < orta - 4);
+  if (!hedef) { bildir(yon > 0 ? "Son iz bu." : "İlk iz bu."); return; }
+  izeGit(hedef.iz);
+}
+
+// Sayfa çoğaltılınca izleri de yeni sayfanın çizgileriyle çoğalır (fotokopi gibi)
+function izleriCogalt(eskiId, yeniSayfaId, idEsle) {
+  const v = D.veri;
+  if (!v.izler?.length) return;
+  for (const iz of v.izler.filter((x) => x?.sayfaId === eskiId)) {
+    const ids = iz.cizgiIdleri.map((id) => idEsle.get(id)).filter(Boolean);
+    if (ids.length) v.izler.push({ ...structuredClone(iz), id: yeniId("iz"), sayfaId: yeniSayfaId, cizgiIdleri: ids });
+  }
+}
+
 // ---------- ses: kayıt düğmesi, çizgi zamanı, soluk gösterim (sözleşme: Masa çizgi zamanı) ----------
 // Kayıt sürerken eklenen çizgi, şekil, not, metin kutusu, damga ve görsel t: { kayitId, ms } alır.
 function sesT() {
@@ -4933,6 +5428,7 @@ async function sesCubukDegistir() {
     if (D.ses?.aktifKayit?.()) { bildir("Kayıt sürüyor. Durdurmak için şeritteki düğmeye dokun."); return; }
     try { D.sesCubuk.kaldir?.(); } catch (e) { console.warn(e); }
     D.sesCubuk = null;
+    delete D.veri.sesSerit;
     sesDugmeGuncelle();
     return;
   }
@@ -4940,8 +5436,10 @@ async function sesCubukDegistir() {
   if (D !== d) return;
   if (!m?.cubukKur) { bildir("Ses kaydı şu an kullanılamıyor."); return; }
   D.ses = m;
+  if (D.sesCubuk) return;   // açılışta kendiliğinden açılırken bu arada elle de açıldıysa
   try { D.sesCubuk = m.cubukKur(D.kok, D.belge) || { kaldir() {} }; }
   catch (e) { console.warn("[duzenleyici] ses şeridi:", e); bildir("Ses şeridi açılamadı."); return; }
+  D.veri.sesSerit = true;   // belge yeniden açılınca şerit de açık gelir (kitaplıktan dönüş, uzun aradan sonra açılış)
   sesDugmeGuncelle();
 }
 function sesDugmeGuncelle() {

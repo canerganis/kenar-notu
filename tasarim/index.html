@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FAF6EE">
+<meta name="theme-color" content="#F7F5F0">
 <meta name="color-scheme" content="light dark">
 <title>Kenar Notu</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,10 +13,10 @@
 <link rel="apple-touch-icon" href="ikon/apple-touch-icon.png">
 <!-- Hizmet çalışanı kaydı ve paylaşım hedefi; app.js de aynı modülü kullanır (tek örnek) -->
 <script type="module" src="paylasim.js"></script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cdefs%3E%3CradialGradient id='m' cx='.38' cy='.32' r='.85'%3E%3Cstop offset='0' stop-color='%23A23345'/%3E%3Cstop offset='.55' stop-color='%237D1D2C'/%3E%3Cstop offset='1' stop-color='%235A1220'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='36' height='36' rx='9' fill='url(%23m)'/%3E%3Cg fill='none' stroke='%23F1E3C8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 9.5h14v21H10Z' stroke-width='1.6'/%3E%3Cpath d='M24 9.5h5.5v21H24' stroke-width='1.4' stroke-opacity='.7'/%3E%3Cpath d='M26.2 11.5v17' stroke-width='1' stroke-dasharray='1.6 1.9' stroke-opacity='.8'/%3E%3Cpath d='M13.5 14.5h7M13.5 18h7M13.5 21.5h4.5' stroke-width='1.2' stroke-opacity='.65'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="ikon/ikon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..700,0..100,0..1;1,9..144,300..700,0..100,0..1&family=Instrument+Sans:wght@400..700&family=Literata:ital,opsz,wght@0,7..72,300..700;1,7..72,300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=Literata:ital,opsz,wght@0,7..72,300..700;1,7..72,300..700&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@400..700&display=swap">
 <!-- Damga paleti: yalnız paletteki glifler (birkaç KB). Hepsi aynı ağırlıkta ve aynı taban çizgisinde durur -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Math&text=%E2%88%AB%E2%88%91%E2%88%8F%E2%88%9A%E2%88%82%E2%88%87%E2%88%9E%E2%89%88%E2%89%A0%E2%89%A4%E2%89%A5%C2%B1%E2%86%92%E2%87%92%E2%87%94%E2%88%80%E2%88%83%E2%88%88%E2%88%89%E2%8A%82%E2%88%AA%E2%88%A9%E2%84%9D%E2%84%95%CE%B1%CE%B2%CE%B3%CE%B4%CE%B5%CE%B8%CE%BB%CE%BC%CF%80%CF%83%CF%84%CF%86%CF%89%CE%94%CE%A3%CE%A9%E2%86%91%E2%86%93%E2%84%9E%E2%99%82%E2%99%80%C3%98%E2%8A%95%E2%8A%96~DxT%C2%B0%E2%8C%80%E2%88%A0%E2%8A%A5%E2%88%A5%E2%89%85&display=swap">
 <link rel="stylesheet" href="tasarim.css">
@@ -27,6 +27,8 @@
 <link rel="stylesheet" href="asistan.css">
 <link rel="stylesheet" href="arama.css">
 <link rel="stylesheet" href="ses.css">
+<link rel="stylesheet" href="izler.css">
+<link rel="stylesheet" href="cizgi.css">
 <script>
   // Kayıtlı tema ve sade hareket ilk boyamadan önce uygulanır, açılışta renk sıçraması olmaz.
   try {
@@ -56,12 +58,12 @@
   <symbol id="i-icindekiler" viewBox="0 0 24 24"><path d="M4 6.5h2M9 6.5h11M4 12h2M9 12h11M4 17.5h2M9 17.5h7"/></symbol>
   <symbol id="i-geri-al" viewBox="0 0 24 24"><path d="M8.5 4.5 4 9l4.5 4.5M4 9h10.5a5.25 5.25 0 0 1 0 10.5H11"/></symbol>
   <symbol id="i-yinele" viewBox="0 0 24 24"><path d="M15.5 4.5 20 9l-4.5 4.5M20 9H9.5a5.25 5.25 0 0 0 0 10.5H13"/></symbol>
-  <symbol id="i-silgi" viewBox="0 0 24 24"><g transform="rotate(-45 12 12)" stroke-width="1.5"><rect x="4" y="8" width="16" height="8" rx="1.6"/><path d="M12 8v8"/></g></symbol>
+  <symbol id="i-silgi" viewBox="0 0 24 24"><g transform="rotate(-45 12 12)" stroke-width="1.6"><rect x="4" y="8" width="16" height="8" rx="1.6"/><path d="M12 8v8"/></g></symbol>
   <symbol id="i-kement" viewBox="0 0 24 24"><path d="M12 16.5c-4.7 0-8.5-2.6-8.5-5.75S7.3 5 12 5s8.5 2.6 8.5 5.75-3.8 5.75-8.5 5.75Z" stroke-dasharray="2.6 2.6"/><path d="M9.6 16.3c-1 1.3-.7 2.9.7 3.4M10.3 19.7 8.3 21.5"/></symbol>
   <symbol id="i-sekil" viewBox="0 0 24 24"><path d="M3.5 19.5 10 8l6.5 11.5Z"/><circle cx="15.5" cy="9.5" r="5"/></symbol>
   <symbol id="i-metin" viewBox="0 0 24 24"><path d="M5.5 7V5h13v2M12 5v14M9.5 19h5"/></symbol>
-  <symbol id="i-not" viewBox="0 0 24 24"><path d="M5 5h14v9.5L14.5 19H5ZM14.5 19v-4.5H19" stroke-width="1.5"/></symbol>
-  <symbol id="i-bant" viewBox="0 0 24 24"><g transform="rotate(-20 12 12)" stroke-width="1.5"><path d="M3.5 9h17l-1 1.5 1 1.5-1 1.5 1 1.5h-17l1-1.5-1-1.5 1-1.5Z"/></g></symbol>
+  <symbol id="i-not" viewBox="0 0 24 24"><path d="M5 5h14v9.5L14.5 19H5ZM14.5 19v-4.5H19" stroke-width="1.6"/></symbol>
+  <symbol id="i-bant" viewBox="0 0 24 24"><g transform="rotate(-20 12 12)" stroke-width="1.6"><path d="M3.5 9h17l-1 1.5 1 1.5-1 1.5 1 1.5h-17l1-1.5-1-1.5 1-1.5Z"/></g></symbol>
   <symbol id="i-kirp" viewBox="0 0 24 24"><path d="M2.5 7h3M7 2.5v3M18.5 7h3M17 2.5v3M2.5 17h3M7 18.5v3M18.5 17h3M17 18.5v3"/><path d="M9 9h6v6H9Z" stroke-opacity=".45"/></symbol>
   <symbol id="i-kapat" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
   <symbol id="i-kopyala" viewBox="0 0 24 24"><path d="M8.5 8.5h11v11h-11ZM15.5 8.5v-4h-11v11h4"/></symbol>
@@ -130,6 +132,9 @@
   <symbol id="i-cogalt" viewBox="0 0 24 24"><path d="M8.5 8.5h11v11h-11ZM15.5 8.5v-4h-11v11h4M14 11.5v5M11.5 14h5"/></symbol>
   <symbol id="i-sayfa-sil" viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11ZM13.5 3.5v4h4M9.8 12.3l4.4 4.4M14.2 12.3l-4.4 4.4"/></symbol>
   <symbol id="i-tuval" viewBox="0 0 24 24"><path d="M3.5 5h17M3.5 19h17M3.5 9h1M19.5 9h1M3.5 15h1M19.5 15h1"/><path d="M6.5 13.5c1.2-3 2.3-3 2.8-.8.5 2.1 1.6 2.1 2.6-.4s2.1-2.5 2.6-.2c.4 1.8 1.4 1.8 3 .2"/></symbol>
+  <!-- 9. tur (OZELLIKLER-5): izler ve cep defteri, çizgi roman -->
+  <symbol id="i-izler" viewBox="0 0 24 24"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-11ZM6.5 3.5v17M15.5 3.5v17"/><path d="M9 9.5c1.5-.4 3-.3 4.5.1M9 13c1.2-.3 2.2-.2 3 0"/></symbol>
+  <symbol id="i-cizgi-roman" viewBox="0 0 24 24"><path d="M4 4.5h16v15H4ZM4 11h7.5M11.5 4.5v15M11.5 13.5H20"/><path d="M14 7.2h4.2a.8.8 0 0 1 .8.8v1.6a.8.8 0 0 1-.8.8h-2.4l-1.3 1.1v-1.1H14"/></symbol>
   <!-- Karşılama natürmortu: tek renk kontur (currentColor), çizgi kalınlığını .naturmort verir -->
   <symbol id="i-naturmort" viewBox="0 0 360 120"><path d="M22 108V56a4 4 0 0 1 4-4h76a4 4 0 0 1 4 4v52 M28 96h72 M33 96a31 31 0 0 1 62 0 M42.8 83.8L38.9 81.5 M43.9 77.9L42.4 76.6 M48.1 74.2L47.0 72.5 M53.0 71.3L52.2 69.5 M58.4 69.6L58.0 67.6 M64.0 71.5L64.0 67.0 M69.6 69.6L70.0 67.6 M75.0 71.3L75.8 69.5 M79.9 74.2L81.0 72.5 M84.1 77.9L85.6 76.6 M85.2 83.8L89.1 81.5 M64 96L75.8 71.7 M58 103h12 M36 52v-5M32.5 47h7M92 52v-5M88.5 47h7 M36 47c-3-7-12-9-17-3s-3 15-4 26-4 28-9 38 M186 66C170 58 148 58 130 62L126 100C146 96 168 97 186 104 M186 66C202 58 224 58 242 62L246 100C226 96 204 97 186 104 M186 66V104 M126 100l-2 4C146 100 168 101 186 108C204 101 226 100 248 104l-2-4 M138 71c12 -3 24 -3 36 1 M137 78c12 -3 24 -3 36 1 M136 85c12 -3 24 -3 36 1 M135 92c7 -3 14 -3 22 1 M200 92V70M199 91.5h36 M200 80c3-9 6-9 9 0s6 9 9 0 6-9 9 0 4 6 6 3 M252 96h96v10h-96Z M252 99.5h96M252 102.5h96 M256 96v3.2 M261 96v2.2 M266 96v2.2 M271 96v2.2 M276 96v3.2 M281 96v2.2 M286 96v2.2 M291 96v2.2 M296 96v3.2 M301 96v2.2 M306 96v2.2 M311 96v2.2 M316 96v3.2 M321 96v2.2 M326 96v2.2 M331 96v2.2 M336 96v3.2 M341 96v2.2 M296 92.5h11v17h-11Z M301.5 92.5v17 M4 108.5h352"/><g transform="translate(250 90) rotate(-14)"><rect x="0" y="-4" width="34" height="8" rx="3.5"/><path d="M8-4V-6.6H28M29-4v8"/><path d="M34-3.5h28M34 3.5h28M62-3.5 70-2.4V2.4L62 3.5"/><path d="M70-2.4 72.5-3.4 86 0 72.5 3.4 70 2.4M75.5 0h9"/><circle cx="74.6" cy="0" r=".8"/></g></symbol>
   <!-- Süsler: dolgu currentColor ya da fill ile -->

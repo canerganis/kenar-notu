@@ -1,17 +1,17 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "4.1.0";
+const VERSION = "5.0.0";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
 
 const KABUK = [
   "./", "./index.html", "./manifest.webmanifest",
-  "./tasarim.css", "./duzenleyici.css", "./okuma.css", "./koltuk.css", "./tekrar.css", "./asistan.css", "./arama.css", "./ses.css",
+  "./tasarim.css", "./duzenleyici.css", "./okuma.css", "./koltuk.css", "./tekrar.css", "./asistan.css", "./arama.css", "./ses.css", "./izler.css", "./cizgi.css",
   "./app.js", "./ortak.js", "./kalem.js", "./sayfalar.js",
   "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./tekrar.js", "./asistan.js",
   "./kayit.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
-  "./arama.js", "./ses.js",
+  "./arama.js", "./ses.js", "./izler.js", "./cizgi.js", "./cizgi-belge.js", "./cizgi-ornek.js",
   "./ikon/ikon.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
   "./ikon/ikon-maskable-192.png", "./ikon/ikon-maskable-512.png", "./ikon/apple-touch-icon.png",
   "../lib/jszip.min.js", "../lib/epub.min.js",

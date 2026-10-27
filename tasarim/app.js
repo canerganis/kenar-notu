@@ -7,7 +7,7 @@ import {
   $, $$, h, icon, hareketAz, bus, store, belgeBul, yeniId, kirpintiSil, ayarla,
   setBildirimGosterici, toast, KAPAK_RENKLERI, CILT_RENKLERI, KLASORLER,
   varsayilanMod, bugunTekrar, YZ_UYGULAMALAR, YZ_SAGLAYICILAR,
-  kartGuncelle, ORNEK_SURUM, ORNEK_DEGISIM, ORNEK_SAYFALAR,
+  kartGuncelle, ORNEK_SURUM, ORNEK_DEGISIM, ORNEK_SAYFALAR, cizgiMi, basincUygula,
 } from "./ortak.js";
 import { PW, PH, PDF_PAGES, TEMPLATES } from "./sayfalar.js";
 import * as SAYFALAR from "./sayfalar.js";
@@ -224,7 +224,7 @@ function ayarlariUygula(ilk = false) {
   if (!ilk && oncekiKoyu !== koyuMu()) bus.emit("tema", { koyu: koyuMu() });
   if (!ilk && !oncekiKoyu && koyuMu()) koyuOneri();
 }
-function temaRengi() { metaTema?.setAttribute("content", koyuMu() ? "#221E18" : "#FAF6EE"); }
+function temaRengi() { metaTema?.setAttribute("content", koyuMu() ? "#141413" : "#F7F5F0"); }
 
 // Koyu temaya ilk geçişte bir kez: sayfa rengini de koyu yapmayı öner (3.25).
 // Sayfa rengi "oto" ise Koltuk sayfası temayla zaten kararır, öneri gereksiz.
@@ -308,15 +308,28 @@ const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
 const bitince = (anim, ms) => Promise.race([anim.finished.catch(() => {}), bekle(ms + 250)]);
 const yaziAlani = (el) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-const LOGO_SVG = `<svg viewBox="0 0 40 40" aria-hidden="true">
-  <rect x="2" y="2" width="36" height="36" rx="9" fill="url(#muhur)"/>
-  <rect x="2.75" y="2.75" width="34.5" height="34.5" rx="8.25" fill="none" stroke="#FFFFFF24"/>
-  <g fill="none" stroke="#F1E3C8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 9.5h14v21H10Z" stroke-width="1.6"/>
-    <path d="M24 9.5h5.5v21H24" stroke-width="1.4" stroke-opacity=".7"/>
-    <path d="M26.2 11.5v17" stroke-width="1" stroke-dasharray="1.6 1.9" stroke-opacity=".8"/>
-    <path d="M13.5 14.5h7M13.5 18h7M13.5 21.5h4.5" stroke-width="1.2" stroke-opacity=".65"/>
-  </g></svg>`;
+// TASARIM-3 11: bordo karo, köşesi kıvrık yaprak, ölçü çentikli kenar çizgisi ve basınçlı mürekkeple ∫ (kimlikler kn- önekli)
+const LOGO_SVG = `<svg viewBox="0 0 512 512" aria-hidden="true"><defs>
+<linearGradient id="kn-z" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8E2A38"/><stop offset="1" stop-color="#5A1520"/></linearGradient>
+<linearGradient id="kn-k" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBF7EF"/><stop offset="1" stop-color="#F1E9DA"/></linearGradient>
+<linearGradient id="kn-c" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#E4D8C2"/><stop offset="1" stop-color="#CDBD9F"/></linearGradient>
+<filter id="kn-g" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2A0A10" flood-opacity=".25"/><feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#2A0A10" flood-opacity=".35"/></filter>
+</defs><rect width="512" height="512" rx="112" fill="url(#kn-z)"/><g filter="url(#kn-g)">
+<path d="M116 90Q116 80 126 80H326L396 150V422Q396 432 386 432H126Q116 432 116 422Z" fill="url(#kn-k)"/>
+<path d="M326 80V138Q326 150 338 150H396Z" fill="url(#kn-c)"/>
+<path d="M164 80V432" stroke="#A3313F" stroke-width="10"/>
+<path d="M151 102h8M151 124h8M151 146h8M151 168h8M151 190h8M151 212h8M151 234h8M151 256h8M151 278h8M151 300h8M151 322h8M151 344h8M151 366h8M151 388h8M151 410h8" stroke="#A3313F" stroke-opacity=".6" stroke-width="3"/>
+<g fill="#1B2A4A"><path d="M341.4 150.7L342.4 146.3L343 141.9L343.7 137.7L344.1 133.6L344.2 129.5L343.8 125.6L343.2 121.7L342.1 118.1L340.8 114.5L339.1 111.2L337 108L334.7 105.1L332 102.4L329.1 100L325.9 97.8L322.5 96L318.9 94.5L315.1 93.3L311.1 92.4L307 91.9L302.8 91.7L298.5 91.9L293.8 92.4L289.3 93.5L284.9 94.9L280.7 96.8L276.8 99.1L273.2 101.8L269.9 104.7L266.8 108L264 111.5L261.5 115.1L259.2 119L257.1 123L255.2 127.2L253.5 131.4L252 135.8L250.6 140.3L249.4 144.9L248.3 149.5L247.4 154.2L246.5 159L245.7 163.8L245 168.7L243.9 178.4L242.8 188.1L241.8 197.8L240.8 207.6L239.8 217.4L238.9 227.1L238 236.8L237.2 246.5L236.4 256L235.7 265.4L235 274.7L234.4 283.7L233.7 292.6L233.1 301.2L232.6 309.5L232 317.5L231.5 325.2L230.9 332.5L230.4 339.5L229.8 345.9L229.3 352L228.7 357.4L228.1 362L227.4 366.4L226.6 370.5L225.7 374.3L224.6 377.9L223.5 381.2L222.3 384.3L221 387.1L219.7 389.7L218.3 392L216.8 394.1L215.3 395.9L213.7 397.5L212.1 398.9L210.4 400.2L208.7 401.3L206.8 402.2L204.8 402.9L202.7 403.5L200.4 403.9L198 404L195.4 404L193 403.8L190.8 403.4L188.7 403L186.8 402.3L185.1 401.6L183.5 400.8L182.1 399.9L180.8 398.9L179.6 397.8L178.5 396.6L177.6 395.3L176.8 393.9L176 392.4L175.5 390.8L175 389.1L174.7 387.3L174.5 385.4L174.5 383.4L174.9 381.5L175.5 379.5L176.2 377.5L177.2 375.5A3.5 3.5 0 0 1 170.8 372.5L170.8 372.5L169.8 374.8L168.8 377.3L168.1 379.8L167.6 382.2L167 384.7L166.5 387.2L166.3 389.7L166.4 392.2L166.6 394.7L167.2 397.3L167.9 399.7L168.9 402.2L170.2 404.6L171.7 406.8L173.5 409L175.5 411.1L177.8 413L180.3 414.7L183.1 416.3L186 417.7L189.2 418.9L192.6 420L196.5 420.8L200.4 421.2L204.3 421.4L208.1 421.1L212 420.5L215.7 419.5L219.4 418.2L223 416.5L226.5 414.5L229.8 412.1L232.9 409.4L235.9 406.5L238.8 403.2L241.4 399.7L244 396L246.3 391.9L248.5 387.7L250.6 383.1L252.5 378.4L254.2 373.4L255.8 368.1L257.3 362.6L258.6 356.6L259.9 350.3L261.2 343.6L262.5 336.5L263.8 329L265 321.2L266.2 313.1L267.3 304.6L268.4 295.9L269.5 287L270.5 277.8L271.4 268.5L272.3 259L273.1 249.4L273.8 239.7L274.5 229.9L275.1 220L275.6 210.2L276 200.3L276.4 190.5L276.7 180.8L277 171.3L277.2 167L277.4 162.7L277.7 158.5L278.1 154.5L278.6 150.5L279.1 146.8L279.7 143.1L280.4 139.7L281.2 136.4L282.1 133.3L283.1 130.5L284.2 127.9L285.3 125.5L286.6 123.3L287.9 121.3L289.3 119.5L290.8 117.9L292.5 116.4L294.3 115.1L296.4 114L298.8 113L301.5 112.1L304.2 111.5L306.8 111.1L309.3 110.9L311.8 111L314.2 111.2L316.4 111.7L318.6 112.3L320.7 113.2L322.7 114.3L324.7 115.5L326.5 117L328.2 118.7L329.8 120.6L331.2 122.8L332.5 125.2L333.6 127.9L334.6 130.8L335.3 134L335.8 137.5L336 141.2L335.5 145.1L334.6 149.3A3.5 3.5 0 0 1 341.4 150.7Z"/><circle cx="333" cy="146" r="13"/><circle cx="179" cy="378" r="13"/></g>
+</g></svg>`;
+// ∫'nin doğum günü (TASARIM-3 nüans 5): 29 Ekim'de logonun altında tek satır kenar notu; kapatılınca o yıl çıkmaz
+function ozelGunSatiri() {
+  const t = new Date(), yil = t.getFullYear();
+  if (t.getMonth() !== 9 || t.getDate() !== 29 || Number(store.ayarlar.ozelGun) === yil) return null;
+  const el = h("p", { class: "ozel-gun t-aside" },
+    h("span", {}, `Bugün ∫ ${yil - 1675} yaşında. Leibniz onu ilk kez 29 Ekim 1675’te bir notunda yazdı.`),
+    h("button", { type: "button", "aria-label": "Kenar notunu kapat", onclick: () => { el.remove(); ayarla({ ozelGun: yil }); } }, icon("kapat", "i-16")));
+  return el;
+}
 const ATAS_SVG = '<svg class="atas" viewBox="0 0 16 46" aria-hidden="true"><path d="M11 15v20a4.5 4.5 0 0 1-9 0V8a6 6 0 0 1 12 0v25" fill="none" stroke="url(#celik)" stroke-width="1.9" stroke-linecap="round"/></svg>';
 
 // Göreli zaman: "az önce", "2 saat önce", "dün", "3 gün önce"
@@ -363,12 +376,15 @@ const KAGIT_SINIF = { blank: "k-bos", lined: "k-cizgili", grid: "k-kareli", dott
 const kagitAdi = (id) => TEMPLATES.find((t) => t.id === id)?.label || "Boş";
 const soyad = (yazar = "") => yazar.trim().split(/\s+/).pop() || "";
 const klasorBul = (id) => KLASORLER.find((k) => k.id === id);
-const turAdi = (b) => (b.tur === "pdf" ? "PDF" : b.tur === "epub" ? "EPUB" : "Defter");
+const turAdi = (b) => (cizgiMi(b) ? "Çizgi roman" : b.tur === "pdf" ? "PDF" : b.tur === "epub" ? "EPUB" : "Defter");
 function ilerlemeOrani(b) {
   if (b.tur === "epub") return Math.min(1, b.ilerleme || 0);
   return b.sayfaSayisi ? Math.min(1, (b.sayfa || 1) / b.sayfaSayisi) : 0;
 }
+// Çizgi romanın künyesi: "Sayı 3" ya da "#3"; yoksa sayfa sayısı
+const cizgiKunye = (b) => (b.sayi ? `Sayı ${b.sayi}` : `${b.sayfaSayisi || 1} sayfa`);
 function etiketMetni(b) {
+  if (cizgiMi(b)) return b.seri ? `${b.seri} · ${cizgiKunye(b)}` : `Çizgi roman · ${cizgiKunye(b)}`;
   if (b.tur === "pdf") return `PDF · ${b.sayfaSayisi} sayfa`;
   // EPUB'da türü bez cilt anlatır; dar hücrede yazarın adı kesilmesin diye yalnız soyadı
   if (b.tur === "epub") return soyad(b.yazar) || "EPUB";
@@ -528,7 +544,7 @@ function uzunBasma(el, ac) {
 
 /* ================= Kapaklar (3.6) ================= */
 // PDF kapağı: üstteki yaprak belgenin kendi ilk örnek sayfasının küçük resmi, bir kez çizilip önbellekte tutulur.
-// Sayfalar Fraunces ve Literata ile dizilir: yazı tipleri gelmeden çizilen kapaklar gelince yeniden çizilir.
+// Sayfalar Literata ile dizilir: yazı tipleri gelmeden çizilen kapaklar gelince yeniden çizilir.
 const ornekListe = (id) => (typeof SAYFALAR.ornekSayfalari === "function" && SAYFALAR.ornekSayfalari(id)) || PDF_PAGES;
 const kapakOnbellek = new Map();
 let kapakYaziHazir = false;
@@ -601,7 +617,12 @@ function kapakPlanla() {
 
 function kapakOlustur(b, { mini = false } = {}) {
   let el;
-  if (b.dosya && b.tur === "pdf" && b.kapakGorsel) {
+  if (cizgiMi(b)) {
+    // Çizgi roman: kapak görseli mylar poşette; görsel yoksa adla basılmış renkli kapak
+    el = h("div", { class: "kapak-cizgi" + (b.kapakGorsel ? " gorselli" : ""), style: `--c:${b.kapak || ciltRengi(b.ad)}` },
+      b.kapakGorsel ? h("img", { class: "kapak-gorsel", src: b.kapakGorsel, alt: "", decoding: "async", draggable: "false" })
+        : mini ? null : h("div", { class: "yazi" }, h("b", {}, b.ad), b.sayi ? h("small", {}, `#${b.sayi}`) : null));
+  } else if (b.dosya && b.tur === "pdf" && b.kapakGorsel) {
     // İçe aktarılan PDF: ilk sayfanın küçük görüntüsü
     el = h("div", { class: "kapak-pdf" }, h("div", { class: "yaprak" }, h("img", { class: "kapak-gorsel", src: b.kapakGorsel, alt: "", decoding: "async", draggable: "false" })));
     if (!mini) el.append(parca(ATAS_SVG));
@@ -631,6 +652,9 @@ function kapakOlustur(b, { mini = false } = {}) {
   }
   el.setAttribute("aria-hidden", "true");
   if (b.favori && !mini) el.append(h("i", { class: "fav" }));
+  // Sık açılan kitabın bez cildi aşınır: 4, 12 ve 30 açılışta bir basamak (TASARIM-3 nüans 8)
+  const n = Number(b.acilma) || 0;
+  if (n >= 4) el.dataset.asinma = n >= 30 ? "3" : n >= 12 ? "2" : "1";
   return el;
 }
 
@@ -639,6 +663,7 @@ const GORUNUMLER = [
   { id: "tumu", ad: "Tümü", baslik: "Kitaplık", ikon: "tumu" },
   { id: "kitaplar", ad: "Kitaplar", ikon: "kitap" },
   { id: "defterler", ad: "Defterler", ikon: "defter" },
+  { id: "cizgiler", ad: "Çizgi romanlar", ikon: "cizgi-roman" },
   { id: "favoriler", ad: "Favoriler", ikon: "yildiz" },
   { id: "kirpilanlar", ad: "Kırpılanlar", ikon: "kirp" },
 ];
@@ -654,16 +679,17 @@ const K = {};         // kitaplık öğeleri
 const darMedya = matchMedia("(max-width: 999px)");
 
 function secimFiltresi(secim) {
-  if (secim === "kitaplar") return (b) => b.tur !== "defter";
+  if (secim === "kitaplar") return (b) => b.tur !== "defter" && !cizgiMi(b);
   if (secim === "defterler") return (b) => b.tur === "defter";
+  if (secim === "cizgiler") return cizgiMi;
   if (secim === "favoriler") return (b) => b.favori;
   if (secim.startsWith("klasor:")) { const id = secim.slice(7); return (b) => b.klasor === id; }
   return () => true;
 }
 function sayilar() {
-  const s = { tumu: store.belgeler.length, kitaplar: 0, defterler: 0, favoriler: 0, kirpilanlar: store.kirpintilar.length };
+  const s = { tumu: store.belgeler.length, kitaplar: 0, defterler: 0, cizgiler: 0, favoriler: 0, kirpilanlar: store.kirpintilar.length };
   for (const b of store.belgeler) {
-    if (b.tur === "defter") s.defterler++; else s.kitaplar++;
+    if (b.tur === "defter") s.defterler++; else if (cizgiMi(b)) s.cizgiler++; else s.kitaplar++;
     if (b.favori) s.favoriler++;
     if (b.klasor) s["klasor:" + b.klasor] = (s["klasor:" + b.klasor] || 0) + 1;
   }
@@ -706,11 +732,15 @@ function kitaplikKur({ gizli = false } = {}) {
   K.araGiris = h("a", { class: "ara-giris", href: "#arama", title: "Her yerde ara (Ctrl+K)" },
     icon("ara"), h("span", { class: "ad" }, "Ara"), h("kbd", { class: "kisayol", "aria-hidden": "true" }, "Ctrl K"));
   K.araGiris.addEventListener("click", (e) => { e.preventDefault(); bus.emit("git", { ekran: "arama", terim: arama.trim() || undefined }); });
+  // İzlerim (OZELLIKLER-5): bütün kitaplarda kalemin değdiği yerler, cep defterleri ve derlemeler
+  K.izlerGiris = h("a", { class: "izler-giris", href: "#izler" }, icon("izler"), h("span", { class: "ad" }, "İzlerim"));
+  K.izlerGiris.addEventListener("click", (e) => { e.preventDefault(); bus.emit("git", { ekran: "izler" }); });
   K.kenar.append(
     h("div", { class: "kenar-cubugu__ic" },
       h("div", { class: "logo" }, parca(LOGO_SVG), h("b", {}, "Kenar Notu")),
+      ozelGunSatiri(),
       K.tekrar,
-      h("div", { class: "gezinme gezinme-ara" }, K.araGiris),
+      h("div", { class: "gezinme gezinme-ara" }, K.araGiris, K.izlerGiris),
       h("div", { class: "gezinme" }, GORUNUMLER.map((g) => navOgesi(g.id, icon(g.ikon), g.ad))),
       h("div", { class: "bolum-basi" },
         h("span", { class: "t-etiket" }, "Klasörler"),
@@ -733,7 +763,7 @@ function kitaplikKur({ gizli = false } = {}) {
 
   // Başlık satırı
   K.menuDugme = h("button", { class: "ikon-dugme menu-dugme", type: "button", "aria-label": "Menü", "aria-controls": "kenar-cubugu", "aria-expanded": "false", onclick: cekmeceAc }, icon("menu"));
-  K.baslik = h("h1", { class: "t-vitrin" });
+  K.baslik = h("h1", { class: "t-b1" });
   K.altBaslik = h("p");
   K.aramaGirdi = h("input", { type: "search", placeholder: "Kitaplıkta ara", "aria-label": "Kitaplıkta ara", enterkeyhint: "search", autocomplete: "off", spellcheck: "false" });
   K.aramaTemizle = h("button", { class: "arama-temizle", type: "button", "aria-label": "Aramayı temizle", hidden: true }, icon("kapat"));
@@ -805,11 +835,14 @@ function klasorlerCiz() {
 
 function kenarGuncelle() {
   const s = sayilar();
-  const tekrarda = acik.ekran === "tekrar";
+  const tekrarda = acik.ekran === "tekrar" || acik.ekran === "izler";
   for (const [secim, { a, sayi }] of K.navOgeler) {
     sayi.textContent = String(s[secim] || 0);
     if (tercih.secim === secim && !tekrarda) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
+  // Çizgi roman yoksa süzgeç görünmez (kitaplık sade kalır)
+  K.navOgeler.get("cizgiler")?.a.toggleAttribute("hidden", !s.cizgiler && tercih.secim !== "cizgiler");
+  if (acik.ekran === "izler") K.izlerGiris?.setAttribute("aria-current", "page"); else K.izlerGiris?.removeAttribute("aria-current");
   tekrarGuncelle();
 }
 
@@ -833,12 +866,17 @@ function gorunumBilgisi() {
   if (tercih.secim === "tumu") {
     const enSon = store.belgeler.reduce((m, b) => Math.max(m, b.acilis || 0), 0);
     if (!s.tumu) return { baslik: "Kitaplık", alt: "Masa henüz boş" };
-    return { baslik: "Kitaplık", alt: `${s.kitaplar} belge, ${s.defterler} defter · son açılan ${neZaman(enSon)}` };
+    const cizgi = s.cizgiler ? `, ${s.cizgiler} çizgi roman` : "";
+    return { baslik: "Kitaplık", alt: `${s.kitaplar} belge, ${s.defterler} defter${cizgi} · son açılan ${neZaman(enSon)}` };
   }
   if (tercih.secim === "kitaplar") {
-    const pdf = store.belgeler.filter((b) => b.tur === "pdf").length, epub = s.kitaplar - pdf;
-    const son = sirala(store.belgeler.filter((b) => b.tur !== "defter"))[0];
+    const pdf = store.belgeler.filter((b) => b.tur === "pdf" && !cizgiMi(b)).length, epub = s.kitaplar - pdf;
+    const son = sirala(store.belgeler.filter(secimFiltresi("kitaplar")))[0];
     return { baslik: g.ad, alt: `${pdf} PDF, ${epub} EPUB` + (son ? ` · en son ${son.ad}` : "") };
+  }
+  if (tercih.secim === "cizgiler") {
+    const seri = new Set(store.belgeler.filter(cizgiMi).map((b) => b.seri).filter(Boolean)).size;
+    return { baslik: g.ad, alt: s.cizgiler ? `${s.cizgiler} sayı` + (seri ? `, ${seri} seri` : "") : "Raf boş" };
   }
   if (tercih.secim === "defterler") {
     const sayfa = store.belgeler.filter((b) => b.tur === "defter").reduce((t, b) => t + (b.sayfaSayisi || 0), 0);
@@ -951,6 +989,7 @@ function belgelerCiz() {
     if (tercih.secim === "favoriler") return bos("yildiz", "Favori yok.", "Bir kapağın altındaki yıldıza dokun.");
     if (tercih.secim === "defterler") return bos("defter", "Henüz defter yok.", "Yeni düğmesinden kâğıt türünü seçip ilk defterini aç.");
     if (tercih.secim === "kitaplar") return bos("kitap", "Henüz kitap yok.", "Yeni düğmesinden bir PDF ya da EPUB içe aktar.");
+    if (tercih.secim === "cizgiler") return bos("cizgi-roman", "Çizgi roman rafı boş.", "Yeni düğmesinden bir CBZ içe aktar ya da bir PDF’in menüsünden Çizgi roman olarak oku’yu seç.");
     return bos("klasor", "Bu klasör boş.", "Bir kapağa uzun bas ve Klasöre taşı’yı seç.");
   }
 
@@ -958,25 +997,61 @@ function belgelerCiz() {
     f.append(bolumBaslik(`“${q}” için sonuçlar`, liste.length), belgeKumesi(liste));
   } else if (tercih.secim === "favoriler") {
     f.append(belgeKumesi(liste));
+  } else if (tercih.secim === "cizgiler") {
+    f.append(cizgiRafCiz(liste));
   } else {
     // Okuma rafı (Koltuk) ve Çalışma masası (Masa): ayrım belgenin moduyla (TASARIM-2 3.1)
     if (tercih.secim === "tumu") f.append(kaldiginCiz());
+    // Çizgi romanlar kendi rafında (TASARIM-3 9.2); klasördeki çizgi roman PDF'i dersinin şeridinde kalır
+    const cizgiRafta = (b) => cizgiMi(b) && !klasorBul(b.klasor);
+    const cizgi = liste.filter(cizgiRafta);
     // Bir derse bağlı belge koltukta okunsa da masada, dersinin şeridinde kalır
     const masada = (b) => !!klasorBul(b.klasor) || varsayilanMod(b) !== "koltuk";
-    const raf = liste.filter((b) => !masada(b));
-    const masa = liste.filter(masada);
+    const raf = liste.filter((b) => !cizgiRafta(b) && !masada(b));
+    const masa = liste.filter((b) => !cizgiRafta(b) && masada(b));
     // Son açılan belge Masa'daysa Çalışma masası üste gelir: dönünce kaldığın masa ilk ekranda görünür
     const son = store.belgeler.reduce((m, b) => ((b.acilis || 0) > (m?.acilis || 0) ? b : m), null);
     const bolumler = [raf.length && rafCiz(raf), masa.length && masaCiz(masa)].filter(Boolean);
-    if (son && varsayilanMod(son) === "masa") bolumler.reverse();
+    if (son && !cizgiRafta(son) && varsayilanMod(son) === "masa") bolumler.reverse();
+    // Çizgi roman rafı en altta; son açılan çizgi romansa okuma rafının altına gelir
+    if (cizgi.length) {
+      const cr = cizgiRafCiz(cizgi);
+      if (son && cizgiRafta(son) && bolumler.length > 1) bolumler.splice(1, 0, cr); else bolumler.push(cr);
+    }
     f.append(...bolumler);
   }
   return f;
 }
 
+// Çizgi roman rafı (TASARIM-3 9.2): dükkân rafı, kapaklar önü dönük ve mylar poşette, ceviz raf dudağına yaslı
+function cizgiRafCiz(liste) {
+  if (tercih.duzen === "liste") {
+    return h("section", { class: "cizgi-bolum", "aria-labelledby": "cizgi-b" },
+      bolumUst("cizgi-b", "Çizgi roman rafı", "", `${liste.length} sayı`), belgeKumesi(liste));
+  }
+  const raf = h("div", { class: "cizgi-raf", role: "list", "aria-label": "Çizgi roman rafı" }, liste.map(cizgiOge), h("div", { class: "cizgi-raf-bos", "aria-hidden": "true" }));
+  return h("section", { class: "cizgi-bolum", "aria-labelledby": "cizgi-b" },
+    bolumUst("cizgi-b", "Çizgi roman rafı", "", `${liste.length} sayı`), raf);
+}
+function cizgiOge(b) {
+  if (b.dizgi) return h("div", { class: "cizgi-oge dizgi", role: "listitem", "aria-busy": "true", dataset: { id: b.id } },
+    h("div", { class: "kapak" }, dizgiKapak(b)), h("span", { class: "etiket" }, "Dizgide"), h("div", { class: "ad" }, b.ad));
+  const kapak = kapakOlustur(b);
+  // Okunmakta olan sayı: poşetin sağ üst köşesinde bordo kurdele ucu
+  const okunuyor = (b.sayfa || 1) > 1 && (b.sayfa || 1) < (b.sayfaSayisi || 1);
+  const bag = h("a", { class: "kapak" + (okunuyor ? " okunuyor" : ""), href: `#belge/${b.id}`, draggable: "false", "aria-label": `${b.ad}, ${konumMetni(b)}, aç` }, kapak);
+  bag.addEventListener("click", (e) => { e.preventDefault(); belgeAcIstegi(b, kapak); });
+  uzunBasma(bag, () => belgeFisi(b, kapak));
+  return h("div", { class: "cizgi-oge belge", role: "listitem", dataset: { id: b.id } },
+    bag,
+    h("span", { class: "etiket" }, b.sayi ? `#${b.sayi}` : `${b.sayfaSayisi || 1} s.`),
+    h("div", { class: "ad" }, vurgula(b.ad, arama)),
+    b.seri || b.yazar ? h("div", { class: "seri" }, b.seri || b.yazar) : null);
+}
+
 function bolumUst(id, ad, etiket, sayi) {
   return h("header", { class: "bolum-ust" },
-    h("h2", { class: "t-b2", id }, ad), h("span", { class: "etiket-serit" }, etiket), h("span", { class: "bolum-ust__sayi t-kucuk" }, sayi));
+    h("h2", { class: "t-b2", id }, ad), etiket ? h("span", { class: "etiket-serit" }, etiket) : null, h("span", { class: "bolum-ust__sayi t-kucuk" }, sayi));
 }
 
 // Okuma rafı: kapaklar ceviz rafta dikili, raf ve çentikler sabit, kapaklar yatay kayar
@@ -1111,6 +1186,12 @@ function belgeFisi(b, capa) {
       fisSatir("yildiz", b.favori ? "Favorilerden çıkar" : "Favorilere ekle", null, () => { fisKapat(); favoriDegistir(b); }),
       fisSatir("metin", "Yeniden adlandır", null, adlandir),
       fisSatir("klasor", "Klasöre taşı", klasor ? `Şu an: ${klasor.ad}` : "Klasörsüz", klasorSec),
+      // Cep defteri: altı çizilen, yuvarlak içine alınan ve kenarına işaret konan yerler (OZELLIKLER-5)
+      fisSatir("izler", "Cep defteri", "Kalemin değdiği yerler", () => { fisKapat(true); bus.emit("defter:ac", { belgeId: b.id }); }),
+      // Bir PDF çizgi roman olarak da okunabilir: sayfa sayfa, panel panel (cizgi.js)
+      // replaceChildren null'u "null" yazısına çevirir: satır yoksa hiç eklenmez
+      ...(b.tur === "pdf" && b.dosya ? [fisSatir("cizgi-roman", b.cizgi ? "Belge olarak oku" : "Çizgi roman olarak oku",
+        b.cizgi ? "Masa ve Koltuk’ta açılır" : "Sayfa ve panel görünümü, karanlık zemin", () => cizgiDegistir(b))] : []),
       h("div", { class: "fis-ayrac" }),
       silSatiri("Sil", () => { fisKapat(true); belgeSil(b); }));
   };
@@ -1153,6 +1234,15 @@ function belgeFisi(b, capa) {
   };
   anaMenu();
   fisAc(capa, icerik, { hiza: "yan", etiket: `${b.ad} seçenekleri` });
+}
+
+// "Çizgi roman olarak oku": belge.cizgi kaydedilir ve belge yeni görünümünde açılır; geri dönmek aynı satırdan
+function cizgiDegistir(b) {
+  fisKapat(true);
+  if (b.cizgi) delete b.cizgi; else b.cizgi = true;
+  bus.emit("belgeler", { tur: "cizgi", id: b.id });
+  if (b.cizgi) belgeAcIstegi(b, kapakBul(b.id));
+  else toast(`“${b.ad}” yeniden belge olarak açılacak`);
 }
 
 // Belgenin kartları da gider; dosyası, verisi ve ekleri bildirim geri alınmadan kapanınca kayit.js'te silinir
@@ -1313,7 +1403,7 @@ function yeniMenusu(klavye) {
   K.yeni.setAttribute("aria-expanded", "true");
   fisAc(K.yeni, [
     fisSatir("yeni-defter", "Yeni defter", "Boş, çizgili, kareli, noktalı ya da Cornell", () => { fisKapat(true); yeniDefterPenceresi(); }),
-    fisSatir("pdf", "PDF ya da EPUB aç", "PDF masaya, EPUB okuma rafına", () => { fisKapat(true); dosyaSec(); }),
+    fisSatir("pdf", "PDF, EPUB ya da CBZ aç", "PDF masaya, EPUB okuma rafına, CBZ çizgi roman rafına", () => { fisKapat(true); dosyaSec(); }),
   ], { hiza: "alt-sag", etiket: "Yeni", klavye, kapaninca: () => K.yeni.setAttribute("aria-expanded", "false") });
 }
 
@@ -1323,7 +1413,7 @@ const dizgiler = [];
 let dosyaGirdisi = null;
 function dosyaSec() {
   if (!dosyaGirdisi) {
-    dosyaGirdisi = h("input", { type: "file", accept: ".pdf,.epub,application/pdf,application/epub+zip", multiple: true, hidden: true });
+    dosyaGirdisi = h("input", { type: "file", accept: ".pdf,.epub,.cbz,.cbr,.zip,application/pdf,application/epub+zip,application/vnd.comicbook+zip", multiple: true, hidden: true });
     dosyaGirdisi.addEventListener("change", () => {
       const dosyalar = [...dosyaGirdisi.files];
       dosyaGirdisi.value = "";
@@ -1333,7 +1423,10 @@ function dosyaSec() {
   }
   dosyaGirdisi.click();
 }
-const tahminiTur = (f) => (/\.epub$/i.test(f.name) || f.type === "application/epub+zip" ? "epub" : "pdf");
+const tahminiTur = (f) => (/\.epub$/i.test(f.name) || f.type === "application/epub+zip" ? "epub"
+  : /\.(cbz|cbr|zip)$/i.test(f.name) || /comicbook/.test(f.type) ? "cizgi" : "pdf");
+// Kitaplığın açtığı dosyalar: PDF, EPUB, CBZ (ve içinde yalnız görsel olan zip). CBR'yi kayit.js nedeniyle reddeder.
+const uygunDosya = (f) => /\.(pdf|epub|cbz|cbr|zip)$/i.test(f.name) || /^application\/(pdf|epub\+zip|vnd\.comicbook\+zip|vnd\.comicbook-rar)$/.test(f.type);
 // Klasör görünümündeyken gelen PDF o klasöre düşer
 const secimKlasoru = () => (tercih.secim.startsWith("klasor:") && klasorBul(tercih.secim.slice(7)) ? tercih.secim.slice(7) : undefined);
 
@@ -1341,7 +1434,7 @@ const secimKlasoru = () => (tercih.secim.startsWith("klasor:") && klasorBul(terc
 async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
   const yerler = dosyalar.map((f) => {
     const tur = tahminiTur(f);
-    return { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub)$/i, "") || "Adsız", klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
+    return { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz|cbr|zip)$/i, "") || "Adsız", klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
   });
   dizgiler.unshift(...yerler);
   kitaplikYenile();
@@ -1353,7 +1446,8 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
       sonuclar.push({ b, vardi: once.has(b.id) });
     } catch (hata) {
       console.warn("[kenar-notu] İçe aktarılamadı:", f.name, hata);
-      toast(hata?.kod === "tur" ? `“${f.name}” açılamadı: yalnız PDF ve EPUB.` : `“${f.name}” içe aktarılamadı.`);
+      toast(hata?.kod === "cbr" ? hata.message
+        : hata?.kod === "tur" ? `“${f.name}” açılamadı: yalnız PDF, EPUB ve CBZ.` : `“${f.name}” içe aktarılamadı.`);
     } finally {
       const j = dizgiler.indexOf(yerler[i]);
       if (j >= 0) dizgiler.splice(j, 1);
@@ -1370,7 +1464,7 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
   }
   return sonuclar.map((s) => s.b);
 }
-const kapakBul = (id) => (K.sonuclar ? $(`.belge[data-id="${CSS.escape(id)}"] a.kapak-sahne > *`, K.sonuclar) : null);
+const kapakBul = (id) => (K.sonuclar ? $(`.belge[data-id="${CSS.escape(id)}"] :is(a.kapak-sahne, a.kapak) > *`, K.sonuclar) : null);
 
 // Dizgi kartı: kapak gelene kadar kurşun harf satırları ve camda çalışan iz
 function dizgiKapak(d, mini = false) {
@@ -1379,7 +1473,7 @@ function dizgiKapak(d, mini = false) {
     el.append(h("div", { class: "dizgi-satirlar" }, [62, 88, 74, 92, 50, 80, 68].map((w) => h("i", { style: `--w:${w}%` }))));
     const iz = izOlustur();
     iz.dataset.durum = "dusunuyor";
-    el.append(h("span", { class: "cam cam-k dizgi-cam" }, d.tur === "epub" ? "EPUB" : "PDF", iz));
+    el.append(h("span", { class: "cam cam-k dizgi-cam" }, d.tur === "epub" ? "EPUB" : d.tur === "cizgi" ? "CBZ" : "PDF", iz));
   }
   return el;
 }
@@ -1480,8 +1574,9 @@ function bilgiPenceresi({ ikon, baslik, metin, satirlar, not, eylem }) {
     icon(ikon, "bilgi-simge"),
     h("h2", { class: "t-b2", id: "bilgiBaslik" }, baslik),
     h("p", { id: "bilgiMetin" }, metin),
-    satirlar ? h("dl", { class: "kilavuzlar" }, satirlar.map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", {}, String(deger))))) : null,
-    not ? h("p", { class: "bilgi-not" }, not) : null,
+    // append null'u "null" yazısına çevirir: olmayan parça hiç eklenmez
+    ...(satirlar ? [h("dl", { class: "kilavuzlar" }, satirlar.map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", {}, String(deger)))))] : []),
+    ...(not ? [h("p", { class: "bilgi-not" }, not)] : []),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, parca('<svg viewBox="0 0 28 16"><use href="#i-hedera"/></svg>')),
     h("div", { class: "pencere-alt" },
       h("button", { class: eylem ? "metin-dugme" : "metin-dugme vurgulu", type: "button", onclick: () => dlg.close() }, eylem ? "Kapat" : "Tamam"),
@@ -1595,8 +1690,10 @@ function yedekPenceresi(dosya = null) {
     h("h2", { class: "t-b2", id: "yedekBaslik" }, dosya ? `“${dosya.name}”` : "Yedekle"),
     h("p", {}, dosya
       ? "Yedekteki belgeler, kalem izleri, notlar, kartlar ve kırpıntılar bu kitaplıkla birleştirilir. İkisinde de olan belgede son açılan kalır."
-      : "Her şey tek bir .kenar dosyasına yazılır: belgeler ve dosyaları, kalem izleri, notlar, bantlar, kartlar ve kırpıntılar. API anahtarları yedeğe girmez."),
-    h("dl", { class: "kilavuzlar" }, [["Kitaplar", s.kitaplar], ["Defterler", s.defterler], ["Klasörler", KLASORLER.length], ["Kırpıntılar", s.kirpilanlar], ["Kartlar", store.kartlar.length]]
+      : "Her şey tek bir .kenar dosyasına yazılır: belgeler, çizgi romanlar ve dosyaları, kalem izleri ve cep defterleri, derlemeler, notlar, bantlar, kartlar ve kırpıntılar. API anahtarları yedeğe girmez."),
+    h("dl", { class: "kilavuzlar" }, [["Kitaplar", s.kitaplar], ["Defterler", s.defterler], ...(s.cizgiler ? [["Çizgi romanlar", s.cizgiler]] : []),
+      ["Klasörler", KLASORLER.length], ["Kırpıntılar", s.kirpilanlar], ["Kartlar", store.kartlar.length],
+      ["İzler", store.belgeler.reduce((t, b) => t + (Array.isArray(b.veri?.izler) ? b.veri.izler.length : 0), 0)]]
       .map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", {}, String(deger))))),
     depoGostergesi(),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, parca('<svg viewBox="0 0 28 16"><use href="#i-hedera"/></svg>')),
@@ -1625,9 +1722,9 @@ function dosyaBirakma() {
     // .kenar yedeği bırakılırsa yedekten yükleme sorulur
     const yedek = dosyalar.find((f) => /\.kenar$/i.test(f.name));
     if (yedek) { yedekPenceresi(yedek); return; }
-    const uygun = dosyalar.filter((f) => /\.(pdf|epub)$/i.test(f.name) || /^application\/(pdf|epub\+zip)$/.test(f.type));
+    const uygun = dosyalar.filter(uygunDosya);
     if (uygun.length) { dosyalariAl(uygun); return; }
-    bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: "Kenar Notu PDF ve EPUB dosyalarını açar. Not almak için yeni bir defter de açabilirsin." });
+    bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: "Kenar Notu PDF, EPUB ve CBZ (çizgi roman) dosyalarını açar. Not almak için yeni bir defter de açabilirsin." });
   });
 }
 
@@ -1670,6 +1767,48 @@ function anahtarSatiri(ad, aciklama, deger, sec) {
   return { el, guncelle };
 }
 
+// Basınç eğrisi önizlemesi (240x48): eğri seçilince hafiften serte basılmış örnek iz, üstüne kalemle denenir.
+// Kalınlık basincUygula'dan: kalem.js de aynı eğriyi kullanınca önizleme ile kâğıt aynı çıkar.
+function basincOnizleme() {
+  const W = 240, H = 48, dpr = Math.min(3, devicePixelRatio || 1);
+  const c = h("canvas", { class: "spen-onizleme", width: String(W * dpr), height: String(H * dpr), role: "img", "aria-label": "Basınç eğrisi önizlemesi" });
+  const g = c.getContext("2d");
+  const renk = () => getComputedStyle(c).color || "#1C1B19";
+  const nokta = (x, y, p) => {
+    const r = 0.6 + 3.4 * Math.max(0, basincUygula(p));
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  };
+  const ciz = () => {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    // Ölçü çentikleri: basınç ekseni (soldan sağa 0..1)
+    g.fillStyle = renk();
+    g.globalAlpha = 0.18;
+    for (let i = 0; i <= 10; i++) g.fillRect(8 + i * 22.4, H - (i % 5 ? 4 : 7), 1, i % 5 ? 4 : 7);
+    g.globalAlpha = 0.9;
+    // Örnek iz: soldan sağa artan basınçla tek dalga
+    for (let x = 8; x <= W - 8; x += 0.75) {
+      const u = (x - 8) / (W - 16);
+      nokta(x, H / 2 - 4 + Math.sin(u * Math.PI * 3) * 7, 0.04 + u * 0.96);
+    }
+    g.globalAlpha = 1;
+  };
+  let son = null;
+  c.addEventListener("pointerdown", (e) => { c.setPointerCapture?.(e.pointerId); son = e; ciz(); });
+  c.addEventListener("pointermove", (e) => {
+    if (!son || !e.buttons) return;
+    const r = c.getBoundingClientRect(), olcek = W / r.width;
+    g.fillStyle = renk();
+    for (const o of e.getCoalescedEvents?.() || [e]) {
+      const p = o.pointerType === "pen" ? o.pressure : 0.5;
+      nokta((o.clientX - r.left) * olcek, (o.clientY - r.top) * olcek, p);
+    }
+  });
+  for (const t of ["pointerup", "pointercancel"]) c.addEventListener(t, () => { son = null; });
+  requestAnimationFrame(ciz);
+  return { el: c, ciz };
+}
+
 function ayarlarFisi(capa, klavye) {
   if (aktifFis?.capa === capa) { fisKapat(); return; }
   const tema = parcali([["oto", "Otomatik", "tema-oto"], ["acik", "Açık", "tema-acik"], ["koyu", "Koyu", "tema-koyu"]],
@@ -1687,7 +1826,13 @@ function ayarlarFisi(capa, klavye) {
     icon("sor", "i-20"), h("span", {}, "Yapay zekâ"), yzAlt);
   yzSatir.addEventListener("click", () => { fisKapat(true); yzPenceresi(); });
   const yz = { el: yzSatir, guncelle: () => { yzAlt.textContent = yzOzet(); } };
-  ayarDenetimleri = [tema, sayfa, sade, parmak, elYazisi, sekil, yz];
+  // S Pen kartı (OZELLIKLER-5, TASARIM-3 6.8): yan tuş silgi, basınç eğrisi ve canlı önizleme, Air Command ipucu
+  const yanTus = anahtarSatiri("Yan tuş silgi", "Yan tuş basılıyken kalem siler", () => store.ayarlar.yanTusSilgi !== false, (v) => ayarla({ yanTusSilgi: v }));
+  const egri = parcali([["yumusak", "Yumuşak"], ["orta", "Orta"], ["sert", "Sert"]], "Basınç eğrisi",
+    () => store.ayarlar.basincEgrisi || "orta", (v) => ayarla({ basincEgrisi: v }));
+  const onizleme = basincOnizleme();
+  const spen = { el: null, guncelle: () => { yanTus.guncelle(); egri.guncelle(); onizleme.ciz(); } };
+  ayarDenetimleri = [tema, sayfa, sade, parmak, elYazisi, sekil, yz, spen];
   // Prototipte yapılan her şey tarayıcıda saklanır; baştan denemek için iki dokunuşla örneklere dönülür
   const sifirEtiket = h("span", {}, "Örnek verilere dön");
   const sifir = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
@@ -1707,6 +1852,12 @@ function ayarlarFisi(capa, klavye) {
     h("span", { class: "t-etiket" }, "Sayfa rengi"), sayfa.el,
     h("div", { class: "fis-ayrac" }),
     sade.el, parmak.el, sekil.el, elYazisi.el,
+    h("div", { class: "fis-ayrac" }),
+    h("span", { class: "t-etiket" }, "S Pen"),
+    h("div", { class: "spen-kart" },
+      yanTus.el,
+      h("div", { class: "spen-egri" }, h("span", { class: "spen-egri__ad" }, "Basınç eğrisi", h("small", {}, "Önizlemeye kalemle yaz")), egri.el, onizleme.el),
+      h("p", { class: "spen-ipucu" }, "Kalem havadayken yan tuş Samsung menüsünü açar. Önce ekrana değdir, sonra bas.")),
     h("div", { class: "fis-ayrac" }),
     yzSatir,
     h("div", { class: "fis-ayrac" }),
@@ -1982,6 +2133,7 @@ function belgeAcIstegi(b, kaynakEl) {
 function konumuOku() {
   if (location.hash === "#tekrar") return { ekran: "tekrar" };
   if (location.hash === "#arama") return { ekran: "arama" };
+  if (location.hash === "#izler") return { ekran: "izler" };
   const m = location.hash.match(/^#belge\/(.+)$/);
   if (m) return { ekran: "belge", belgeId: decodeURIComponent(m[1]) };
   const g = location.hash.match(/^#kitaplik\/(.+)$/);
@@ -2001,9 +2153,16 @@ bus.on("git", (hedef) => {
   if (hedef.ekran === "belge") {
     const kaynak = sonKaynak;
     sonKaynak = null;
-    const { sayfa, mod, ara, konum } = hedef;
-    // Aramadan belgeye: geçmişe itilir, geri hareketi sonuçlara döner
-    siraya(() => belgeyeGit(hedef.belgeId, { sayfa, mod, ara, konum, kaynak, gecmis: acik.kap && acik.ekran !== "arama" ? "degistir" : "it" }));
+    const { sayfa, mod, ara, konum, izId } = hedef;
+    // Aramadan ve İzlerim'den belgeye: geçmişe itilir, geri hareketi listeye döner
+    const listeden = acik.ekran === "arama" || acik.ekran === "izler";
+    siraya(async () => {
+      await belgeyeGit(hedef.belgeId, { sayfa, mod, ara, konum, iz: izId, kaynak, gecmis: acik.kap && !listeden ? "degistir" : "it" });
+      // İz listesinden gelindiyse hedef iz bir an parlar: ekranı açan modül "iz:goster"i dinler
+      if (izId && acik.belgeId === hedef.belgeId) setTimeout(() => bus.emit("iz:goster", { belgeId: hedef.belgeId, izId }), 120);
+    });
+  } else if (hedef.ekran === "izler") {
+    siraya(() => izlerAc({ gecmis: acik.kap ? "degistir" : "it" }));
   } else if (hedef.ekran === "tekrar") {
     siraya(() => tekrarAc({ gecmis: acik.kap ? "degistir" : "it", sinav: hedef.sinav, kartId: hedef.kartId }));
   } else if (hedef.ekran === "arama") {
@@ -2025,6 +2184,7 @@ addEventListener("popstate", () => {
     if (k.ekran === "belge") return belgeyeGit(k.belgeId, { gecmis: null });
     if (k.ekran === "tekrar") return tekrarAc({ gecmis: null });
     if (k.ekran === "arama") return aramaAc({ gecmis: null, terim: sonAramaTerim });
+    if (k.ekran === "izler") return izlerAc({ gecmis: null });
     await kitapligaDon();
     // Elle yazılan #kitaplik/... adresi görünümü seçer
     if (k.gorunum && (GORUNUMLER.some((g) => g.id === k.gorunum) || klasorBul(k.gorunum.slice(7)))) gorunumSec(k.gorunum);
@@ -2032,8 +2192,9 @@ addEventListener("popstate", () => {
 });
 
 // ek: { ara, konum } (OZELLIKLER-4): ekran modülüne beşinci değişkenle gider
-async function belgeyeGit(id, { sayfa, mod, ara, konum, kaynak = null, gecmis = "it" } = {}) {
-  const ek = { ara: ara || undefined, konum: konum || undefined };
+async function belgeyeGit(id, { sayfa, mod, ara, konum, iz, kaynak = null, gecmis = "it" } = {}) {
+  // iz: İzler listesinden gelen iz kimliği; modül o ize gider ve izi bir an parlatır
+  const ek = { ara: ara || undefined, konum: konum || undefined, iz: iz || undefined };
   const belge = belgeBul(id);
   if (!belge) {
     acikPencere?.close();
@@ -2049,7 +2210,7 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, kaynak = null, gecmis = 
   }
   const hedefMod = varsayilanMod(belge);
   if (acik.ekran === "belge" && acik.belgeId === id && acik.kap) {
-    const gidilecek = sayfa != null || ek.ara || ek.konum;
+    const gidilecek = sayfa != null || ek.ara || ek.konum || ek.iz;
     if (acik.mod === hedefMod && !gidilecek) return;
     // Aynı belge, aynı mod: modül yerinde gider (git dışa aktarılmışsa); yoksa yeniden açılır
     if (acik.mod === hedefMod && typeof acik.modul.git === "function") {
@@ -2062,13 +2223,15 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, kaynak = null, gecmis = 
   cekmeceKapat();
 
   let modul;
+  // Çizgi roman (CBZ ya da "Çizgi roman olarak oku" denmiş PDF) kendi okuyucusunda açılır
+  const cizgi = cizgiMi(belge);
   try {
-    modul = await import(belge.tur === "epub" ? "./okuma.js" : "./duzenleyici.js");
+    modul = await import(cizgi ? "./cizgi.js" : belge.tur === "epub" ? "./okuma.js" : "./duzenleyici.js");
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] Ekran modülü yüklenemedi:", hata);
     acikPencere?.close();
-    toast(belge.tur === "epub" ? "Okuma görünümü henüz hazır değil." : "Düzenleyici henüz hazır değil.");
+    toast(cizgi ? "Çizgi roman okuyucu henüz hazır değil." : belge.tur === "epub" ? "Okuma görünümü henüz hazır değil." : "Düzenleyici henüz hazır değil.");
     if (K.ekran.hidden) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -2077,8 +2240,10 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, kaynak = null, gecmis = 
   gecmisYaz(gecmis, { ekran: "belge", belgeId: id }, `#belge/${encodeURIComponent(id)}`);
 
   belge.acilis = Date.now();
+  // Açılma sayısı: sık açılan kitabın cildi kitaplıkta hafifçe aşınır (TASARIM-3 nüans 8)
+  belge.acilma = (Number(belge.acilma) || 0) + 1;
   kitaplikKirli = true;
-  const kap = h("section", { class: "ekran ekran-belge", "aria-label": belge.ad, dataset: { mod: hedefMod } });
+  const kap = h("section", { class: "ekran ekran-belge" + (cizgi ? " ekran-cizgi" : ""), "aria-label": belge.ad, dataset: { mod: hedefMod } });
   Object.assign(acik, { modul, kap, belgeId: id, ekran: "belge", mod: hedefMod });
   document.title = `${belge.ad} · Kenar Notu`;
   await acilisOynat({ belge, kap, modul, sayfa, ek, kaynak });
@@ -2112,7 +2277,7 @@ async function yerindeAc(belge, mod, sayfa, ek = {}) {
 
 // Ekran modülü sözleşmesi (ortak.js, OZELLIKLER-4): ac(kap, belge, sayfa, mod, { ara, konum })
 async function modulAc(modul, kap, belge, sayfa, mod = varsayilanMod(belge), ek = {}) {
-  try { await modul.ac(kap, belge, sayfa ?? undefined, mod, { ara: ek.ara, konum: ek.konum }); }
+  try { await modul.ac(kap, belge, sayfa ?? undefined, mod, { ara: ek.ara, konum: ek.konum, iz: ek.iz }); }
   catch (hata) {
     // Yarım kurulmuş ekranda kalınmaz: açılış bitince kitaplığa dönülür
     console.error("[kenar-notu] Ekran açılırken hata:", hata);
@@ -2154,7 +2319,8 @@ async function acilisOynat({ belge, kap, modul, sayfa, ek, kaynak }) {
     return;
   }
   if (belge.tur === "epub" && kaynakVar && kaynak.classList.contains("kapak-kitap")) return kitapAcilisi({ belge, kap, modul, sayfa, ek, kaynak });
-  if (document.startViewTransition && kaynakVar) return gorunumGecisi({ belge, kap, modul, sayfa, ek, kaynak });
+  // Çizgi roman galeri karanlığında açılır: kapak dönüşmez, karanlık sade opaklıkla gelir
+  if (document.startViewTransition && kaynakVar && !cizgiMi(belge)) return gorunumGecisi({ belge, kap, modul, sayfa, ek, kaynak });
 
   // Yedek: 200ms opaklık
   acikPencere?.close();
@@ -2338,6 +2504,48 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
   if (kitaplikGorunur) kitaplikGizle();
 }
 
+// İzlerim ekranı (izler.js: ac(kap) ve kapat()). Arama gibi kitaplığın ya da açık ekranın üstüne gelir.
+async function izlerAc({ gecmis = "it" } = {}) {
+  if (acik.ekran === "izler" && acik.kap) return;
+  fisKapat(true);
+  cekmeceKapat();
+  let modul;
+  try {
+    modul = await import("./izler.js");
+    if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
+  } catch (hata) {
+    console.warn("[kenar-notu] İzler modülü yüklenemedi:", hata);
+    toast("İzlerim ekranı açılamadı.");
+    if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
+    return;
+  }
+  gecmisYaz(gecmis, { ekran: "izler" }, "#izler");
+
+  const eski = acik.kap ? { ...acik } : null;
+  const kitaplikGorunur = !K.ekran.hidden;
+  const kap = h("section", { class: "ekran ekran-belge ekran-izler", "aria-label": "İzlerim" });
+  Object.assign(acik, { modul, kap, belgeId: null, ekran: "izler", mod: null });
+  document.title = "İzlerim · Kenar Notu";
+  kenarGuncelle();
+  const gorunsun = kitaplikGorunur || eski;
+  if (gorunsun) kap.style.opacity = "0";
+  sahne.append(kap);
+  if (eski) {
+    if (eski.ekran === "arama") aramaTeriminiSakla(eski.kap);
+    try { eski.modul?.kapat?.(); } catch (hata) { console.error("[kenar-notu] kapat() hatası:", hata); }
+    eski.kap.inert = true;
+  }
+  try { await modul.ac(kap); }
+  catch (hata) {
+    console.error("[kenar-notu] İzlerim açılırken hata:", hata);
+    toast("İzlerim ekranı açılırken bir sorun çıktı.");
+    setTimeout(() => bus.emit("git", { ekran: "kitaplik" }), 0);
+  }
+  if (gorunsun) await soldur(kap, hareketAz() ? 120 : 200);
+  eski?.kap.remove();
+  if (kitaplikGorunur) kitaplikGizle();
+}
+
 // Geri dönüşte ters animasyon yok: kitaplık 200ms opaklıkla gelir
 async function kitapligaDon({ gecmis = null, animasyon = true } = {}) {
   const oncekiId = acik.belgeId;
@@ -2371,6 +2579,19 @@ async function kitapligaDon({ gecmis = null, animasyon = true } = {}) {
 /* ================= Olaylar ve kısayollar ================= */
 // Asistanın "Ayarları aç" eylemi: belge açıkken de doğrudan Yapay zekâ penceresi
 bus.on("ayarlar:ac", (o) => { if (!o?.bolum || o.bolum === "yz") yzPenceresi(); });
+// İzler (OZELLIKLER-5): Koltuk ve Masa üst çubuğundaki defter simgesi "defter:ac", Notlar panelinin
+// İzler sekmesi "izler:ac" yayınlar; izler.js kendi defterini ya da panelini açık ekranın üstünde açar.
+const izlerModulu = () => import("./izler.js");
+bus.on("defter:ac", (o) => {
+  const b = belgeBul(o?.belgeId);
+  if (!b) return;
+  izlerModulu().then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); toast("Cep defteri açılamadı."); });
+});
+bus.on("izler:ac", (o) => {
+  const b = belgeBul(o?.belgeId);
+  if (!b) return;
+  izlerModulu().then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); toast("İzler açılamadı."); });
+});
 bus.on("belgeler", () => { if (!sessiz) kitaplikYenile(); });
 bus.on("kirpintilar", () => { if (!sessiz) kitaplikYenile(); });
 // Kart eklenince camın son hanesi yuvarlanır (imza anı 9.7); ders şeritlerindeki kart sayısı da değişir
@@ -2700,6 +2921,31 @@ async function ornekGorselleriTazele() {
 function ornekleBasla() {
   ornekKirpintilar();
   ornekKartlar();
+  ornekCizgiRoman();
+}
+
+// Örnek çizgi roman (9. tur): cizgi-ornek.js tuvalde çizer ve CBZ olarak paketler; dosyasıyla saklanır.
+// Yeni kurulan örneklerde ve eski kayıtta bir kez (kayit.js ornekCizgi işareti); kullanıcı silerse geri gelmez.
+// Üretim kalem yazarken beklemez ama boş bir anda başlar; cizgi-ornek.js yoksa bir dahaki açılışa kalır.
+let ornekCizgiSuruyor = false;
+async function ornekCizgiRoman() {
+  if (ornekCizgiSuruyor || kayit.ornekCizgiVar() || kayit.baskaPencere()) return;
+  ornekCizgiSuruyor = true;
+  try {
+    // Üretim ana iş parçacığında yaklaşık bir saniye sürer: açık bir belgede kalem yazarken başlamasın,
+    // belge kapanınca (kitaplık, Tekrar, arama) yapılır
+    while (acik.ekran === "belge") await new Promise((r) => setTimeout(r, 2000));
+    await bosAn();
+    const m = await import("./cizgi-ornek.js");
+    const sonuc = await m.ornekCizgiRoman();
+    const blob = sonuc instanceof Blob ? sonuc : sonuc?.blob || sonuc?.cbz || null;
+    if (!blob) throw new Error("ornekCizgiRoman() CBZ vermedi");
+    await bosAn();
+    if (kayit.ornekCizgiVar()) return;
+    await kayit.ornekCizgiEkle(blob, { alanlar: m.ORNEK_CIZGI || {} });
+  } catch (hata) {
+    console.warn("[kenar-notu] Örnek çizgi roman eklenemedi:", hata);
+  } finally { ornekCizgiSuruyor = false; }
 }
 // Örnek belgeler, klasörler, kırpıntılar ve kartlar çıkar; o arada paylaşımla gelen dosya kalır
 function bosBasla() {
@@ -2712,6 +2958,8 @@ function bosBasla() {
     id: yeniId("d"), tur: "defter", ad: "İlk defter", sayfaSayisi: 3, sayfa: 1, ilerleme: 0, favori: false,
     acilis: Date.now(), kapak: KAPAK_RENKLERI[0][1], kagit: "grid", veri: null,
   });
+  // Boş başlayana örnek çizgi roman sonradan da eklenmez
+  kayit.ornekCizgiAyarla(true);
   tercih.secim = "tumu";
   tercihKaydet();
 }
@@ -2721,23 +2969,24 @@ function karsilamaAc() {
   K.ekran.inert = true;
   const secenek = (ikon, ad, aciklama, fn, birincil = false) => {
     const d = h("button", { class: "karsilama-secenek" + (birincil ? " birincil-secenek" : ""), type: "button" },
-      icon(ikon), h("b", {}, ad), h("small", {}, aciklama));
+      icon(ikon), h("b", {}, ad), h("small", {}, aciklama), birincil ? h("span", { class: "onerilen" }, "Önerilen") : null);
     d.addEventListener("click", () => sec(fn));
     return d;
   };
-  const ornek = secenek("tumu", "Örneklerle başla", "Ders notları, kitaplar, defterler ve kartlarla dolu bir masa. İstediğinde Ayarlar’dan temizlersin.", ornekleBasla, true);
-  const bosD = secenek("yeni-defter", "Boş başla", "Yalnız boş bir defter. Kendi PDF ve EPUB dosyalarını içe aktarırsın.", () => {
+  const ornek = secenek("tumu", "Örneklerle başla", "Ders notları, kitaplar, defterler, bir çizgi roman ve kartlarla dolu bir masa. İstediğinde Ayarlar’dan temizlersin.", ornekleBasla, true);
+  const bosD = secenek("yeni-defter", "Boş başla", "Yalnız boş bir defter. Kendi PDF, EPUB ve CBZ dosyalarını içe aktarırsın.", () => {
     bosBasla();
     klasorlerCiz();
-    setTimeout(() => toast("Boş bir defter hazır. Yeni düğmesinden PDF ya da EPUB içe aktarabilirsin."), 400);
+    setTimeout(() => toast("Boş bir defter hazır. Yeni düğmesinden PDF, EPUB ya da CBZ içe aktarabilirsin."), 400);
   });
+  // TASARIM-3 6.1: logo vitrinde, altında tek cümle ve bir kenar notu satırı (edebiyat solda, bilim sağda)
   // Kart seçili görünmesin: odak pencerenin kendisine gider, halka yalnız klavyeyle gezince kartta çıkar
   const el = h("div", { class: "karsilama", role: "dialog", "aria-modal": "true", "aria-labelledby": "karsilamaBaslik", tabindex: "-1" },
     h("div", { class: "karsilama__ic" },
-      parca('<svg class="naturmort" viewBox="0 0 360 120" aria-hidden="true"><use href="#i-naturmort"/></svg>'),
       h("div", { class: "logo" }, parca(LOGO_SVG)),
       h("h1", { class: "t-vitrin", id: "karsilamaBaslik" }, "Kenar Notu"),
       h("p", {}, "PDF, kitap ve defterlerin kalemle yazılan bir masada. Yazdıkların yalnız bu cihazda kalır."),
+      h("p", { class: "karsilama__kenar" }, h("i", {}, "Kitabın kenarı, düşüncenin yeri."), h("span", { class: "olcu", title: "Leibniz ∫ işaretini ilk kez 29 Ekim 1675’te yazdı" }, "∫ 29.10.1675")),
       h("div", { class: "karsilama__secenekler" }, ornek, bosD),
       h("p", { class: "karsilama__ipucu" }, "Kalem yazar, parmak kaydırır. Ayarlar’dan değişir.")));
   let secildi = false;
@@ -2779,6 +3028,8 @@ if (ilkDurum.geri) {
   setTimeout(() => ornekGorselleriTazele().catch((hata) => console.warn("[kenar-notu] Örnek görüntüler yenilenemedi:", hata)), 2000);
   // Kayıtta kart alanı hiç yoksa örnek kartlar bir kez istenir
   if (!ilkDurum.kartlarVar) ornekKartlar();
+  // 9. turun yeni örneği (çizgi roman) mevcut kitaplığa da bir kez girer; açılıştan sonra, boş bir anda
+  if (!kayit.ornekCizgiVar()) setTimeout(ornekCizgiRoman, 4000);
 } else if (ilkDurum.engel || baslangic === "ornek") ornekleBasla();
 else if (baslangic === "bos") bosBasla();
 else karsilama = true;
@@ -2788,7 +3039,7 @@ if (!GORUNUMLER.some((g) => g.id === tercih.secim) && !(tercih.secim.startsWith(
 {
   const ilk = konumuOku();
   if (ilk.ekran === "kitaplik" && ilk.gorunum && (GORUNUMLER.some((g) => g.id === ilk.gorunum) || klasorBul(ilk.gorunum.slice(7)))) tercih.secim = ilk.gorunum;
-  kitaplikKur({ gizli: (ilk.ekran === "belge" && !!belgeBul(ilk.belgeId)) || ilk.ekran === "tekrar" || ilk.ekran === "arama" });
+  kitaplikKur({ gizli: (ilk.ekran === "belge" && !!belgeBul(ilk.belgeId)) || ilk.ekran === "tekrar" || ilk.ekran === "arama" || ilk.ekran === "izler" });
   if (ilk.ekran === "belge" && belgeBul(ilk.belgeId)) {
     // Sayfa yenilenince açık belge yeniden açılır; geri düğmesi kitaplığa döner
     K.ekran.hidden = true;
@@ -2805,6 +3056,13 @@ if (!GORUNUMLER.some((g) => g.id === tercih.secim) && !(tercih.secim.startsWith(
     history.replaceState({ ekran: "kitaplik" }, "", location.pathname + location.search);
     history.pushState({ ekran: "arama", itildi: true, adim: 1 }, "", adres);
     siraya(() => aramaAc({ gecmis: null }));
+  } else if (ilk.ekran === "izler") {
+    // Arama gibi: altında kitaplık girdisi, geri hareketi kitaplığa döner
+    K.ekran.hidden = true;
+    const adres = location.href;
+    history.replaceState({ ekran: "kitaplik" }, "", location.pathname + location.search);
+    history.pushState({ ekran: "izler", itildi: true, adim: 1 }, "", adres);
+    siraya(() => izlerAc({ gecmis: null }));
   } else {
     history.replaceState({ ekran: "kitaplik" }, "", location.pathname + location.search);
   }
@@ -2839,6 +3097,16 @@ setTimeout(async () => {
 // Paylaş menüsüyle gelen dosya ya da metin (PWA); paylasim.js yoksa sessiz geçilir.
 // Asistan önce kurulur: paylaşılan metin bekleyen soruya cevap olarak gidebilsin.
 asistanHazir.then(() => import("./paylasim.js")).then((m) => m.paylasimKontrol?.()).catch(() => {});
+// Kurulu uygulamayla açılan dosya (manifest file_handlers; masaüstü Chrome): PDF, EPUB, CBZ kitaplığa alınır
+if ("launchQueue" in window) {
+  window.launchQueue.setConsumer(async (p) => {
+    try {
+      const dosyalar = await Promise.all((p?.files || []).map((f) => f.getFile()));
+      const uygun = dosyalar.filter(uygunDosya);
+      if (uygun.length) dosyalariAl(uygun, { klasor: undefined });
+    } catch (hata) { console.warn("[kenar-notu] Açılan dosya alınamadı:", hata); }
+  });
+}
 // Ağ adresinden düz http ile açıldı (http://192.168...): hizmet çalışanı, paylaş menüsü ve pano yok.
 // Uygulama çalışır; oturumda bir kez nedeni söylenir.
 if (!window.isSecureContext) {

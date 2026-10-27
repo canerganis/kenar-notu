@@ -1,16 +1,18 @@
 /* ============ tekrar.css · TASARIM-2 §6 ============ */
 /* Kök kaymaz: kareli ya da tahta zemin burada durur, kaydırılan liste saydamdır. */
-.tekrar { --kareli-zemin: var(--bg); position: relative; display: grid; grid-template-rows: auto 1fr; height: 100dvh; overflow: hidden;
-  padding-top: env(safe-area-inset-top); color: var(--ink); }
+/* TASARIM-3 6.5: zemin düz kâğıt; kareli kâğıt yalnız kartın içinde */
+.tekrar { position: relative; display: grid; grid-template-rows: auto 1fr; height: 100dvh; overflow: hidden;
+  padding-top: env(safe-area-inset-top); color: var(--ink); background: var(--bg); }
 .tekrar-govde { display: grid; min-height: 0; }
 
 /* ---------- üst şerit ---------- */
-.tekrar-ust { display: flex; align-items: center; gap: 12px; min-height: 88px; padding: 12px 24px 8px 12px; }
-.tekrar-baslik { display: grid; gap: 2px; min-width: 0; }
-.tekrar-ust h1 { margin: 0; font: italic 400 var(--fs-30)/36px var(--f-baslik); font-variation-settings: "opsz" 72, "SOFT" 30;
+.tekrar-ust { display: flex; align-items: flex-end; gap: 12px; min-height: 96px; padding: 24px 40px 8px 12px; }
+.tekrar-ust > .ikon-dugme:first-child { align-self: center; }
+.tekrar-baslik { display: grid; gap: 4px; min-width: 0; }
+.tekrar-ust h1 { margin: 0; font: 400 var(--fs-40)/44px var(--f-baslik); font-variation-settings: "opsz" 72; letter-spacing: -.02em;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.tekrar-ust .t-deger-k, .tekrar-alt { color: var(--muted); }
-.tekrar-alt b { color: var(--ink-2); }   /* sayı bir ton koyu: göz önce onu okur */
+.tekrar-ust .t-deger-k, .tekrar-alt { color: var(--muted); font: 400 var(--fs-13)/18px var(--f-arayuz); }
+.tekrar-alt b { color: var(--ink-2); font: 500 var(--fs-12)/18px var(--f-olcu); font-variant-numeric: tabular-nums; }   /* sayı bir ton koyu: göz önce onu okur */
 .tekrar-ust .bosluk { flex: 1; }
 .tekrar-sinav { display: inline-flex; align-items: center; gap: 8px; }
 .tekrar-sinav .i { color: var(--ink-2); }
@@ -25,32 +27,35 @@
 }
 @media (max-width: 599px) {
   .tekrar-ust { gap: 4px; padding: 8px 8px 4px 4px; }
-  .tekrar-ust h1 { font-size: var(--fs-22); line-height: 30px; }
+  .tekrar-ust h1 { font-size: var(--fs-30); line-height: 36px; }
   .tekrar-sinav span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .tekrar-sinav { width: 44px; padding: 0; justify-content: center; }
 }
 
-/* ---------- Leitner göstergesi: beş kanallı cam (§6.2) ---------- */
-.leitner-kap { display: grid; justify-items: center; }
-.leitner-ic { display: grid; justify-items: center; gap: 2px; }
-.leitner { display: flex; height: 64px; padding: 6px 4px 4px; gap: 0; }
-.kanal { position: relative; display: grid; grid-template-rows: 36px auto; justify-items: center; align-content: start; gap: 4px; width: 44px; color: inherit; border-radius: 4px; }
-.kanal i { --dolu: 0; width: 20px; height: 36px; opacity: .84;
-  background: linear-gradient(to top, var(--cam-fosfor) calc(var(--dolu) * 100%), #8BE3B01F 0);
-  -webkit-mask: repeating-linear-gradient(to top, #000 0 4px, transparent 4px 6px); mask: repeating-linear-gradient(to top, #000 0 4px, transparent 4px 6px);
-  transition: background var(--sure-orta) var(--egri-kagit); }
-.kanal b { font: 500 var(--fs-12)/1 var(--f-olcu); color: var(--cam-soluk); text-shadow: none; }
-.kanal[data-simdi]::after { /* bu kartın kutusu */ content: ""; position: absolute; inset: -2px 6px 12px; border: 1px solid var(--cam-kehribar); border-radius: 3px; }
-.kanal:focus-visible { outline: 2px solid var(--cam-fosfor); outline-offset: -1px; }
-@media (hover: hover) { .kanal:hover i { opacity: 1; } }
-.kanal-isik { position: absolute; left: 50%; top: 0; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
-  background: var(--cam-fosfor); box-shadow: 0 0 6px #8BE3B080; pointer-events: none; }
-.kanal-isik.kehribar { background: var(--cam-kehribar); box-shadow: 0 0 6px #F2B54480; }
-/* İmza anı 9.5: yeni kutu bir an tam parlar, normale söner */
+/* ---------- Leitner: beş açık kart kutusu (TASARIM-3 6.5.3) ----------
+   Her kutuda kartlar 2px yatay çizgi yığını, sayısı sağ üstte; bugünkü kartın kutusu mürekkep çerçeve. Fosfor yok. */
+.leitner-kap { display: grid; justify-items: center; align-self: center; }
+.leitner-ic { display: grid; justify-items: center; gap: 4px; }
+.leitner.cam { display: flex; height: auto; padding: 0; gap: 4px; background: none; box-shadow: none; color: var(--ink); text-shadow: none; border-radius: 0; }
+.kanal { position: relative; display: grid; place-items: center; width: 48px; height: 44px; color: inherit; border-radius: var(--r-sm); }
+.kanal i { --n: 0; width: 40px; height: 28px; border-radius: 2px; opacity: 1;
+  box-shadow: inset 0 0 0 .5px var(--line-strong), inset 0 0 0 1px color-mix(in srgb, var(--ink) 5%, transparent);
+  background: repeating-linear-gradient(to top, var(--ink-2) 0 2px, transparent 2px 3px) 50% calc(100% - 3px) / 28px calc(var(--n) * 3px - 1px) no-repeat;
+  transition: background-size var(--sure-orta) var(--egri-kagit); }
+/* Sayı çizgilerle okunur (ekran okuyucuya aria-label söyler); yedi karttan fazlası küçük rakamla */
+.kanal b { display: none; position: absolute; top: 3px; right: 6px; font: 400 10px/12px var(--f-olcu); color: var(--muted); text-shadow: none; font-variant-numeric: tabular-nums; }
+.kanal[data-cok] b { display: block; }
+.kanal[data-simdi] i { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.kanal:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+@media (hover: hover) { .kanal:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+.kanal-isik { position: absolute; left: 50%; top: 6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
+  background: var(--ink); pointer-events: none; }
+.kanal-isik.kehribar { background: var(--mark); }
+/* İmza anı 9.5: yeni kutu bir an mürekkeple belirir */
 .kanal.kalici i { animation: kanal-kalici 420ms var(--egri-cekil); }
-@keyframes kanal-kalici { from { opacity: 1; } }
-.leitner-olcek { display: flex; padding: 0 4px; }
-.leitner-olcek span { width: 44px; text-align: center; font: 500 var(--fs-12)/16px var(--f-olcu); color: var(--muted); }
+@keyframes kanal-kalici { from { box-shadow: inset 0 0 0 1.5px var(--ink); } }
+.leitner-olcek { display: flex; gap: 4px; padding: 0; }
+.leitner-olcek span { width: 48px; text-align: center; font: 400 var(--fs-11)/14px var(--f-olcu); letter-spacing: .04em; color: var(--muted); }
 
 /* ---------- sınav kronometresi (§6.5) ---------- */
 .kronometre { position: relative; height: 64px; min-width: 228px; padding: 0 16px; gap: 14px; }
@@ -65,11 +70,15 @@
    oturur; cevap bir satır boşluktan sonra gelir. Yazının taban çizgisi satır çizgisinin 3px üstündedir. */
 .tekrar-kart { --satir: 36px; width: min(680px, 88vw); height: calc(44px + 8 * var(--satir) + 8px); display: grid; grid-template-rows: 44px 1fr;
   padding: 0 20px 8px; cursor: pointer; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+/* Fiş kartı: K2 ve kâğıt (gren %40, soft-light); satırlar soluk mavi (TASARIM-3 6.5.4) */
+.tekrar-kart { --fis-cizgi: #2B4A7E1F; border-radius: 3px; box-shadow: var(--golge-3); }
 .tekrar-kart.satirli { --satir-bas: 44px;
   background-image: var(--doku-kagit-acik, none), linear-gradient(var(--fis-kagit) 0 44px, transparent 0),
     repeating-linear-gradient(transparent 0 35px, var(--fis-cizgi) 35px 36px);
-  background-position: 0 0, 0 0, 0 44px; }
-.tekrar-kart.gorselli { background-image: var(--doku-kagit-acik, none); }
+  background-size: 160px 160px, auto, auto;
+  background-position: 0 0, 0 0, 0 44px; background-blend-mode: soft-light, normal, normal; }
+.tekrar-kart.gorselli { background-image: var(--doku-kagit-acik, none); background-size: 160px 160px; background-blend-mode: soft-light; }
+.kart-kaynak.t-daktilo, .tekrar-kart .kart-kaynak { font: 400 var(--fs-11)/14px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; }
 .tekrar-kart:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 .tekrar-kart.itiliyor { cursor: grabbing; }
 .kart-kaynak { justify-self: start; display: inline-flex; align-items: center; max-width: 100%; height: 44px; color: var(--muted);
@@ -81,7 +90,7 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 /* Görsel kart: ön ve arka aynı yerde üst üste; görüntü kendi oranıyla ortalanır */
 .kart-yuz.gorsel > img, .kart-yuz.gorsel > .kart-cevap { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; }
 .kart-yuz.gorsel > div.kart-cevap { display: grid; place-items: center; overflow: auto; }
-.kart-yuz img { background: #fff; box-shadow: 0 0 0 1px #3C2A141A; }
+.kart-yuz img { background: #fff; box-shadow: 0 0 0 .5px #1C1B1924; }
 
 /* Metin kartı: üstte soru (dört satır), altta bantla örtülü cevap */
 .kart-yuz.metinli { grid-template-rows: calc(4 * var(--satir)) minmax(0, 1fr); align-items: stretch; justify-items: stretch; }
@@ -92,10 +101,10 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
   padding-top: var(--satir); scrollbar-width: none; }
 .kart-soru img, .kart-cevap-alan img { max-width: 100%; max-height: calc(2 * var(--satir)); }
 /* Satır kutusu 36px; --oturt yazıyı taban çizgisi çizginin 3px üstüne gelecek kadar aşağı iter */
-.kart-metin { position: relative; top: var(--oturt-metin, 5px); font: 400 var(--fs-22)/var(--satir) var(--f-okuma); text-align: center; text-wrap: balance; }
-.kart-metin.uzun { font-size: var(--fs-18); text-wrap: pretty; }
-.kart-kelime { position: relative; top: var(--oturt-kelime, -2px); font: italic 400 var(--fs-44)/var(--satir) var(--f-baslik);
-  font-variation-settings: "opsz" 72, "SOFT" 30; text-align: center; }
+.kart-metin { position: relative; top: var(--oturt-metin, 5px); font: 400 24px/var(--satir) var(--f-okuma); font-variation-settings: "opsz" 28; text-align: center; text-wrap: balance; }
+.kart-metin.uzun { font-size: var(--fs-19); text-wrap: pretty; }
+.kart-kelime { position: relative; top: var(--oturt-kelime, -2px); font: italic 400 var(--fs-40)/var(--satir) var(--f-baslik);
+  font-variation-settings: "opsz" 72; letter-spacing: -.01em; text-align: center; }
 .kart-cevap { opacity: 0; transition: opacity var(--sure-orta) 120ms; }
 .tekrar-kart.acik .kart-cevap { opacity: 1; }
 .tekrar-kart .kart-on { transition: opacity var(--sure-orta) 120ms; }
@@ -112,8 +121,9 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .kart-bant-kap { position: absolute; left: 20px; right: 20px; top: var(--bant-y, 62%); height: 48px; pointer-events: none; }
 /* İlk cevap satırının kutusu 36..72px: 48px'lik bant onu ortalar */
 .kart-cevap-alan .kart-bant-kap { left: -8px; right: -8px; top: calc(var(--satir) * 1.5 - 24px); }
-.kart-bant { position: absolute; inset: 0; transform-origin: 0 50%; rotate: -.8deg; box-shadow: var(--bant-golge);
-  background: var(--bant-desen), var(--b);
+/* Bant: desen yok, kâğıda karışmış düz ton (opak: altındaki cevap okunmaz), açı -0,6° */
+.kart-bant { position: absolute; inset: 0; transform-origin: 0 50%; rotate: -.6deg; box-shadow: 0 1px 1px #1C1B191F;
+  background: color-mix(in srgb, var(--b) 70%, #FFFDF7);
   -webkit-mask: var(--yirtik-sol) left / 7px 100% no-repeat, linear-gradient(#000 0 0) 7px 0 / calc(100% - 14px) 100% no-repeat, var(--yirtik-sag) right / 7px 100% no-repeat;
   mask: var(--yirtik-sol) left / 7px 100% no-repeat, linear-gradient(#000 0 0) 7px 0 / calc(100% - 14px) 100% no-repeat, var(--yirtik-sag) right / 7px 100% no-repeat;
   transition: transform 360ms var(--egri-kagit), opacity 160ms 240ms; }
@@ -129,56 +139,51 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .tekrar-kart.acik.bitti .kart-bant-uc { opacity: 0; }
 
 /* Cevap düğmeleri: ön yüzde tek "Cevabı göster", çevrilince Bildim ve Bilemedim. Üçü aynı satırda üst üste, yalnız opaklık değişir. */
-.tekrar-cevap { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; width: min(680px, 88vw); }
-.tekrar-cevap button { grid-row: 1; display: grid; align-content: center; justify-items: center; gap: 2px; height: 56px; padding: 0 12px;
-  border-radius: var(--r-sm); transition: opacity 240ms var(--egri-kagit); }
-.tekrar-cevap .goster { grid-column: 1 / -1; }
+/* Cevap düğmeleri kart genişliğinde değil: ortada 200px birincil; çevrilince Bildim birincil, Bilemedim ikincil, ikisi 160px */
+.tekrar-cevap { display: grid; grid-template-columns: 160px 160px; justify-content: center; column-gap: 12px; width: min(680px, 88vw); }
+.tekrar-cevap button { grid-row: 1; display: grid; align-content: center; justify-items: center; gap: 2px; height: 52px; padding: 0 12px;
+  border: 0; border-radius: var(--r-sm); transition: opacity 240ms var(--egri-kagit), background-color var(--sure-kisa); }
+.tekrar-cevap .goster { grid-column: 1 / -1; justify-self: center; width: 200px; }
 .tekrar-cevap .bilemedim { grid-column: 1; }
 .tekrar-cevap .bildim { grid-column: 2; }
-.tekrar-cevap button span { font: 600 var(--fs-15)/20px var(--f-arayuz); }
-.tekrar-cevap button small { font: 500 var(--fs-12)/16px var(--f-olcu); opacity: .9; }
-.tekrar-cevap :is(.goster, .bildim) { background: var(--accent-dolgu); color: var(--accent-dolgu-ink); border: 1px solid var(--accent-dolgu-kenar);
-  box-shadow: inset 0 1px 0 #FFFFFF1A, 0 1px 2px #1F3A6833; }
+.tekrar-cevap button span { font: 600 var(--fs-14)/18px var(--f-arayuz); }
+.tekrar-cevap button small { font: 400 var(--fs-11)/14px var(--f-olcu); opacity: .72; }
+.tekrar-cevap :is(.goster, .bildim) { background: var(--accent-dolgu); color: var(--accent-dolgu-ink);
+  box-shadow: 0 0 0 .5px #00000033, 0 1px 2px #1C1B1926, inset 0 .5px 0 #FFFFFF1F; }
 @media (hover: hover) { .tekrar-cevap :is(.goster, .bildim):hover { background: var(--accent-dolgu-hover, var(--accent-dolgu)); } }
-.tekrar-cevap .goster small { font-weight: 400; opacity: .78; }
-.tekrar-cevap .bilemedim { background: var(--surface); border: 1px solid var(--edge); color: var(--ink); }
+.tekrar-cevap .bilemedim { background: var(--surface); color: var(--ink); box-shadow: var(--golge-1); }
 .tekrar-cevap .bilemedim small { color: var(--muted); opacity: 1; }
 @media (hover: hover) { .tekrar-cevap .bilemedim:not(:disabled):hover { background: var(--surface-2); } }
 .tekrar-cevap:not(.acik) :is(.bildim, .bilemedim), .tekrar-cevap.acik .goster { opacity: 0; pointer-events: none; }
 .tekrar-cevap button:active { translate: 0 1px; }
-.tekrar-ipucu { margin: 0; min-height: 18px; font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); text-align: center; }
+.tekrar-ipucu { margin: 0; min-height: 18px; font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); text-align: center; }
 @media (orientation: portrait) {
-  .tekrar-cevap { position: fixed; z-index: 2; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); translate: -50% 0; width: min(680px, calc(100vw - 32px)); }
-  .tekrar-cevap button { height: 64px; }
+  .tekrar-cevap { position: fixed; z-index: 2; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom)); translate: -50% 0; width: min(680px, calc(100vw - 32px)); }
+  .tekrar-cevap button { height: 56px; }
 }
 /* İtme yönü: kart hafifçe o tarafa eğilirken düğmesi belirginleşir */
 .tekrar-sahne:has(.tekrar-kart[data-yon="bildim"]) .bildim,
 .tekrar-sahne:has(.tekrar-kart[data-yon="bilemedim"]) .bilemedim { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---------- deste bitti: tahta (§6.6) ---------- */
-.bitis { position: relative; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; overflow: hidden;
-  width: min(680px, 88vw); height: 280px; }
-.bitis h2 { margin: 0; font: 600 var(--fs-30)/40px var(--f-el); color: var(--tebesir); }
-.bitis p { margin: 0; font: 500 var(--fs-22)/28px var(--f-el); color: var(--tebesir-2); }
-/* Silinmiş formül dokusu yazının arkasına düşmesin (7.4): başlığın arkası silinmiş gibi temiz tahta */
-.bitis::before { content: ""; position: absolute; left: 50%; top: 50%; width: min(480px, 90%); height: 168px; translate: -50% -50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--tahta) 92%, transparent) 50%, transparent); pointer-events: none; }
+/* Deste bitti: tahta yerine sade kart; başlık Literata, satır ölçü yazısı (TASARIM-3 2.1) */
+.bitis { position: relative; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; overflow: hidden;
+  width: min(560px, 88vw); min-height: 220px; padding: 40px 24px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--golge-2); }
+.bitis h2 { margin: 0; font: 400 var(--fs-30)/36px var(--f-baslik); font-variation-settings: "opsz" 60; letter-spacing: -.01em; color: var(--ink); }
+.bitis p { margin: 0; font: 400 var(--fs-12)/16px var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
 .bitis h2, .bitis p { position: relative; }
-.bitis .ortu { position: absolute; inset: 0; background: inherit; transform-origin: 100% 50%; animation: ortu 420ms var(--egri-murekkep) 120ms forwards; }
-.tekrar.tahta .bitis .ortu { background: var(--tahta); }
+.bitis .ortu { position: absolute; inset: 0; background: var(--surface); transform-origin: 100% 50%; animation: ortu 420ms var(--egri-murekkep) 120ms forwards; }
 @keyframes ortu { to { transform: scaleX(0); } }
-.feynman { position: absolute; right: 18px; bottom: 14px; width: 120px; height: 72px; fill: none; stroke: var(--tebesir); stroke-width: 1.6;
-  stroke-linecap: round; stroke-linejoin: round; opacity: .6; }
 .bitis-eylem { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
 .bitis-eylem .metin-dugme { display: inline-flex; align-items: center; gap: 8px; }
 
 /* ---------- sınav fişi ---------- */
 .tekrar-sinav-fis { z-index: var(--z-pencere); transform-origin: top right; }
 .tekrar-perde { z-index: var(--z-perde); }
-.fis-satir.sinav-ders { grid-template-columns: 24px 1fr auto; min-height: 56px; font: 600 var(--fs-15)/20px var(--f-arayuz); }
+.fis-satir.sinav-ders { grid-template-columns: 20px 1fr auto; min-height: 52px; font: 600 var(--fs-14)/20px var(--f-arayuz); }
 .fis-satir.sinav-ders .i, .fis-satir.sinav-ders .kumas-sekme { grid-row: auto; justify-self: center; }
 .fis-satir.sinav-ders .t-deger-k { color: var(--muted); }
-.fis-satir.sinav-ders[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.fis-satir.sinav-ders[aria-checked="true"] { background: color-mix(in srgb, var(--ink) 6%, transparent); box-shadow: inset 2px 0 0 var(--ink); }
 .fis-satir.sinav-ders:disabled { opacity: .45; cursor: default; }
 .tekrar-sinav-fis .fis-form { gap: 8px; padding-top: 6px; }
 .tekrar-sinav-fis .t-daktilo { color: var(--muted); }
@@ -187,22 +192,22 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 /* ---------- sınav sonucu ---------- */
 /* Düz fiş kâğıdı, ızgarasız: ölçü aleti ve sayı tek başına konuşur */
 .sonuc-fis { display: grid; justify-items: center; gap: 4px; width: min(560px, calc(100vw - 32px));
-  padding: 24px 24px 16px; border-radius: var(--r-kagit); background: var(--doku-kagit-acik, none), var(--fis-kagit); box-shadow: var(--golge-3); color: var(--fis-yazi); }
+  padding: 24px 24px 16px; border-radius: 3px; background: var(--doku-kagit-acik, none) 0 0 / 160px 160px, var(--fis-kagit); background-blend-mode: soft-light, normal; box-shadow: var(--golge-3); color: var(--fis-yazi); }
 .sonuc-yuzde { margin: 4px 0 0; font: 500 var(--fs-44)/48px var(--f-olcu); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .sonuc-alt { margin: 0; font: 500 var(--fs-13)/18px var(--f-olcu); color: var(--muted); }
 .sonuc-not { margin: 2px 0 0; font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); }
 .sonuc-etiket { justify-self: start; margin: 16px 0 4px; }
-.sonuc-liste { justify-self: stretch; margin: 0; padding: 0; list-style: none; max-height: min(176px, 26dvh); overflow-y: auto; border-top: 1px solid var(--line); }
-.sonuc-liste li { border-bottom: 1px solid var(--line); }
+.sonuc-liste { justify-self: stretch; margin: 0; padding: 0; list-style: none; max-height: min(176px, 26dvh); overflow-y: auto; box-shadow: 0 -.5px 0 var(--line-strong); }
+.sonuc-liste li { box-shadow: 0 .5px 0 var(--line); }
 .sonuc-satir { display: grid; grid-template-columns: minmax(0, 1fr) auto 20px; align-items: center; gap: 12px; width: 100%; min-height: 44px;
   padding: 0 4px 0 8px; text-align: left; color: inherit; border-radius: var(--r-xs); }
-.sonuc-satir .on { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 450 var(--fs-15)/20px var(--f-arayuz); }
+.sonuc-satir .on { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 400 var(--fs-15)/20px var(--f-okuma); }
 .sonuc-satir .kaynak { white-space: nowrap; }
 .sonuc-satir .i { color: var(--muted); }
 @media (hover: hover) { .sonuc-satir:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } .sonuc-satir:hover .kaynak { color: var(--ink-2); } }
 .sonuc-satir:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.kart-satir .kaynak { min-height: 44px; padding: 0 8px; border-radius: var(--r-sm); font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); white-space: nowrap; }
-@media (hover: hover) { .kart-satir .kaynak:hover { color: var(--accent); background: var(--surface-2); } }
+.kart-satir .kaynak { min-height: 44px; padding: 0 8px; border-radius: var(--r-sm); font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); white-space: nowrap; }
+@media (hover: hover) { .kart-satir .kaynak:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .sonuc-eylem { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 
 /* Galvanometre 220x132: pirinç yay, ayna şeridi, ana ve ara çentikler, fosfor bölge, karşı ağırlıklı ibre */
@@ -221,31 +226,31 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 
 /* ---------- kart listesi (§6.7) ---------- */
 .tekrar-liste { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
-.tekrar-sekmeler { padding: 0 24px; overflow-x: auto; scrollbar-width: none; }
+.tekrar-sekmeler { padding: 0 40px; overflow-x: auto; scrollbar-width: none; }
 .tekrar-sekmeler .sekme { display: inline-flex; align-items: center; gap: 6px; }
 .sekme-sayi { font: 500 var(--fs-12)/1 var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
 .kutu-suzgec { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; align-self: center; flex: none; }
-.kart-liste { overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 48px; background: none; }
+.kart-liste { overflow-y: auto; overscroll-behavior: contain; padding: 0 40px 48px; background: none; }
 .kart-liste-ic { max-width: 920px; margin: 0 auto; padding: 0; list-style: none; }
-.kart-satir { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto 44px; column-gap: 14px; align-items: center; min-height: 64px;
-  padding: 8px; border-bottom: 1px solid var(--line); }
+.kart-satir { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto 44px; column-gap: 16px; align-items: center; min-height: 64px;
+  padding: 8px; box-shadow: 0 .5px 0 var(--line); }
 :is(.kart-satir, .sonuc-liste) .mini { width: 48px; aspect-ratio: 5 / 3; border-radius: var(--r-kagit); background: var(--fis-kagit); border-top: 1.5px solid var(--fis-baslik);
-  box-shadow: 0 0 0 .5px #3C2A1433; object-fit: contain; }
+  box-shadow: 0 0 0 .5px #1C1B1924, 0 1px 2px #1C1B191A; object-fit: contain; }
 :is(.kart-satir, .sonuc-liste) .mini-metin { display: block; background-image: repeating-linear-gradient(transparent 0 6px, var(--fis-cizgi) 6px 7px); background-position: 0 4px; }
 .kart-satir .on-kap { display: grid; min-width: 0; }
-.kart-satir .on { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 450 var(--fs-15)/20px var(--f-arayuz); }
-.kart-satir .on-kap small { font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); }
+.kart-satir .on { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 400 var(--fs-16)/22px var(--f-okuma); }
+.kart-satir .on-kap small { font: 400 var(--fs-12)/16px var(--f-olcu); color: var(--muted); }
 .kart-satir .kart-sil { width: 44px; padding: 0; justify-content: center; }
 /* Silme simgesi her satırda kırmızı bağırmasın: sakin durur, üstüne gelince ya da onay anında kırmızı */
 .kart-satir .kart-sil:not([data-onay="1"]) { color: var(--muted); }
 @media (hover: hover) { .kart-satir .kart-sil:hover { color: var(--danger); } }
 /* Liste kareli zeminin üstünde bir kâğıt yaprağı: kareler satırların arasından geçmez.
    Malzeme sabit ebeveynde kalır; yaprak düz renktir, kayarken yeniden boyanacak doku yok. */
-.kart-liste-ic { margin-top: 4px; padding: 4px 12px; border-radius: var(--r-kagit); background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line), var(--golge-1); }
-.kart-liste-ic .kart-satir:last-child { border-bottom: 0; }
-.kart-satir .cam-k { min-width: 40px; }   /* I ile III aynı genişlikte: kutu sütunu düz bir hizada durur */
-.tekrar.tahta .kart-liste-ic { background: color-mix(in srgb, var(--tahta-2) 88%, transparent); box-shadow: 0 0 0 1px var(--line); }
+.kart-liste-ic { margin-top: 4px; padding: 4px 12px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--golge-2); }
+.kart-liste-ic .kart-satir:last-child { box-shadow: none; }
+/* Kutu numarası durağan: LCD değil, kıl çerçeveli ölçü yazısı */
+.tekrar .cam-k { min-width: 40px; background: none; color: var(--ink-2); text-shadow: none; box-shadow: inset 0 0 0 .5px var(--line-strong);
+  font: 400 var(--fs-11)/1 var(--f-olcu); letter-spacing: .04em; }
 .kart-liste-bos { padding: 48px 8px; text-align: center; font: italic 400 var(--fs-15)/22px var(--f-baslik); color: var(--muted); }
 @media (max-width: 599px) {
   .tekrar-sekmeler, .kart-liste { padding-left: 8px; padding-right: 8px; }
@@ -266,3 +271,11 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
   .galvanometre .g-ibre, .kanal.kalici i { animation: none; }
   .kart-cevap, .tekrar-kart .kart-on { transition: opacity 120ms; }
 }
+
+/* TASARIM-3 nüans 10: bilinen kartın sağ alt köşesine kurşun kalemle tik ve yeni kutu */
+.kart-tik { position: absolute; right: 20px; bottom: 14px; display: flex; align-items: center; gap: 6px; pointer-events: none; color: #6E6A64; }
+.kart-tik svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.kart-tik path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: kart-tik 220ms var(--egri-murekkep) forwards; }
+.kart-tik b { font: 400 var(--fs-12)/1 var(--f-olcu); font-variant-numeric: tabular-nums; opacity: 0; animation: kart-tik-yazi 160ms 120ms forwards; }
+@keyframes kart-tik { to { stroke-dashoffset: 0; } }
+@keyframes kart-tik-yazi { to { opacity: .9; } }

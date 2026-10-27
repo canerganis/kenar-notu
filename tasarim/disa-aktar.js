@@ -638,7 +638,7 @@ async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka }) {
 
 async function yaziTipleriHazir(sayfalar) {
   if (typeof document === "undefined" || !document.fonts) return;
-  // Örnek sayfaların dizgisi (Fraunces, Literata): sayfalar.js modül yüklenirken ister, burada beklenir
+  // Örnek sayfaların dizgisi (Literata, Inter): sayfalar.js modül yüklenirken ister, burada beklenir
   const ornek = sayfalar.some((s) => s.tur === "pdf") ? Promise.resolve(SAYFALAR.yaziTipleri) : null;
   const metin = (dizi, al) => dizi.map(al).join(" ").slice(0, 4000) || "a";
   const notlar = metin([...sayfalar.flatMap((s) => s.notlar || []), ...sayfalar.flatMap((s) => (s.metinler || []).filter((m) => m.el))], (n) => n.metin || "");

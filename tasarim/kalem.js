@@ -323,7 +323,8 @@ function grenDeseni(ctx, renk) {
 // ---------- çizim ----------
 
 function kalemCiz(ctx, c, renk, yol) {
-  if (c.tur === "kursun") { ctx.globalAlpha = 0.8; ctx.fillStyle = grenDeseni(ctx, renk); }
+  // soluk: silgi ucu kurşunu bir geçişte yarıya indirir (TASARIM-3 nüans 3)
+  if (c.tur === "kursun") { ctx.globalAlpha = c.soluk ? 0.38 : 0.8; ctx.fillStyle = grenDeseni(ctx, renk); }
   else ctx.fillStyle = renk;
   ctx.fill(yol);
 }
@@ -887,7 +888,10 @@ function ornekler(c) {
 
 // Dokunduğu çizgileri bütün olarak siler; dizi yerinde değişir, silinenler döner.
 // onceki: [x, y] verilirse silginin iki konum arasındaki yolu da sınanır (hızlı harekette boşluk kalmaz).
-export function silgi(cizgiler, x, y, r, { sadeceFosforlu = false, onceki = null } = {}) {
+// yarilanan: Set verilirse kurşun kalem iki geçişte silinir: ilk geçişte yerine soluk kopyası konur
+// (aynı id, yeni nesne: geçmişteki eski nesne bozulmaz), kopyanın id'si Set'e yazılır ve aynı silme
+// hareketinde bir daha dokunulmaz. Soluklaşan çizginin eski nesnesi de dönen listeye girer (yeniden çizim bölgesi için).
+export function silgi(cizgiler, x, y, r, { sadeceFosforlu = false, onceki = null, yarilanan = null } = {}) {
   const konumlar = [[x, y]];
   if (onceki) {
     const L = Math.hypot(x - onceki[0], y - onceki[1]), adim = Math.max(0.5, r * 0.75);
@@ -904,7 +908,13 @@ export function silgi(cizgiler, x, y, r, { sadeceFosforlu = false, onceki = null
     if (!c || !c.p || !c.p.length) continue;
     const k = kutu(c);
     if (sx1 < k.x0 || sx0 > k.x1 || sy1 < k.y0 || sy0 > k.y1) continue;
-    if (konumlar.some(([px, py]) => cizgiyeDokunuyor(c, px, py, r))) silinen.unshift(cizgiler.splice(i, 1)[0]);
+    if (yarilanan && c.id != null && yarilanan.has(c.id)) continue;
+    if (!konumlar.some(([px, py]) => cizgiyeDokunuyor(c, px, py, r))) continue;
+    if (yarilanan && c.tur === "kursun" && !c.soluk) {
+      cizgiler[i] = { ...c, soluk: true };
+      if (c.id != null) yarilanan.add(c.id);
+      silinen.unshift(c);
+    } else silinen.unshift(cizgiler.splice(i, 1)[0]);
   }
   return silinen;
 }
@@ -1160,6 +1170,152 @@ export function sekilTani(cizgi) {
   }
   const orta = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
   return sonuc([orta, B, K3, A], true, "ucgen");
+}
+
+// ---------- izler: kalemin değdiği yer metne bağlanır (OZELLIKLER-5, İzler sözleşmesi) ----------
+// Saf ölçüm: kalem kalkınca boşta bir kez çağrılır, çizgileri değiştirmez.
+// kelimeler: [{ str, x, y, w, h }] sayfa biriminde (y aşağı, kutunun üstü). Boşsa (defter) yalnız biçime bakılır.
+// Dönen: { tur: "alt" | "daire" | "kenar" | "isaret" | "serbest", metin, kutu: { x0, y0, x1, y1 } }
+const IZ_METIN = 280;
+const IZ_KUCUK = 56;    // işaret sayılan en büyük boy (birim): yıldız, ünlem, soru, onay
+const IZ_SUTUN_PAY = 4;
+
+// Kelimeler satır parçalarına toplanır: dikey ortası yakın ve aralarında sütun boşluğu olmayanlar bir parça
+export function satirlaraTopla(kelimeler) {
+  const K = (kelimeler || []).filter((k) => k && k.str && k.w > 0 && k.h > 0)
+    .sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2));
+  const satirlar = [];
+  for (const k of K) {
+    const cy = k.y + k.h / 2;
+    let s = null;
+    for (let i = satirlar.length - 1; i >= Math.max(0, satirlar.length - 4); i--) {
+      const t = satirlar[i];
+      if (Math.abs(cy - t.cy) < Math.min(k.h, t.h) * 0.5) { s = t; break; }
+    }
+    if (!s) { s = { kelimeler: [], cy, h: k.h, top: 0 }; satirlar.push(s); }
+    s.kelimeler.push(k);
+    s.top += cy;
+    s.cy = s.top / s.kelimeler.length;
+    s.h = Math.max(s.h, k.h);
+  }
+  const parcalar = [];
+  for (const s of satirlar) {
+    s.kelimeler.sort((a, b) => a.x - b.x);
+    let p = null;
+    for (const k of s.kelimeler) {
+      // İki sütunlu sayfada aynı yükseklikteki iki satır ayrı parça olur
+      if (!p || k.x - p.x1 > Math.max(3 * s.h, 30)) { p = { kelimeler: [], x0: k.x, x1: k.x + k.w, y0: k.y, y1: k.y + k.h }; parcalar.push(p); }
+      p.kelimeler.push(k);
+      p.x0 = Math.min(p.x0, k.x); p.x1 = Math.max(p.x1, k.x + k.w);
+      p.y0 = Math.min(p.y0, k.y); p.y1 = Math.max(p.y1, k.y + k.h);
+    }
+  }
+  for (const p of parcalar) { p.h = p.y1 - p.y0; p.cy = (p.y0 + p.y1) / 2; }
+  return parcalar.sort((a, b) => a.cy - b.cy || a.x0 - b.x0);
+}
+
+const sirala = (a, p) => { const d = a.slice().sort((x, y) => x - y); return d[Math.min(d.length - 1, Math.max(0, Math.floor(p * d.length)))]; };
+function metinBirles(kelimeler) {
+  let s = kelimeler.map((k) => k.str).join(" ").replace(/\s+/g, " ").trim();
+  if (s.length > IZ_METIN) s = s.slice(0, IZ_METIN - 1).trimEnd() + "…";
+  return s;
+}
+// Parçaların sırayla metni (satır sonu boşlukla)
+const parcaMetni = (P) => metinBirles(P.flatMap((p) => p.kelimeler));
+const ortakX = (k, x0, x1) => Math.max(0, Math.min(k.x + k.w, x1) - Math.max(k.x, x0));
+
+// Kapalı halka mı: uç başlangıca (ya da başlangıç uca) yakın döner ve yol kutunun çevresi kadar uzun
+function halkaMi(P, L, bw, bh) {
+  const m = Math.max(bw, bh);
+  if (Math.min(bw, bh) < 6 || L < 2.2 * m || P.length < 6) return false;
+  const esik = Math.max(0.28 * m, 10), n = P.length, ceyrek = Math.max(2, Math.floor(n * 0.2));
+  const a = P[0], z = P[n - 1];
+  for (let i = 0; i < ceyrek; i++) if (Math.hypot(P[i][0] - z[0], P[i][1] - z[1]) < esik) return true;
+  for (let i = n - ceyrek; i < n; i++) if (Math.hypot(P[i][0] - a[0], P[i][1] - a[1]) < esik) return true;
+  return false;
+}
+
+export function izSinifla(cizgiler, { kelimeler = [], W = SAYFA_GENISLIK } = {}) {
+  const C = (cizgiler || []).filter((c) => c && c.p && c.p.length);
+  const kutu = cizgilerKutusu(C) || { x0: 0, y0: 0, x1: 0, y1: 0 };
+  if (!C.length) return { tur: "serbest", metin: "", kutu };
+  // Çizgi başına biçim: yalnız noktalar (kalınlık payı yok)
+  const bicim = C.map((c) => {
+    const P = c.tur === "sekil" ? [c.p[0], c.p[c.p.length - 1]] : noktalar(c);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, L = 0, ty = 0;
+    for (let i = 0; i < P.length; i++) {
+      const [x, y] = P[i];
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (i) L += Math.hypot(x - P[i - 1][0], y - P[i - 1][1]);
+      ty += y;
+    }
+    const bw = x1 - x0, bh = y1 - y0;
+    const sekilHalka = c.sekilDuz === "elips" || c.sekilDuz === "dikdortgen" || c.sekilDuz === "ucgen" || (c.tur === "sekil" && (c.sekil === "elips" || c.sekil === "dikdortgen"));
+    return { P, x0, y0, x1, y1, bw, bh, L, ortaY: ty / P.length,
+      halka: sekilHalka || halkaMi(P, L, bw, bh),
+      yatay: bw >= 16 && bw >= 3 * bh, dikey: bh >= 24 && bh >= 3 * bw };
+  });
+  const bx0 = Math.min(...bicim.map((b) => b.x0)), bx1 = Math.max(...bicim.map((b) => b.x1));
+  const by0 = Math.min(...bicim.map((b) => b.y0)), by1 = Math.max(...bicim.map((b) => b.y1));
+  const bw = bx1 - bx0, bh = by1 - by0, cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2;
+  const fosforlu = C.some((c) => c.tur === "fosforlu");
+
+  const parcalar = satirlaraTopla(kelimeler), metinVar = parcalar.length > 0;
+  // Metin sütunu: parçaların uçlarından (kenardaki sayfa numarası gibi tekil parçalar sayılmaz)
+  const sx0 = metinVar ? sirala(parcalar.map((p) => p.x0), 0.1) : W * 0.1;
+  const sx1 = metinVar ? sirala(parcalar.map((p) => p.x1), 0.9) : W * 0.9;
+  const sutunla = Math.max(0, Math.min(bx1, sx1) - Math.max(bx0, sx0));
+  const kenarda = (cx < sx0 - IZ_SUTUN_PAY || cx > sx1 + IZ_SUTUN_PAY) && sutunla < Math.max(0.35 * bw, 2);
+  const kucuk = Math.max(bw, bh) <= IZ_KUCUK;
+
+  // Yandaki satırlar: dikey aralığa değen, işarete en yakın sütundaki parçalar
+  const yandakiler = (y0, y1, enCok = Infinity) => {
+    const ust = parcalar.filter((p) => Math.min(p.y1, y1) - Math.max(p.y0, y0) > p.h * 0.4);
+    if (!ust.length) return [];
+    const uzak = (p) => (cx < p.x0 ? p.x0 - cx : cx > p.x1 ? cx - p.x1 : 0);
+    const en = Math.min(...ust.map(uzak));
+    return ust.filter((p) => uzak(p) <= en + 40).slice(0, enCok);
+  };
+  const kutudaki = (x0, y0, x1, y1) => parcalar.flatMap((p) => p.kelimeler)
+    .filter((k) => { const kx = k.x + k.w / 2, ky = k.y + k.h / 2; return kx >= x0 && kx <= x1 && ky >= y0 && ky <= y1; });
+
+  let tur = "serbest", metin = "";
+  if (fosforlu) {
+    // Fosforlu kalem satırın üstünden geçer: bandın değdiği kelimeler
+    const pay = Math.max(...C.map((c) => (c.tur === "fosforlu" ? kalinlik(c) / 2 : 0)));
+    metin = metinBirles(parcalar.filter((p) => p.cy >= by0 - pay && p.cy <= by1 + pay)
+      .flatMap((p) => p.kelimeler.filter((k) => ortakX(k, bx0, bx1) >= k.w * 0.5)));
+  } else if (C.length === 1 && bicim[0].halka) {
+    if (kucuk && kenarda) { tur = "isaret"; metin = parcaMetni(yandakiler(cy - 12, cy + 12, 1)); }
+    else {
+      tur = "daire";
+      const P = bicim[0].P;
+      let ic = parcalar.flatMap((p) => p.kelimeler).filter((k) => icinde(k.x + k.w / 2, k.y + k.h / 2, P));
+      if (!ic.length) ic = kutudaki(bx0 - 2, by0 - 2, bx1 + 2, by1 + 2);
+      metin = metinBirles(ic);
+    }
+  } else if (bicim.every((b) => b.yatay) && !kenarda) {
+    // Satırın altında mı: çizgi kelimenin ortasından aşağıda, bir satır boyundan az altta
+    const y = Math.min(...bicim.map((b) => b.ortaY));
+    const aday = parcalar.filter((p) => y >= p.y0 + p.h * 0.5 && y <= p.y1 + p.h * 0.8 && p.x1 > bx0 && p.x0 < bx1)
+      .sort((a, b) => Math.abs(y - a.y1) - Math.abs(y - b.y1));
+    if (aday.length) {
+      tur = "alt";
+      const s = aday[0];
+      metin = metinBirles(s.kelimeler.filter((k) => ortakX(k, bx0 - 2, bx1 + 2) >= k.w * 0.4));
+    } else if (!metinVar) tur = "alt";
+    else metin = metinBirles(kutudaki(bx0, by0 - 14, bx1, by1 + 14));   // satırın ortasından geçen çizgi: üstü çizili
+  } else if (kucuk && kenarda) {
+    tur = "isaret";
+    metin = parcaMetni(yandakiler(cy - Math.max(12, bh / 2), cy + Math.max(12, bh / 2), 1));
+  } else if (bicim.every((b) => b.dikey) && (kenarda || (!metinVar && (cx < W * 0.15 || cx > W * 0.85)))) {
+    tur = "kenar";
+    metin = parcaMetni(yandakiler(by0, by1));
+  } else if (kenarda) {
+    // Kenara yazılmış not: yanındaki satırlara bağlanır
+    metin = parcaMetni(yandakiler(by0, by1));
+  } else metin = metinBirles(kutudaki(bx0 - 2, by0 - 2, bx1 + 2, by1 + 2));
+  return { tur, metin, kutu };
 }
 
 // ---------- geri al / yinele ----------

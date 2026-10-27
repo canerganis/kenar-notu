@@ -18,6 +18,9 @@
 //              yukseklik ve çizgiler (kalem.js biçimi) sütun genişliği / BIRIM biriminde; x sütunun soluna, y boşluğun
 //              üstüne göre. Yazı boyutu ya da sütun değişince boşluk metinle gider, el yazısı sütunla ölçeklenir.
 //              kucuk: satır içinde simge olarak duruyor. bolum: dışa aktarma için bölüm adı (kitap açılmadan okunur).
+//   izler:     [{ id, tur, zaman, renk, metin, bas, son, cizgiler, capa, bolum? }] Koltuk'ta kalemin metne bıraktığı izler
+//              (OZELLIKLER-5 İzler sözleşmesi, EPUB biçimi). Ayrıntı "İzler" bölümünde. Eski kayıtta yoksa [].
+//   sonOkuma:  son okuma zamanı (ms); uzun aradan dönünce son satır bir an belirir
 
 import {
   h, icon, bus, store, ayarla, toast, hareketAz, kirpintiEkle, yeniId, belgeBul, ikiDokunus,
@@ -62,7 +65,7 @@ const SAYFA_RENKLERI = [
   { id: "gece", ad: "Gece", kd: "#1B1A17", kdy: "#D9D0BE" },
   { id: "tahta", ad: "Tahta", kd: "#1F2622", kdy: "#DCD8CB" },
 ];
-const SAYFA_META = { beyaz: "#FDFBF6", sepya: "#F5EDDA", gece: "#1B1A17", tahta: "#1F2622" };   // tarayıcı çubuğu sayfayla bir olsun
+const SAYFA_META = { beyaz: "#FDFBF6", sepya: "#F5EDDA", gece: "#141413", tahta: "#1F2622" };   // tarayıcı çubuğu sayfayla bir olsun
 const KOYU_SAYFA = new Set(["gece", "tahta"]);
 const SAYFA_ADI = { beyaz: "Beyaz", sepya: "Sepya", gece: "Gece", tahta: "Tahta" };
 // Hazır okuma temaları (TASARIM-2 §4.6). Kullanıcının kaydettikleri store.ayarlar.okumaTemalari'nda.
@@ -73,6 +76,7 @@ const HAZIR_TEMALAR = [
   { id: "tahta", ad: "Tahta", boyut: 19, satir: 1.62, olcu: 66, aile: "serif", sayfa: "tahta" },
 ];
 const TEMA_DEPO = "kn-tasarim:okuma-temalari";
+const KALEM_AVUC = 600;   // kalem görüldükten (temas ya da hava) sonra bu kadar ms dokunuş çizmez ve sayfa çevirmez
 const KALEM_ADI = { dolma: "Dolma kalem", tukenmez: "Tükenmez", kursun: "Kurşun kalem", fosforlu: "Fosforlu" };
 const KALEM_TURLERI = ["tukenmez", "dolma", "kursun"];
 const KALEM_SVG = {
@@ -247,7 +251,7 @@ function playpenOrnekYukle() {
 let S = null;
 
 function yeniVeri(belge) {
-  const veri = { vurgular: [], cizgiler: [], yerImleri: [], konum: null, asistanNotlari: [] };
+  const veri = { vurgular: [], cizgiler: [], yerImleri: [], konum: null, asistanNotlari: [], izler: [] };
   // İlk açılış kitaplıktaki "Kaldığın yerden" yüzdesinden başlar (yoksa %18 yazıp baştan açılırdı)
   if (belge.ilerleme > 0 && belge.ilerleme < 1) {
     const hedef = belge.ilerleme * TOPLAM;
@@ -314,6 +318,9 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
   if (veri.kurulmadi) veri = belge.veri = { ...yeniVeri(belge), asistanNotlari: veri.asistanNotlari || [] };
   if (belge.dosya) veri.epubSurum ||= surum;
   veri.asistanNotlari ||= [];
+  // Eksik alanlı eski ya da elle yazılmış kayıt: liste yoksa boş kabul edilir
+  if (!Array.isArray(veri.cizgiler)) veri.cizgiler = [];
+  if (!Array.isArray(veri.vurgular)) veri.vurgular = [];
   // Paragrafı bilinmeden düşen asistan notları sanal sayfalarının başına bağlanır
   for (const n of veri.asistanNotlari) if (!(Number.isInteger(n.p) && n.p >= 0 && n.p < P.length)) n.p = sayfaninParagrafi(n.sayfa);
   let acilisKirpinti = null;
@@ -328,6 +335,8 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
   if (!Array.isArray(veri.tuvaller)) veri.tuvaller = [];
   veri.tuvaller = veri.tuvaller.filter((t) => t && Number.isInteger(t.p) && t.p >= 0 && t.p < P.length && Array.isArray(t.cizgiler) && t.cizgiler.length);
   for (const t of veri.tuvaller) t.yukseklik = Math.max(40, Number(t.yukseklik) || TUVAL_YUK);
+  veri.izler = izleriDuzelt(veri.izler);
+  const sonOkuma = Number(veri.sonOkuma) || 0;
   const iptal = new AbortController();
   const meta = document.querySelector('meta[name="theme-color"]');
   S = {
@@ -344,6 +353,11 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
     mod, koltuk: null, olcum: null, sonSor: null, anlam: null, anYer: "",
     tv: new Map(), tvIO: null, tvAnahtar: null, yut: null, sonKalemZ: -1e9, parla: null,
     bekleyenAra: typeof ek.ara === "string" && ek.ara.trim() ? { ara: ek.ara, hedef } : null,
+    izG: new WeakMap(), izBekleyen: null, izZ: 0, sonCizimZ: -1e9, kose: null, cp: null, halka: null,
+    bekleyenIz: typeof ek.iz === "string" ? ek.iz : null,
+    // Kurdele ve "buradaydın": yalnız kaldığı yerden süren Koltuk açılışında
+    acilisKonum: mod === "koltuk" && veri.konum && !hedef && !acilisKirpinti ? { ...veri.konum } : null,
+    uzunAra: mod === "koltuk" && sonOkuma > 0 && Date.now() - sonOkuma > 8 * 3600e3,
   };
   S.anlik = durumAnlik();
   belge.sayfaSayisi = SAYFA_SAYISI;
@@ -366,11 +380,18 @@ export async function ac(kap, belge, ucuncu, mod, ek = {}) {
 }
 
 // git({ sayfa, ara, konum }): açık kitapta yerinde gidiş. Kabuk da bus "git" de çağırabilir; aynı istek bir kez uygulanır.
-export function git({ sayfa, ara, konum } = {}) {
+export function git({ sayfa, ara, konum, iz } = {}) {
   if (!S) return;
-  const imza = JSON.stringify([sayfa || 0, ara || "", konum || null]), t = performance.now();
+  const imza = JSON.stringify([sayfa || 0, ara || "", konum || null, iz || ""]), t = performance.now();
   if (S.sonGit?.imza === imza && t - S.sonGit.t < 500) return;
   S.sonGit = { imza, t };
+  // İzler panelinden gelen: izin yerine gidilir ve iz bir an parlar (TASARIM-3 §7.8)
+  const hedefIz = (typeof iz === "string" && S.veri.izler.find((z) => z.id === iz)) || izKonumda(konum);
+  if (hedefIz) {
+    if (!S.yer) { S.bekleyenIz = hedefIz.id; S.veri.konum = izKonumu(hedefIz); return; }
+    izeGit(hedefIz);
+    return;
+  }
   let hedef = konumDuzelt(konum);
   if (!hedef && sayfa > 0 && (ara || sayfa !== S.belge.sayfa)) hedef = { p: sayfaninParagrafi(sayfa), oran: 0 };
   const terim = typeof ara === "string" && ara.trim() ? ara : null;
@@ -430,7 +451,9 @@ function parlaTemizle() {
 export function kaydet() {
   if (!S) return;
   islakAktar();
+  izleriSiniflandir();   // kalem kalkalı az olduysa bekleyen izler şimdi metne bağlanır
   if (S.yer && S.el.kaydir.scrollHeight === S.yer.kayYuk) S.veri.konum = konumAl();
+  S.veri.sonOkuma = Date.now();
   vurguMetinleriniYaz();
 }
 
@@ -442,6 +465,7 @@ function vurguMetinleriniYaz() {
     v.bolum = BOLUMLER[P[v.bas.p].b].baslik;
   }
   for (const t of S.veri.tuvaller) if (P[t.p]) t.bolum = BOLUMLER[P[t.p].b].baslik;
+  for (const z of S.veri.izler) if (P[z.bas.p]) z.bolum = BOLUMLER[P[z.bas.p].b].baslik;
 }
 
 export function kapat() {
@@ -450,8 +474,13 @@ export function kapat() {
   tercihSakla();
   const s = S;
   islakAktar();
+  izleriSiniflandir();
+  s.veri.sonOkuma = Date.now();
+  if (s.halka) s.halka.classList.remove("gorunur");
+  if (s.halkaBizim) s.halkaBizim.remove();
   if (s.yer) s.veri.konum = konumAl();
   vurguMetinleriniYaz();
+  try { s.izlerPanel?.kapat(); } catch { /* boş */ }
   s.koltuk?.kapat();
   s.koltuk = null;
   s.iptal.abort();
@@ -469,9 +498,9 @@ export function kapat() {
     s.meta.content = (t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches) ? "#221E18" : "#FAF6EE";
   }
   s.kap.replaceChildren();
-  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin");
+  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede");
   for (const r of VURGULAR) s.kap.style.removeProperty("--v-" + r.id);
-  s.kap.style.removeProperty("--aa-kay");
+  for (const ad of ["--aa-kay", "--sutun-x", "--sutun-g"]) s.kap.style.removeProperty(ad);
   delete s.kap.dataset.sayfa;
   delete s.kap.dataset.arac;
   delete s.kap.dataset.mod;
@@ -536,7 +565,8 @@ function arayuzKur() {
   // Okuma alanı: kaydırıcı, mürekkep karoları, canlı katman, araç çubuğu, durum satırı
   el.sutun = h("article", { class: "okuma-sutun", lang: KITAP.dil || "tr", "aria-label": belge.ad });
   el.murekkep = h("div", { class: "murekkep-katman", "aria-hidden": "true" });
-  el.ic = h("div", { class: "okuma-ic" }, el.sutun, el.murekkep);
+  el.satirIsik = h("div", { class: "satir-isik", "aria-hidden": "true" });   // havadaki kalemin altındaki satır (TASARIM-3 §8)
+  el.ic = h("div", { class: "okuma-ic" }, el.satirIsik, el.sutun, el.murekkep);
   el.kaydir = h("div", { class: "okuma-kaydir", tabindex: "-1" }, el.ic);
   el.canli = h("canvas", { class: "okuma-canli", "aria-hidden": "true" });
   el.silgiImlec = h("i", { class: "silgi-imlec", hidden: true });
@@ -546,7 +576,11 @@ function arayuzKur() {
   el.sayfaNo = h("span", { class: "sayfa-no" });   // yalnız Koltuk'ta: çubuklar gizliyken altta ortada
   el.durum = h("div", { class: "okuma-durum", "aria-hidden": "true" }, el.durumBolum, el.kalan, el.yuzde, el.sayfaNo);
   el.ilerleme = h("div", { class: "okuma-ilerleme", role: "progressbar", "aria-label": "Kitapta ilerleme", "aria-valuemin": "0", "aria-valuemax": "100" }, h("i"));
-  el.okuma = h("div", { class: "okuma" }, el.kaydir, el.canli, el.silgiImlec, aracCubuguKur(), el.durum, el.ilerleme);
+  // Koltuk: sayfa kenarı kalınlığı (nüans 2) ve sağ üst köşe (TASARIM-3 §12)
+  el.sayfaKenari = h("div", { class: "sayfa-kenari", "aria-hidden": "true" });
+  el.kose = h("div", { class: "kose", "aria-hidden": "true" });
+  el.koseBolge = h("div", { class: "kose-bolge", "aria-hidden": "true", "data-dokunma-yok": "" });
+  el.okuma = h("div", { class: "okuma" }, el.kaydir, el.sayfaKenari, el.canli, el.silgiImlec, aracCubuguKur(), el.durum, el.ilerleme, el.kose, el.koseBolge);
 
   el.solPanel = h("aside", { class: "panel panel-sol okuma-icindekiler", hidden: true, "aria-label": "İçindekiler" });
   el.sagPanel = h("aside", { class: "panel panel-sag okuma-paneli", hidden: true, "aria-label": "Notlar" });
@@ -777,8 +811,9 @@ function yerlesimOlc() {
     pUst[gi] = ust + el.offsetTop;
     pAlt[gi] = pUst[gi] + el.offsetHeight;
   }
+  const cs = getComputedStyle(sutun);
   S.yer = { s: sutun.clientWidth / BIRIM, sol: sutun.offsetLeft, ust, pUst, pAlt, icGen: ic.clientWidth, icYuk: ic.offsetHeight, kayYuk: S.el.kaydir.scrollHeight,
-    lh: parseFloat(getComputedStyle(sutun).lineHeight) || 30, bloklar: bloklariOlc() };
+    lh: parseFloat(cs.lineHeight) || 30, em: parseFloat(cs.fontSize) || 19, bloklar: bloklariOlc() };
   S.goruntu = null;
 }
 // Satır ızgarasına uymayan bloklar: bölüm açılışı (numara, hedera, başlık bölünmez), sahne ayracı, kitap sonu
@@ -819,8 +854,8 @@ function satirAl(y) {
 // Sayfa penceresi: üstte sayfa başlığının bandı (KOLTUK_UST), altta sayfa numarasının bandı (KOLTUK_ALT).
 // Pencerenin iki kenarı da satır sınırına oturur: kesilen satır ya da blok bütünüyle gizlenir, yarım satır görünmez.
 // Kenarlar okuma.css'teki maskeye --sayfa-ust ve --sayfa-alt olarak gider; serbest kaydırmada da her karede.
-const KOLTUK_UST = 42;   // okuma.css: bu bantta bölüm adı
-const KOLTUK_ALT = 36;   // okuma.css: bu bantta sayfa numarası
+const KOLTUK_UST = 60;   // okuma.css: bu bantta sütun başlığı ve sayfa numarası (TASARIM-3 6.4.1: üstte yaklaşık 64px)
+const KOLTUK_ALT = 54;   // alt kenar boşluğu (TASARIM-3 6.4.1: altta yaklaşık 72px, satır sınırına oturunca)
 const KAYAN_CEVIRME = 300;   // bundan çok paragraflı kitapta sayfa çevirme kaymasız, yalnız solma (koltukCevir)
 // cubuk: çubuklar açıkken pencere opak çubukların altına daralır (yalnız maske; metin kaymaz, çevirme
 // çubuksuz pencereye göre yapılır).
@@ -888,11 +923,19 @@ function yerlesimDegisti() {
   yerlesimOlc();
   S.cubukH = S.el.cubuk?.offsetHeight || 0;
   konumaGit(k);
+  // Sütunun kenarları: Koltuk'un sayfa başlığı, ilerleme çizgisi ve sayfa kenarı sütuna hizalanır
+  S.kap.style.setProperty("--sutun-x", S.yer.sol.toFixed(1) + "px");
+  S.kap.style.setProperty("--sutun-g", (S.yer.s * BIRIM).toFixed(1) + "px");
+  S.okumaR = S.el.okuma.getBoundingClientRect();
+  if (S.el.kurdele) kurdeleKur();   // yazı boyutu değişince kurdele satırıyla gider
   if (ilk) {
     S.el.kaydir.focus({ preventScroll: true });   // klavyeyle kaydırma (boşluk, sayfa aşağı) hemen çalışsın
     const kp = S.acilisKirpinti;
     if (kp) { S.acilisKirpinti = null; zamanla(() => kirpintiyaGit(kp), hareketAz() ? 140 : 460); }
+    if (S.acilisKonum) kurdeleKur();
+    if (S.uzunAra) zamanla(sonSatirBelir, hareketAz() ? 200 : 700);
   }
+  if (S.bekleyenIz) { const id = S.bekleyenIz; S.bekleyenIz = null; zamanla(() => { const z = S?.veri.izler.find((x) => x.id === id); if (z) izeGit(z); }, 80); }
   if (S.bekleyenAra) { const b = S.bekleyenAra; S.bekleyenAra = null; zamanla(() => S?.yer && araParlat(b.ara, b.hedef), 60); }
   tuvalleriTazele(false);
   canliBoyutla();
@@ -933,9 +976,10 @@ function durumGuncelle() {
   S.el.ilerleme.setAttribute("aria-valuenow", String(Math.round(oran * 100)));
   S.belge.ilerleme = oran;
   S.belge.sayfa = Math.min(SAYFA_SAYISI, Math.floor(okunan / SAYFADA) + 1);
-  S.el.sayfaNo.textContent = `s. ${S.belge.sayfa} / ${SAYFA_SAYISI}`;
+  S.el.sayfaNo.textContent = `${S.belge.sayfa} / ${SAYFA_SAYISI}`;
   S.veri.konum = k;
   if (S.koltuk) {
+    kalinlikGuncelle(oran);
     S.kKonum = { oran, bolumAd: bolum.ad, kelimeKalanBolum: Math.max(0, kalanKelime), kelimeKalanKitap: Math.max(0, TOPLAM - okunan) };
     hizOlc(okunan);
     S.koltuk.guncelle();
@@ -964,6 +1008,7 @@ function durumAnlik() {
     vurgular: anlik(S.veri.vurgular),
     cizgiler: S.veri.cizgiler.slice(),
     tuvaller: S.veri.tuvaller.map((t) => [t, t.cizgiler.slice()]),
+    izler: S.veri.izler.slice(),   // birleşen iz yeni nesnedir; sınıflama yerinde olur ama izi aynı yere çizer
   };
 }
 // Her işlem öncesi ve sonrası anlık kopya ile geçmişe yazılır (geri al / yinele)
@@ -978,6 +1023,9 @@ function islem(fn) {
 function durumYukle(d) {
   S.veri.vurgular = anlik(d.vurgular);
   S.veri.cizgiler = d.cizgiler.slice();
+  const izDegisti = !!d.izler && (d.izler.length !== S.veri.izler.length || d.izler.some((z, i) => z !== S.veri.izler[i]));
+  if (d.izler) S.veri.izler = d.izler.slice();
+  if (izDegisti) { S.izBekleyen = null; belgeDegisti(); izPlanla(); S.koltuk?.izleriYenile?.(); }
   let tuvalDegisti = false;
   for (const [t, cz] of d.tuvaller || []) {
     if (t.cizgiler.length === cz.length && t.cizgiler.every((c, i) => c === cz[i])) continue;
@@ -1146,6 +1194,7 @@ function gorunenYerImleri() {
 }
 function yerImiDurumu() {
   const var_ = gorunenYerImleri().length > 0;
+  if (!S.kose) S.el.kose.classList.toggle("kivrik", var_);   // Koltuk: yer imli sayfanın köşesi kıvrık
   S.el.yerImi.setAttribute("aria-pressed", String(var_));
   S.el.yerImi.setAttribute("aria-label", var_ ? "Yer imini kaldır" : "Yer imi ekle");
 }
@@ -1395,6 +1444,7 @@ function uzunBasisBitti({ x, y }) {
   const k = noktadakiKelime(x, y);
   if (!k) return;
   S.basili = false;
+  if (S.aktif?.iz) { S.aktif.iptal = true; S.canli.temizle(); }   // kalemle kelimeye uzun basış iz değil, anlam kartı
   anlamAc(k.kelime, k.aralik, [...aralikRange(k.aralik).getClientRects()]);
 }
 function noktadakiKelime(x, y) {
@@ -2029,9 +2079,13 @@ function koltukAc({ ilk = false } = {}) {
     modDegistir: (m) => modSec(m),
     araclar: [el.kAra, el.kIcindekiler, el.kAa, el.kDisa, el.kDaha],
     sahne: el.kaydir,
+    izler: () => izOranlari(),
+    izeGit: (id) => { const z = S?.veri.izler.find((x) => x.id === id); if (z) izeGit(z); },
+    izAtla: (yon) => izAtla(yon),
     kalemUcu: false,   // EPUB'da kalem gizli: S Pen satır arasına inince Active Canvas açılır, araç seçimi yok
     mesgul: () => !!(S && (S.katman || S.menu || S.el.aramaSatiri || (S.panel && dar()) || S.aktif)),
-    dokunmaGecerli: (e) => !S || S.yut !== e.pointerId,   // boşluk açan ya da içine yazan kalem sayfa çevirmez
+    // Boşluk açan ya da içine yazan kalem sayfa çevirmez; yazarken konan nokta (ünlemin noktası) da çevirmez
+    dokunmaGecerli: (e) => !S || (S.yut !== e.pointerId && !(e.pointerType === "pen" && performance.now() - S.sonCizimZ < IZ_BIRLESME * 2)),
   });
   S.olcum = null;
   if (S.yer) durumGuncelle();
@@ -2311,13 +2365,18 @@ function goruntuler() {
   if (!S.goruntu) S.goruntu = S.veri.cizgiler.map(cevir);
   return S.goruntu;
 }
+// Karoya düşen bütün mürekkep: Masa çizgileri ve [y0, y1] içerik pikseline yakın izler
+function gorunenCizgiler(y0, y1) {
+  const g = goruntuler();
+  return S.veri.izler.length ? g.concat(izlerAraliginda(y0, y1)) : g;
+}
 const karoKesisir = (k, i) => k.y1 >= i * KARO && k.y0 <= (i + 1) * KARO;
 
 function karolariGuncelle(zorla) {
   if (!S.yer) return;
   const kay = S.el.kaydir, H = kay.clientHeight, ust = kay.scrollTop;
   const bas = Math.max(0, Math.floor((ust - H * 0.5) / KARO)), son = Math.floor((ust + H * 1.5) / KARO);
-  const g = goruntuler();
+  const g = gorunenCizgiler((bas - 2) * KARO, (son + 3) * KARO);
   for (const [i, cv] of S.karolar) {
     if (i < bas - 2 || i > son + 2 || !g.some((c) => karoKesisir(c.kutu, i))) { cv.width = 0; cv.height = 0; cv.remove(); S.karolar.delete(i); }
   }
@@ -2341,8 +2400,8 @@ function karoCiz(i, cv, yalniz) {
     ctx.clearRect(0, 0, W, H);
   }
   ctx.setTransform(d * s, 0, 0, d * s, 0, -i * KARO * d);
-  const koyu = S.sayfa === "gece";
-  for (const c of yalniz || goruntuler()) if (karoKesisir(c.kutu, i)) cizgiCiz(ctx, c, { koyuSayfa: koyu });
+  const koyu = KOYU_SAYFA.has(S.sayfa);
+  for (const c of yalniz || gorunenCizgiler(i * KARO, (i + 1) * KARO)) if (karoKesisir(c.kutu, i)) cizgiCiz(ctx, c, { koyuSayfa: koyu });
 }
 // Yeni çizgi: yalnız değdiği karolara eklenir (yeniden çizim yok)
 function cizgiyiKarolaraEkle(g) {
@@ -2364,7 +2423,7 @@ function canliBoyutla() {
   const anahtar = `${w}|${hg}|${S.yer.s}|${d}|${S.sayfa}`;
   if (anahtar === S.canliAnahtar) return;
   S.canliAnahtar = anahtar;
-  S.canli.boyutla(w, hg, S.yer.s * d, { dpr: d, koyuSayfa: S.sayfa === "gece" });
+  S.canli.boyutla(w, hg, S.yer.s * d, { dpr: d, koyuSayfa: KOYU_SAYFA.has(S.sayfa) });
 }
 
 // En yakın paragraf: çizginin ilk noktası (içerik pikseli)
@@ -2385,8 +2444,20 @@ function olaylariBagla() {
   kaydir.addEventListener("pointerup", isaretciKalkti, { signal: sinyal });
   kaydir.addEventListener("pointercancel", isaretciKalkti, { signal: sinyal });
   kaydir.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") S.el.silgiImlec.hidden = true; }, { signal: sinyal });
-  // Kalem havadayken kaydırıcı dokunuşla kaymaz (touch-action), yoksa S Pen'in ilk çizgisi kaydırmaya gider
-  kaydir.addEventListener("pointermove", (e) => { if (e.pointerType === "pen" && S.mod === "koltuk") kalemYakin(); }, { passive: true, signal: sinyal });
+  // Havadaki kalem: imleç halkası, Koltuk'ta satır belirmesi ve köşe ipucu. Kalem havadayken kaydırıcı dokunuşla
+  // kaymaz (touch-action), yoksa S Pen'in ilk çizgisi kaydırmaya gider.
+  S.el.okuma.addEventListener("pointermove", kalemHavada, { passive: true, signal: sinyal });
+  S.el.okuma.addEventListener("pointerleave", (e) => { if (e.pointerType === "pen") havaBitti(); }, { signal: sinyal });
+  // Kalemle uzun basış Android bağlam menüsünü, seçim balonunu ve büyüteci açmaz (S Pen 4)
+  S.el.okuma.addEventListener("contextmenu", (e) => {
+    if (S && (S.sonIsaretci === "pen" || performance.now() - S.sonKalemZ < 800)) e.preventDefault();
+  }, { signal: sinyal });
+  // Köşe kıvırma (TASARIM-3 §12)
+  const kb = S.el.koseBolge;
+  kb.addEventListener("pointerdown", koseBasti, { signal: sinyal });
+  kb.addEventListener("pointermove", koseOynadi, { signal: sinyal });
+  kb.addEventListener("pointerup", koseKalkti, { signal: sinyal });
+  kb.addEventListener("pointercancel", koseKalkti, { signal: sinyal });
   kaydir.addEventListener("wheel", () => islakAktar(), { passive: true, signal: sinyal });
   sutun.addEventListener("click", vurguyaDokunuldu, { signal: sinyal });
   document.addEventListener("selectionchange", () => {
@@ -2429,7 +2500,7 @@ function olaylariBagla() {
   S.bus.push(bus.on("git", (g) => {
     if (!S || g?.ekran !== "belge" || g.belgeId !== S.belge.id) return;
     if (g.mod) modDegistir(g.mod);
-    if (g.ara || g.konum || g.sayfa > 0) git(g);
+    if (g.ara || g.konum || g.sayfa > 0 || g.iz) git(g);
   }));
   // Anlam kartına akan cevap (asistan.js, istek kimliğiyle)
   S.bus.push(bus.on("asistan:cevap", (d) => { const a = S?.anlam; if (a && d?.istek === a.istek) anlamParca(a, d); }));
@@ -2445,7 +2516,7 @@ function olaylariBagla() {
 }
 
 function vurguyaDokunuldu(e) {
-  if (S.arac !== "okuma") return;
+  if (S.arac !== "okuma" || performance.now() - S.sonCizimZ < 400) return;
   const sec = document.getSelection();
   if (sec && !sec.isCollapsed) return;
   const m = e.target.closest("mark.vurgu");
@@ -2461,7 +2532,9 @@ function kalemAlgilandi() {
   if (store.ayarlar.parmaklaCiz !== false) { ayarla({ parmaklaCiz: false }); toast("Kalem algılandı, parmakla artık sayfa kayar."); }
 }
 
-const silgiTusu = (e) => e.pointerType === "pen" && ((e.buttons & 2) || (e.buttons & 32));
+// Silgi ucu her zaman siler; yan tuş Ayarlar'daki "Yan tuş silgi" açıksa. Basınç S Pen eğrisinden geçer.
+const silgiTusu = (e) => e.pointerType === "pen" && (!!(e.buttons & 32) || (!!(e.buttons & 2) && store.ayarlar.yanTusSilgi !== false));
+const basinc = (q) => (q.pointerType === "pen" ? (ortak.basincUygula ? ortak.basincUygula(q.pressure || 0.5) : q.pressure || 0.5) : 0.5);
 function geciciSilgi(acik) {
   S.el.silgi.classList.toggle("gecici-etkin", acik);
   for (const b of S.el.kalemler) b.classList.toggle("dinlen", acik && b.dataset.arac === S.arac);
@@ -2470,10 +2543,11 @@ function geciciSilgi(acik) {
 function isaretciBasti(e) {
   S.sonIsaretci = e.pointerType;
   S.yut = null;
-  if (e.pointerType === "pen") { kalemAlgilandi(); kalemYakin(); S.sonKalemZ = performance.now(); }
-  // Koltuk avuç içi reddi: kalem yazarken, kalemden hemen sonra ya da geniş temasta dokunuş yok sayılır
+  if (e.pointerType === "pen") { kalemAlgilandi(); kalemYakin(); S.sonKalemZ = performance.now(); havaBitti(); }
+  // Koltuk avuç içi reddi: kalem yazarken, kalem görüldükten 600 ms içinde (havada da) ya da geniş temasta dokunuş yok sayılır
   if (S.mod === "koltuk" && e.pointerType === "touch"
-    && (S.aktif?.tur === "pen" || performance.now() - S.sonKalemZ < 400 || (e.width > 44 && e.height > 44))) return;
+    && (S.aktif?.tur === "pen" || performance.now() - S.sonKalemZ < KALEM_AVUC || (e.width > 44 && e.height > 44))) return;
+  if (S.mod === "koltuk" && e.pointerType === "touch") cokParmakBasti(e);
   if (S.mod === "koltuk" && S.arac === "okuma" && !S.okumaModu && tuvalBasti(e)) return;
   if (S.arac === "okuma" || S.okumaModu) {
     S.basili = e.pointerType === "mouse";
@@ -2497,7 +2571,7 @@ function isaretciBasti(e) {
   katmanKapat();
   const R = S.el.okuma.getBoundingClientRect(), s = S.yer.s;
   const arac = silgiTusu(e) ? "silgi" : S.arac;
-  const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, e.pointerType === "pen" ? e.pressure || 0.5 : 0.5];
+  const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, basinc(e)];
   S.aktif = { id: e.pointerId, tur: e.pointerType, arac, R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta };
   S.kap.classList.add("yaziyor");
   if (arac === "silgi") { geciciSilgi(arac !== S.arac); silgiBasla(nokta, e); }
@@ -2507,14 +2581,15 @@ function isaretciBasti(e) {
 
 function isaretciOynadi(e) {
   if (S.uzun && e.pointerId === S.uzun.id && Math.hypot(e.clientX - S.uzun.x, e.clientY - S.uzun.y) > 10) uzunBasisIptal();
+  if (S.cp?.ids.has(e.pointerId)) cokParmakOynadi(e);
   if (S.parmak?.noktalar.has(e.pointerId)) return parmakOynadi(e);
   const a = S.aktif;
   if (S.arac !== "okuma" && e.pointerType === "pen" && !a) geciciSilgi(!!silgiTusu(e) && S.arac !== "silgi");
   if (S.arac === "silgi" || a?.arac === "silgi" || (S.arac !== "okuma" && silgiTusu(e))) silgiImleci(e);
-  if (!a || e.pointerId !== a.id) return;
+  if (!a || e.pointerId !== a.id || a.iptal) return;
   const birlesik = e.getCoalescedEvents?.() || [];
   const olaylar = birlesik.length ? birlesik : [e];   // boş liste dönerse olayın kendisi
-  const nok = (q) => [(q.clientX - a.R.left) / a.s, (q.clientY - a.R.top) / a.s, q.pointerType === "pen" ? q.pressure || 0.5 : 0.5];
+  const nok = (q) => [(q.clientX - a.R.left) / a.s, (q.clientY - a.R.top) / a.s, basinc(q)];
   if (a.arac === "kalem" && silgiTusu(e)) {   // çizim sırasında yan tuşa basıldı: çizgiyi bitir, silgiye geç
     kalemBitir();
     a.arac = "silgi";
@@ -2527,9 +2602,10 @@ function isaretciOynadi(e) {
   // kalem ve fosforlu
   const c = a.cizgi;
   if (a.duz) { c.p[1] = nok(e); S.canli.ciz(c); return; }
+  if (a.bosluk && !a.karar) bosluktaKarar(a, nok(e));
   for (const q of olaylar) {
     const n = nok(q), o = c.p[c.p.length - 1];
-    if (!a.tuval && Math.hypot(n[0] - o[0], n[1] - o[1]) > 1.5) {   // el yazısında düzeltme yok
+    if (!a.tuval && !a.iz && Math.hypot(n[0] - o[0], n[1] - o[1]) > 1.5) {   // el yazısında ve izde düzeltme yok
       clearTimeout(a.bekle);
       a.bekle = setTimeout(() => duzelt(a), 600);   // kalemi basılı tut, düzelt
     }
@@ -2540,6 +2616,7 @@ function isaretciOynadi(e) {
 }
 
 function isaretciKalkti(e) {
+  if (S.cp?.ids.has(e.pointerId)) cokParmakKalkti(e);
   if (S.uzun && e.pointerId === S.uzun.id) {
     // Android uzun basışta seçime geçerken işaretçiyi iptal edebilir: süre dolmak üzereyse kart yine açılır
     const u = S.uzun;
@@ -2595,9 +2672,18 @@ function duzelt(a) {
   S.canli.ciz(a.cizgi);
 }
 function kalemBitir() {
-  const a = S.aktif, c = a.cizgi, kaydir0 = a.kaydir0;
+  const a = S.aktif;
+  clearTimeout(a.kararZ);
+  if (a.bosluk && !a.karar) izBosluga(a);   // satır arasına kısa dokunuş: boşluk açılır, iz kalmaz
+  if (a.iptal) { S.canli.temizle(); return; }
+  const c = a.cizgi, kaydir0 = a.kaydir0;
   a.bekleyenIslak = true;
-  if (a.tuval) islakBitir(S.canli, c, (bitmis) => tuvalCizgiKaydet(bitmis, a));
+  if (a.iz) {
+    a.kalkis = performance.now();
+    clearTimeout(S.izZ);   // ıslak çizgi kaydedilince sınıflama yeniden kurulur: birleşecek çizgi beklenmeden kapanmasın
+    if (izHareketli(c.p, a.s)) S.sonCizimZ = a.kalkis;   // çizginin ardından gelen tıklama vurgu menüsü açmasın
+    islakBitir(S.canli, c, (bitmis) => izCizgiKaydet(bitmis, a)); }
+  else if (a.tuval) islakBitir(S.canli, c, (bitmis) => tuvalCizgiKaydet(bitmis, a));
   else islakBitir(S.canli, c, (bitmis) => cizgiKaydet(bitmis, kaydir0));
 }
 // Canlı katman birimindeki çizgiyi en yakın paragrafa bağlar ve saklar
@@ -2628,7 +2714,8 @@ function silgiOynat(n) {
   const x = n[0], y = n[1] + a.kaydir0 / s;
   const r = tercih.silgi.r * (a.tur === "pen" ? 1 : 1.2);
   tuvalSilgi(n, r);
-  if (a.yalnizTuval) return;   // Koltuk'ta yan tuş yalnız el yazısını siler
+  izSilgi(x, y, r, a);
+  if (a.yalnizTuval) return;   // Koltuk'ta yan tuş yalnız el yazısını ve izleri siler
   const silinen = silgiUygula(goruntuler(), x, y, r, { sadeceFosforlu: tercih.silgi.sadeceFosforlu, onceki: a.onceki });
   a.onceki = [x, y];
   if (!silinen.length) return;
@@ -2639,8 +2726,9 @@ function silgiOynat(n) {
 }
 function silgiBitir() {
   const a = S.aktif;
-  if (a.tuvalSilindi) belgeDegisti();
-  if (!a.silinen.length && !a.tuvalSilindi) return;
+  if (a.tuvalSilindi || a.izSilindi) belgeDegisti();
+  if (a.izSilindi) S.koltuk?.izleriYenile?.();
+  if (!a.silinen.length && !a.tuvalSilindi && !a.izSilindi) return;
   const sonra = durumAnlik();
   S.gecmis.kaydet({ sayfa: "okuma", once: a.once, sonra });
   S.anlik = sonra;
@@ -2760,7 +2848,7 @@ function tuvalCiz(r, degistiyse = false) {
   ctx.clearRect(0, 0, W, H);
   r.olcek = (d * w) / BIRIM;
   ctx.setTransform(r.olcek, 0, 0, r.olcek, 0, 0);
-  const koyu = S.sayfa === "gece";
+  const koyu = KOYU_SAYFA.has(S.sayfa);
   for (const c of r.t.cizgiler) cizgiCiz(ctx, c, { koyuSayfa: koyu });
   r.boyut = boyut;
 }
@@ -2953,7 +3041,8 @@ function kalemYakin() {
   zamanla(bak, 400);
 }
 
-// Koltuk'ta kalem ya da fare: boşluğa yaz, simgeyi aç, satır arasına inince yeni boşluk. Olayı yuttuysa true.
+// Koltuk'ta kalem ya da fare: boşluğa yaz, simgeyi aç, satır arasına inince yeni boşluk; kalem metne ya da kenara
+// inince iz başlar (OZELLIKLER-5 §1.1). Olayı yuttuysa true.
 function tuvalBasti(e) {
   const kalem = e.pointerType === "pen", fare = e.pointerType === "mouse" && e.button === 0;
   if ((!kalem && !fare) || !S.yer) return false;
@@ -2964,9 +3053,12 @@ function tuvalBasti(e) {
   if (r?.t.kucuk) { e.preventDefault(); S.yut = e.pointerId; tuvalAcKapa(r, false); return true; }
   if (r) return tuvalYazBasla(e, r, false);
   if (!kalem) return false;
-  if (silgiTusu(e)) return tuvalYazBasla(e, null, false);   // yan tuş: dokunduğu el yazısını siler
-  const yer = noktadakiBosluk(e);
-  return yer ? tuvalYazBasla(e, tuvalAc(yer), true) : false;
+  if (silgiTusu(e)) return tuvalYazBasla(e, null, false);   // yan tuş: dokunduğu el yazısını ve izleri siler
+  if (e.target.closest?.("button, a, input, textarea, .kenar-notu, .kenar-asistan, .kurdele")) return false;
+  // Satır arası: kalem yerinde durursa ya da dokunup kalkarsa boşluk açılır, yataya akarsa alt çizgi olur (bosluktaKarar)
+  const sutunda = sutunIcinde(e.clientX);
+  const yer = sutunda ? noktadakiBosluk(e) : null;
+  return izBasla(e, yer);
 }
 // acilis: boşluğu bu dokunuş açtı; yerinde kalan kısa dokunuş iz bırakmaz
 function tuvalYazBasla(e, r, acilis) {
@@ -2978,7 +3070,7 @@ function tuvalYazBasla(e, r, acilis) {
   katmanKapat();
   menuKapat();
   const R = S.el.okuma.getBoundingClientRect(), s = S.yer.s;
-  const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, e.pointerType === "pen" ? e.pressure || 0.5 : 0.5];
+  const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, basinc(e)];
   const a = S.aktif = {
     id: e.pointerId, tur: e.pointerType, arac: silgiTusu(e) ? "silgi" : "kalem", R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta,
     tuval: r, acilis, yalnizTuval: S.mod === "koltuk",
@@ -3005,7 +3097,7 @@ function tuvalCizgiKaydet(c, a) {
   if (r.boyut) {
     const ctx = r.cv.getContext("2d");
     ctx.setTransform(r.olcek, 0, 0, r.olcek, 0, 0);
-    cizgiCiz(ctx, kayit, { koyuSayfa: S.sayfa === "gece" });
+    cizgiCiz(ctx, kayit, { koyuSayfa: KOYU_SAYFA.has(S.sayfa) });
   } else tuvalCiz(r);
   tuvalUzat(r, kayit);
   belgeDegisti();
@@ -3048,6 +3140,714 @@ function tuvalSilgi(n, yaricap) {
     const silinen = silgiUygula(k.r.t.cizgiler, x, y, yaricap, { onceki: once ? [once[0] - k.x, once[1] - k.y] : null });
     if (silinen.length) { tuvalCiz(k.r); a.tuvalSilindi = true; }
   }
+}
+
+// ---------- İzler: kalemin değdiği yerler (OZELLIKLER-5 §1 ve İzler sözleşmesi, TASARIM-3 §7) ----------
+// Koltuk'ta kalem araç seçmeden metnin ya da kenarın üstüne iz bırakır; parmak çevirmeye devam eder. Çizim canlı
+// katmanda; kalem kalkınca iz önce bulunduğu paragrafa bağlanır (geçici, serbest gibi çizilir), kısa bir aradan sonra
+// boşta sınıflanır ve metne bağlanır. Kalem yolunda ölçüm yok: sınıflama ve metin bulma kalem kalktıktan sonra.
+// Kayıt: cizgiler kalem.js biçiminde ama birimi em (sütunun yazı boyutu), kalınlık w de em. Her tür kendi çapasına göre
+// saklanır; düzen değişince çapa yeniden ölçülür, iz çizildiği gibi (titremesiyle) taşınır:
+//   alt     x: (karakter konumu - bas.o) × capa.harf, y: satırın harf kutusunun altına göre. Satır kırılınca parçalanır.
+//   daire   kapsanan metnin kutusunun ortasına göre; capa { w, h } o kutunun boyu. Kutu değişince en-boy korunarak ölçeklenir.
+//   kenar   x: sütun kenarına (capa.yan "sol" | "sag"), y: metnin üstüne göre; capa.h metnin boyu, dikeyde ölçeklenir.
+//   isaret  kendi ortasına göre; capa { yan, dx, dy }: ortanın sütun kenarına ve bağlı satırın ortasına uzaklığı.
+//   serbest kendi ortasına göre; capa { x, oy }: ortanın sütun solundan uzaklığı (em) ve bas.p paragrafındaki oranı.
+// gecici: true henüz sınıflanmadı (serbest gibi çizilir; kaydet ve kapat bekleyenleri hemen sınıflar).
+const IZ_BIRLESME = 650;   // ms: kalkıştan bu kadar içinde yakına inen çizgi aynı izdir (ünlem, soru, çift alt çizgi)
+const IZ_METIN = 280;
+const yuvarla = (v, b = 1e3) => Math.round(v * b) / b;
+const izGecerli = (z) => !!z && !!z.bas && !!z.son && Number.isInteger(z.bas.p) && Number.isInteger(z.son.p)
+  && z.bas.p >= 0 && z.son.p < P.length && z.bas.p <= z.son.p && Array.isArray(z.cizgiler);
+// Eski kayıtta izler yoksa []. Kitaba uymayan iz silinmez, yalnız çizilmez (ayrıştırma sürümü değişse de veri kalsın).
+function izleriDuzelt(l) {
+  return Array.isArray(l) ? l.filter((z) => z && typeof z === "object" && Array.isArray(z.cizgiler)) : [];
+}
+// Koltuk'un kalemi: Masa'da son seçilen kalem, yoksa ilk kalem (varsayılan dolma, mürekkep mavisi)
+function izKalemi() {
+  const ad = S.sonKalem?.startsWith("kalem") ? S.sonKalem : "kalem0";
+  return kalemAyari(ad) || tercih.kalemler[0];
+}
+function sutunIcinde(x) {
+  const R = S.el.sutun.getBoundingClientRect(), pay = S.yer.em * 0.3;
+  return x >= R.left - pay && x <= R.right + pay;
+}
+const izHareketli = (p, s) => p.some((q) => Math.hypot(q[0] - p[0][0], q[1] - p[0][1]) * s >= 4);
+
+// Kalem metne ya da kenara indi. bosluk: satır arasına indiyse Active Canvas'ın yeri (karar kalemin ilk hareketiyle)
+function izBasla(e, bosluk) {
+  e.preventDefault();
+  clearTimeout(S.izZ);   // yeni çizgi bekleyen izle birleşebilir: sınıflama kalkışa kadar bekler
+  uzunBasisIptal();
+  cancelAnimationFrame(S.raf.atalet);
+  try { S.el.kaydir.setPointerCapture(e.pointerId); } catch { /* bırakılmış işaretçi */ }
+  katmanKapat();
+  menuKapat();
+  const R = S.el.okuma.getBoundingClientRect(), s = S.yer.s, k = izKalemi();
+  const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, basinc(e)];
+  const a = S.aktif = {
+    id: e.pointerId, tur: "pen", arac: "kalem", R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta,
+    iz: true, bosluk, yalnizTuval: true, t0: performance.now(),
+  };
+  a.cizgi = { id: yeniId("c"), tur: k.tur, renk: k.renk, w: k.mm * 5, p: [nokta] };
+  // Satır arasında dokunuş sayfa çevirmez; kelimeye uzun basış anlam kartını açar (iz bırakmaz)
+  if (bosluk) { S.yut = e.pointerId; a.kararZ = setTimeout(() => izBosluga(a), 220); }
+  else uzunBasisKur(e);
+  S.kap.classList.add("yaziyor");
+  S.el.canli.classList.remove("carp");
+  S.canli.ciz(a.cizgi);
+  return true;
+}
+// Satır arasına inen kalem: yataya akarsa alt çizgi (iz), başka yöne yazmaya başlarsa ya da yerinde durursa boşluk açılır
+function bosluktaKarar(a, n) {
+  const dx = (n[0] - a.bas[0]) * a.s, dy = (n[1] - a.bas[1]) * a.s;
+  if (Math.hypot(dx, dy) < 8) return;
+  if (Math.abs(dx) > 2 * Math.abs(dy)) { a.karar = "iz"; clearTimeout(a.kararZ); }
+  else izBosluga(a);
+}
+function izBosluga(a) {
+  if (S?.aktif !== a || a.karar) return;
+  a.karar = "tuval";
+  clearTimeout(a.kararZ);
+  const r = tuvalAc(a.bosluk), q = r.el.getBoundingClientRect();
+  Object.assign(a, { iz: false, tuval: r, acilis: true, tx: (q.left - a.R.left) / a.s, ty: (q.top - a.R.top) / a.s });
+  a.cizgi = { id: a.cizgi.id, ...TUVAL_KALEM, p: a.cizgi.p };   // boşlukta el yazısının kalemi
+  S.canli.ciz(a.cizgi);
+}
+
+// Kalkan çizgi: bekleyen izin yakınına ve kısa süre içinde indiyse ona katılır, yoksa yeni geçici iz olur.
+// Çizgi çizildiği karede karolara işlenir; sınıflama IZ_BIRLESME sonra boşta.
+function izCizgiKaydet(c, a) {
+  if (!S?.yer || !c.p.length) return;
+  const ham = { id: c.id, tur: c.tur, renk: c.renk, w: c.w, p: c.p.map((q) => [q[0], q[1] + a.kaydir0 / a.s, q[2]]) };
+  const b = S.izBekleyen;
+  const katil = b && b.iz.gecici && S.veri.izler.includes(b.iz) && a.t0 - b.kalkis < IZ_BIRLESME && izYakin(b.iz, ham);
+  if (!katil && !izHareketli(c.p, a.s)) return;   // tek başına kısa dokunuş iz bırakmaz; izin yanındaki nokta katılır
+  let iz;
+  if (katil) {
+    const eski = b.iz;
+    iz = { ...serbestCapa([...izGoruntu(eski), ham]), id: eski.id, zaman: eski.zaman, renk: eski.renk, metin: "", gecici: true };
+    islem(() => { const i = S.veri.izler.indexOf(eski); if (i >= 0) S.veri.izler[i] = iz; else S.veri.izler.push(iz); });
+  } else {
+    iz = { id: yeniId("iz"), zaman: Date.now(), renk: ham.renk, metin: "", ...serbestCapa([ham]), gecici: true };
+    islem(() => { S.veri.izler.push(iz); });
+  }
+  S.izBekleyen = { iz, kalkis: a.kalkis };
+  const g = izGoruntu(iz).find((x) => x.id === ham.id);
+  if (g) cizgiyiKarolaraEkle(g);
+  belgeDegisti();
+  izPlanla();
+}
+// Birleşir: yakın ve ya ikisi de yatay ince çizgi (çift alt çizgi) ya da birlikte küçük bir işaret (ünlem, soru, yıldız)
+function izYakin(iz, ham) {
+  const { s, lh, em } = S.yer, gs = izGoruntu(iz), a = kutuNoktalar(gs.flatMap((g) => g.p)), b = kutuNoktalar(ham.p), pay = (lh * 1.2) / s;
+  if (!(a.x0 - pay < b.x1 && b.x0 - pay < a.x1 && a.y0 - pay < b.y1 && b.y0 - pay < a.y1)) return false;
+  const yatay = (k) => (k.x1 - k.x0) * s > 1.2 * em && (k.y1 - k.y0) * s < 0.6 * lh && k.x1 - k.x0 > 3 * (k.y1 - k.y0);
+  if (yatay(b) && gs.every((g) => yatay(kutuNoktalar(g.p)))) return true;
+  const enBuyuk = Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0), enUzun = Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0);
+  return Math.max(enBuyuk, enUzun) * s < 2.6 * lh;
+}
+function kutuNoktalar(p) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const q of p) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+  return { x0, y0, x1, y1 };
+}
+// İçerik birimindeki çizgiyi (ham ya da yerleşmiş) çapa birimine (em) çevirir; f içerik pikselini alır
+function normalCizgi(c, f) {
+  const { s, em } = S.yer;
+  return {
+    id: String(c.id).split(":")[0], tur: c.tur, renk: c.renk, w: yuvarla(((c.w || 3) * s) / em, 1e4),
+    p: c.p.map((q) => { const [x, y] = f(q[0] * s, q[1] * s); return [yuvarla(x), yuvarla(y), yuvarla(q[2] ?? 0.5, 100)]; }),
+  };
+}
+// Serbest (ve geçici) çapa: izin ortası, en yakın paragrafın içinde oranla
+function serbestCapa(cizgiler) {
+  const { s, em, sol, pUst, pAlt } = S.yer;
+  const k = kutuNoktalar(cizgiler.flatMap((c) => c.p));
+  const cx = ((k.x0 + k.x1) / 2) * s, cy = ((k.y0 + k.y1) / 2) * s, p = yakinParagraf(cy);
+  const ph = Math.max(1, pAlt[p] - pUst[p]), oy = yuvarla((cy - pUst[p]) / ph, 1e5), x = yuvarla((cx - sol) / em);
+  const X = sol + x * em, Y = pUst[p] + oy * ph;   // yuvarlanmış çapa: yerleşince aynı yere düşsün
+  const o = Math.round(sinirla(oy, 0, 1) * P[p].metin.length);
+  return { tur: "serbest", bas: { p, o }, son: { p, o }, capa: { x, oy }, cizgiler: cizgiler.map((c) => normalCizgi(c, (a, b) => [(a - X) / em, (b - Y) / em])) };
+}
+
+// ---------- izler: metin ölçümü (içerik pikseli; ölçümler yalnız kalem kalkınca ve düzen değişince) ----------
+function pBag(gi, icR) {
+  const pEl = S.pEl[gi];
+  return { gi, dz: metinDugumleri(pEl), n: P[gi].metin.length, icR, ilk: pEl.classList.contains("ilk") };
+}
+// Harf kutusu (ekran koordinatı). İlk harf büyük başlangıç harfiyse ikinci harf ölçülür; boş kutuda yandaki harfe bakılır.
+function hk(b, i) {
+  i = sinirla(i, 0, b.n - 1);
+  if (b.ilk && i === 0 && b.n > 1) i = 1;
+  for (let k = i; k < Math.min(b.n, i + 4); k++) { const q = harfKutusu(b.dz, k); if (q && q.height) return q; }
+  for (let k = i - 1; k >= Math.max(0, i - 4); k--) { const q = harfKutusu(b.dz, k); if (q && q.height) return q; }
+  return null;
+}
+// i. harfin görsel satırı: { a, b, x0, x1, ust, alt } (b hariç; içerik pikseli, harf kutularından)
+function satirBilgi(b, i) {
+  if (!b.n) return null;
+  i = sinirla(i, 0, b.n - 1);
+  const r = hk(b, i);
+  if (!r) return null;
+  let lo = 0, hi = i;
+  while (lo < hi) { const m = (lo + hi) >> 1; const q = hk(b, m); if (q && q.bottom > r.top + 1) hi = m; else lo = m + 1; }
+  const a = lo;
+  lo = i; hi = b.n - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; const q = hk(b, m); if (q && q.top < r.bottom - 1) lo = m; else hi = m - 1; }
+  const qa = hk(b, a) || r, qb = hk(b, lo) || r;
+  return { a, b: lo + 1, x0: qa.left - b.icR.left, x1: qb.right - b.icR.left, ust: r.top - b.icR.top, alt: r.bottom - b.icR.top };
+}
+// (x, y) içerik noktasının satırı (y satır arasındaysa alttaki satır) ve o satırda x'teki harf
+function harfBul(b, x, y) {
+  if (!b.n) return null;
+  const X = x + b.icR.left, Y = y + b.icR.top;
+  let lo = 0, hi = b.n - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; const q = hk(b, m); if (q && q.bottom > Y) hi = m; else lo = m + 1; }
+  const L = satirBilgi(b, lo);
+  if (!L) return null;
+  let a = L.a, c = L.b - 1;
+  while (a < c) { const m = (a + c) >> 1; const q = hk(b, m); if (q && q.right > X) c = m; else a = m + 1; }
+  return { i: a, L };
+}
+// [a, b) harflerinin görsel satırları. tam: satırın bütün harfleri (alt çizginin oranı), değilse yalnız aralıktakiler.
+function satirlar(gi, a, b, tam, icR) {
+  const pb = pBag(gi, icR), son = Math.min(b, pb.n), out = [];
+  let i = Math.max(0, a);
+  while (i < son) {
+    const L = satirBilgi(pb, i);
+    if (!L || L.b <= i) break;
+    if (!tam) {
+      const qa = hk(pb, Math.max(L.a, a)), qb = hk(pb, Math.min(L.b, son) - 1);
+      if (qa) L.x0 = qa.left - icR.left;
+      if (qb) L.x1 = qb.right - icR.left;
+    }
+    out.push(L);
+    i = L.b;
+  }
+  return out;
+}
+function aralikKutusu(bas, son, icR) {
+  let k = null;
+  for (let p = bas.p; p <= son.p; p++) {
+    for (const L of satirlar(p, p === bas.p ? bas.o : 0, p === son.p ? son.o : P[p].metin.length, false, icR)) {
+      if (!k) k = { x0: L.x0, y0: L.ust, x1: L.x1, y1: L.alt };
+      else { k.x0 = Math.min(k.x0, L.x0); k.y0 = Math.min(k.y0, L.ust); k.x1 = Math.max(k.x1, L.x1); k.y1 = Math.max(k.y1, L.alt); }
+    }
+  }
+  return k;
+}
+function aralikMetni(bas, son) {
+  const parca = [];
+  for (let p = bas.p; p <= son.p && p < P.length; p++) {
+    const m = P[p].metin;
+    parca.push(m.slice(p === bas.p ? bas.o : 0, p === son.p ? son.o : m.length));
+  }
+  const t = parca.join(" ").replace(/\s+/g, " ").trim();
+  return t.length > IZ_METIN ? t.slice(0, IZ_METIN - 1).trimEnd() + "…" : t;
+}
+// y'deki satır; y paragraf dışındaysa (başlık, aralık) yon > 0 ile sonraki, yon < 0 ile önceki paragrafın kenar satırı
+function satirBul(y, yon, icR) {
+  const { pUst, pAlt, sol } = S.yer;
+  let gi = konumAl(y).p;
+  if (y < pUst[gi]) {
+    if (yon < 0) gi--;
+    if (gi < 0) return null;
+    y = yon > 0 ? pUst[gi] + 1 : pAlt[gi] - 1;
+  }
+  if (y >= pAlt[gi]) y = pAlt[gi] - 1;
+  const h = harfBul(pBag(gi, icR), sol + 2, y);
+  return h ? { p: gi, L: h.L } : null;
+}
+const bosMu = (ch) => !ch || /\s/.test(ch);
+
+// ---------- izler: yerleşim (çapadan içerik birimine) ----------
+// Yerleşmiş izler düzen ölçüsüyle (S.yer) önbellekte: düzen değişmedikçe yeniden ölçülmez
+function izGoruntu(iz) {
+  const on = S.izG.get(iz);
+  if (on && on.yer === S.yer) return on.g;
+  let g = [];
+  try { g = izYerlestir(iz); } catch { g = []; }
+  S.izG.set(iz, { yer: S.yer, g });
+  return g;
+}
+function izYerlestir(iz) {
+  if (!izGecerli(iz)) return [];
+  const { s, em, sol } = S.yer, sag = sol + s * BIRIM, c = iz.capa || {}, icR = S.el.ic.getBoundingClientRect();
+  const kx = c.yan === "sag" ? sag : sol;
+  let f = null, altSatir = null;
+  switch (iz.gecici ? "serbest" : iz.tur) {
+    case "alt": {
+      altSatir = satirlar(iz.bas.p, iz.bas.o, iz.son.o, true, icR);
+      if (!altSatir.length || !(c.harf > 0)) return [];
+      break;
+    }
+    case "daire": {
+      const k = aralikKutusu(iz.bas, iz.son, icR);
+      if (!k) return [];
+      const cx = (k.x0 + k.x1) / 2, cy = (k.y0 + k.y1) / 2;
+      // Kutu değişince en-boy korunarak büyür ya da küçülür: daire kelimenin yeni kutusunu yine sarar
+      const o = sinirla(Math.max((k.x1 - k.x0) / Math.max(1e-3, (c.w || 1) * em), (k.y1 - k.y0) / Math.max(1e-3, (c.h || 1) * em)) || 1, 0.4, 6);
+      f = (q) => [cx + q[0] * em * o, cy + q[1] * em * o];
+      break;
+    }
+    case "kenar": {
+      const u = satirBilgi(pBag(iz.bas.p, icR), iz.bas.o), a = satirBilgi(pBag(iz.son.p, icR), iz.son.o - 1);
+      if (!u || !a) return [];
+      const H = Math.max(1, a.alt - u.ust), h0 = Math.max(1e-3, c.h || 1);
+      f = (q) => [kx + q[0] * em, u.ust + (q[1] / h0) * H];
+      break;
+    }
+    case "isaret": {
+      const L = satirBilgi(pBag(iz.bas.p, icR), iz.bas.o);
+      if (!L) return [];
+      const cx = kx + (c.dx || 0) * em, cy = (L.ust + L.alt) / 2 + (c.dy || 0) * em;
+      f = (q) => [cx + q[0] * em, cy + q[1] * em];
+      break;
+    }
+    default: {
+      const { pUst, pAlt } = S.yer, p = iz.bas.p;
+      const cx = sol + (c.x || 0) * em, cy = pUst[p] + (c.oy || 0) * Math.max(1, pAlt[p] - pUst[p]);
+      f = (q) => [cx + q[0] * em, cy + q[1] * em];
+    }
+  }
+  const cikti = [];
+  for (const cz of iz.cizgiler) {
+    if (!cz || !Array.isArray(cz.p) || !cz.p.length) continue;
+    const w = ((cz.w > 0 ? cz.w : 0.15) * em) / s;
+    const parcalar = altSatir ? altParcala(cz.p, altSatir, iz.bas.o, c.harf, em) : [cz.p.map((q) => { const xy = f(q); return [xy[0], xy[1], q[2]]; })];
+    parcalar.forEach((pp, j) => { if (pp.length) cikti.push(goruntuYap(j ? `${cz.id}:${j}` : cz.id, iz.id, cz, pp.map((q) => [q[0] / s, q[1] / s, q[2]]), w)); });
+  }
+  return cikti;
+}
+// Alt çizgi: her nokta karakter konumuyla kendi satırına düşer; satır kırılınca çizgi parçalara bölünür
+function altParcala(p, L, bas, harf, em) {
+  const parca = [];
+  let son = -1, cur = null;
+  for (const q of p) {
+    const ch = bas + q[0] / harf;
+    let i = L.findIndex((l) => ch < l.b);
+    if (i < 0) i = L.length - 1;
+    const l = L[i], n = Math.max(1e-3, l.b - l.a);
+    if (i !== son) { cur = []; parca.push(cur); son = i; }
+    cur.push([l.x0 + ((ch - l.a) / n) * (l.x1 - l.x0), l.alt + q[1] * em, q[2]]);
+  }
+  return parca;
+}
+function goruntuYap(id, iz, cz, p, w) {
+  const s = S.yer.s, k = kutuNoktalar(p), pay = w + 2;
+  return { id, iz, tur: cz.tur, renk: cz.renk, w, p, kutu: { x0: (k.x0 - pay) * s, y0: (k.y0 - pay) * s, x1: (k.x1 + pay) * s, y1: (k.y1 + pay) * s } };
+}
+// [y0, y1] içerik pikseline yakın izlerin yerleşmiş çizgileri
+function izlerAraliginda(y0, y1) {
+  const { pUst, pAlt, em } = S.yer, pay = 12 * em, out = [];
+  for (const z of S.veri.izler) {
+    if (!izGecerli(z) || pAlt[z.son.p] + pay < y0 || pUst[z.bas.p] - pay > y1) continue;
+    for (const g of izGoruntu(z)) if (g.kutu.y1 >= y0 && g.kutu.y0 <= y1) out.push(g);
+  }
+  return out;
+}
+
+// ---------- izler: sınıflama (kalem kalktıktan sonra, boşta) ----------
+function izPlanla() {
+  if (!S) return;
+  clearTimeout(S.izZ);
+  S.izZ = zamanla(() => {
+    if (!S) return;
+    if (S.aktif) { izPlanla(); return; }
+    const bosta = globalThis.requestIdleCallback || ((f) => setTimeout(f, 0));
+    bosta(() => { if (!S) return; if (S.aktif) izPlanla(); else izleriSiniflandir(); }, { timeout: 500 });
+  }, IZ_BIRLESME);
+}
+function izleriSiniflandir() {
+  if (!S?.yer) return;
+  clearTimeout(S.izZ);
+  S.izBekleyen = null;
+  for (const z of S.veri.izler) if (z.gecici) izSiniflandir(z);
+}
+// Sözleşme 1: yataya yakın ve satırın altında alt; kapalı halka daire; sütun dışında dikey kenar;
+// kenarda küçük işaret (yıldız, ünlem, soru, onay) isaret; gerisi serbest. Sonra metne bağlanır.
+function izSiniflandir(z) {
+  const gs = izGecerli(z) ? izGoruntu(z) : [];
+  if (!gs.length) { delete z.gecici; return; }
+  const { s, em, lh, sol } = S.yer, sag = sol + s * BIRIM, icR = S.el.ic.getBoundingClientRect();
+  const cz = gs.map((g) => g.p.map((q) => [q[0] * s, q[1] * s]));
+  const k = kutuNoktalar(cz.flat());
+  const W = k.x1 - k.x0, H = k.y1 - k.y0, cx = (k.x0 + k.x1) / 2;
+  const disarda = k.x1 < sol - 0.3 * em || k.x0 > sag + 0.3 * em;
+  const dikey = H > 1.4 * lh && H > 2.5 * W;
+  const yatay = cz.every((p) => { const q = kutuNoktalar(p), w = q.x1 - q.x0, h = q.y1 - q.y0; return w > 1.2 * em && h < 0.6 * lh && w > 3 * h; });
+  let tur = "serbest";
+  if (disarda) tur = dikey ? "kenar" : Math.max(W, H) < 2.6 * lh ? "isaret" : "serbest";
+  else if (cz.length === 1 && kapali(cz[0], W, H, em, lh)) tur = "daire";
+  else if (yatay) tur = "alt";
+  else if (dikey && Math.min(Math.abs(cx - sol), Math.abs(cx - sag)) < 1.5 * em) tur = "kenar";
+  let sonuc = null;
+  try {
+    if (tur === "alt") sonuc = altCapa(gs, cz, k, icR);
+    else if (tur === "daire") sonuc = daireCapa(gs, cz[0], k, icR);
+    else if (tur === "kenar") sonuc = kenarCapa(gs, k, icR);
+    else if (tur === "isaret") sonuc = isaretCapa(gs, k, icR);
+  } catch { sonuc = null; }
+  if (!sonuc) { tur = "serbest"; sonuc = { ...serbestCapa(gs), metin: disarda ? "" : altindakiMetin(k, icR) }; }
+  Object.assign(z, sonuc, { tur });
+  delete z.gecici;
+  if (P[z.bas.p]) z.bolum = BOLUMLER[P[z.bas.p].b].baslik;
+  S.izG.delete(z);
+  belgeDegisti();
+  S.koltuk?.izleriYenile?.();
+}
+// Kapalı halka: yol çevresinden uzun, ucu başına yakın ve içi dolu (zikzak değil)
+function kapali(p, W, H, em, lh) {
+  if (p.length < 8 || H < 0.5 * lh || W < 0.8 * em) return false;
+  let L = 0, A = 0;
+  for (let i = 1; i < p.length; i++) {
+    L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+    A += p[i - 1][0] * p[i][1] - p[i][0] * p[i - 1][1];
+  }
+  const D = Math.max(W, H), son = p[p.length - 1], d = Math.hypot(p[0][0] - son[0], p[0][1] - son[1]);
+  return L > 2.2 * D && d < Math.max(0.35 * D, 0.8 * em) && Math.abs(A / 2) > 0.3 * W * H;
+}
+function altCapa(gs, cz, k, icR) {
+  const { em, pUst, pAlt } = S.yer;
+  const tum = cz.flat(), ym = tum.reduce((t, q) => t + q[1], 0) / tum.length;
+  const y = ym - 0.4 * em, gi = konumAl(y).p;   // çizginin hemen üstündeki satır
+  if (y < pUst[gi] || y >= pAlt[gi]) return null;
+  const pb = pBag(gi, icR), h0 = harfBul(pb, k.x0 + 1, y), h1 = harfBul(pb, k.x1 - 1, y);
+  if (!h0 || !h1) return null;
+  const m = P[gi].metin, L0 = h0.L;
+  let a = h0.i, b = (h1.L.a === L0.a ? h1.i : L0.b - 1) + 1;
+  while (a < b && bosMu(m[a])) a++;
+  while (b > a && bosMu(m[b - 1])) b--;
+  if (b <= a) return null;
+  while (a > L0.a && HARF.test(m[a - 1]) && HARF.test(m[a])) a--;   // yarım çizilen kelime bütün sayılır
+  while (b < L0.b && HARF.test(m[b]) && HARF.test(m[b - 1])) b++;
+  const L = satirBilgi(pb, a);   // yerleşimin kullandığı satır: aynı ölçü, aynı yer
+  if (!L || ym - L.alt > 1.1 * em || L.ust - ym > 0.2 * em) return null;
+  const gen = Math.max(1e-3, L.x1 - L.x0), n = Math.max(1, L.b - L.a);
+  const harf = yuvarla(gen / n / em, 1e5), kar = (x) => L.a + ((x - L.x0) / gen) * n;
+  return {
+    bas: { p: gi, o: a }, son: { p: gi, o: b }, capa: { harf }, metin: aralikMetni({ p: gi, o: a }, { p: gi, o: b }),
+    cizgiler: gs.map((g) => normalCizgi(g, (x, yy) => [(kar(x) - a) * harf, (yy - L.alt) / em])),
+  };
+}
+function daireCapa(gs, poly, k, icR) {
+  const { em, lh, pUst, pAlt } = S.yer;
+  const icinde = (x, y) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  let ilk = null, son = null;
+  const bakildi = new Set();
+  for (let y = k.y0 + 2; y <= k.y1 - 2; y += lh / 3) {
+    const gi = konumAl(y).p;
+    if (y < pUst[gi] || y >= pAlt[gi]) continue;
+    const pb = pBag(gi, icR), h = harfBul(pb, k.x0, y);
+    if (!h || bakildi.has(gi + ":" + h.L.a)) continue;
+    bakildi.add(gi + ":" + h.L.a);
+    for (let i = h.i; i < h.L.b; i++) {
+      const q = hk(pb, i);
+      if (!q) continue;
+      const qx = (q.left + q.right) / 2 - icR.left, qy = (q.top + q.bottom) / 2 - icR.top;
+      if (qx > k.x1) break;
+      // harfin iki yanı da halkanın içinde: kelimenin yanındaki komşu harf sayılmaz
+      if (bosMu(P[gi].metin[i]) || !icinde(q.left - icR.left + 1, qy) || !icinde(q.right - icR.left - 1, qy)) continue;
+      const yer = { p: gi, o: i };
+      if (!ilk || kars(yer, ilk) < 0) ilk = yer;
+      if (!son || kars(yer, son) > 0) son = yer;
+    }
+  }
+  if (!ilk) return null;
+  const mA = P[ilk.p].metin, mB = P[son.p].metin;
+  let a = ilk.o, b = son.o + 1;
+  while (a > 0 && HARF.test(mA[a - 1]) && HARF.test(mA[a])) a--;
+  while (b < mB.length && HARF.test(mB[b]) && HARF.test(mB[b - 1])) b++;
+  const bas = { p: ilk.p, o: a }, sonY = { p: son.p, o: b }, kutu = aralikKutusu(bas, sonY, icR);
+  if (!kutu) return null;
+  const cx = (kutu.x0 + kutu.x1) / 2, cy = (kutu.y0 + kutu.y1) / 2;
+  return {
+    bas, son: sonY, capa: { w: yuvarla((kutu.x1 - kutu.x0) / em, 1e4), h: yuvarla((kutu.y1 - kutu.y0) / em, 1e4) },
+    metin: aralikMetni(bas, sonY), cizgiler: gs.map((g) => normalCizgi(g, (x, y) => [(x - cx) / em, (y - cy) / em])),
+  };
+}
+function kenarCapa(gs, k, icR) {
+  const { em, lh, sol, s } = S.yer, sag = sol + s * BIRIM, cx = (k.x0 + k.x1) / 2;
+  const yan = Math.abs(cx - sol) <= Math.abs(cx - sag) ? "sol" : "sag", kx = yan === "sol" ? sol : sag;
+  const ust = satirBul(k.y0 + 0.25 * lh, 1, icR), alt = satirBul(k.y1 - 0.25 * lh, -1, icR);
+  if (!ust || !alt) return null;
+  const bas = { p: ust.p, o: ust.L.a }, son = { p: alt.p, o: alt.L.b };
+  if (kars(bas, son) >= 0) return null;
+  const u = satirBilgi(pBag(bas.p, icR), bas.o), a = satirBilgi(pBag(son.p, icR), son.o - 1);
+  if (!u || !a) return null;
+  const H = Math.max(1, a.alt - u.ust), h = yuvarla(H / em, 1e4);
+  return {
+    bas, son, capa: { yan, h }, metin: aralikMetni(bas, son),
+    cizgiler: gs.map((g) => normalCizgi(g, (x, y) => [(x - kx) / em, ((y - u.ust) / H) * h])),
+  };
+}
+function isaretCapa(gs, k, icR) {
+  const { em, sol, s, pUst, pAlt } = S.yer, sag = sol + s * BIRIM;
+  const cx = (k.x0 + k.x1) / 2, cy = (k.y0 + k.y1) / 2;
+  const yan = cx < (sol + sag) / 2 ? "sol" : "sag", kx = yan === "sol" ? sol : sag;
+  const gi = yakinParagraf(cy), pb = pBag(gi, icR);
+  const h = harfBul(pb, sol + 2, sinirla(cy, pUst[gi] + 1, pAlt[gi] - 1));
+  if (!h) return null;
+  const m = P[gi].metin;
+  let a = h.L.a, b = h.L.b;
+  while (a < b && bosMu(m[a])) a++;
+  while (b > a && bosMu(m[b - 1])) b--;
+  if (b <= a) return null;
+  const L = satirBilgi(pb, a);
+  if (!L) return null;
+  const dx = yuvarla((cx - kx) / em), dy = yuvarla((cy - (L.ust + L.alt) / 2) / em);
+  const X = kx + dx * em, Y = (L.ust + L.alt) / 2 + dy * em;
+  const cumle = baglamCumle({ bas: { p: gi, o: a }, son: { p: gi, o: b } });
+  return {
+    bas: { p: gi, o: a }, son: { p: gi, o: b }, capa: { yan, dx, dy },
+    metin: cumle.length > IZ_METIN ? cumle.slice(0, IZ_METIN - 1) + "…" : cumle,
+    cizgiler: gs.map((g) => normalCizgi(g, (x, y) => [(x - X) / em, (y - Y) / em])),
+  };
+}
+// Serbest izin altındaki metin: kutunun sol üstünden sağ altına
+function altindakiMetin(k, icR) {
+  const { lh } = S.yer;
+  const u = satirBul(k.y0 + 0.3 * lh, 1, icR), a = satirBul(k.y1 - 0.3 * lh, -1, icR);
+  if (!u || !a) return "";
+  const hu = harfBul(pBag(u.p, icR), k.x0, (u.L.ust + u.L.alt) / 2), ha = harfBul(pBag(a.p, icR), k.x1, (a.L.ust + a.L.alt) / 2);
+  if (!hu || !ha) return "";
+  const bas = { p: u.p, o: hu.i }, son = { p: a.p, o: ha.i + 1 };
+  return kars(bas, son) < 0 ? aralikMetni(bas, son) : "";
+}
+
+// ---------- izler: silgi, gidiş, parlama, atlama ----------
+// Silgi dokunduğu izi bütün olarak siler (geri alınır)
+function izSilgi(x, y, r, a) {
+  if (!S.veri.izler.length) return;
+  const s = S.yer.s, aday = izlerAraliginda((y - r) * s - 40, (y + r) * s + 40);
+  if (!aday.length) return;
+  const vurulan = silgiUygula(aday.slice(), x, y, r, { onceki: a.izOnceki });
+  a.izOnceki = [x, y];
+  if (!vurulan.length) return;
+  const idler = new Set(vurulan.map((g) => g.iz));
+  const giden = S.veri.izler.filter((z) => idler.has(z.id));
+  const kutular = giden.flatMap((z) => izGoruntu(z).map((g) => g.kutu));
+  S.veri.izler = S.veri.izler.filter((z) => !idler.has(z.id));
+  if (S.izBekleyen && idler.has(S.izBekleyen.iz.id)) S.izBekleyen = null;
+  a.izSilindi = true;
+  karolariYenile(kutular);
+}
+const izKonumu = (z) => ({ p: z.bas.p, oran: P[z.bas.p] ? sinirla(z.bas.o / Math.max(1, P[z.bas.p].metin.length), 0, 1) : 0 });
+// İzler panelinin verdiği konum bir izin başına denk geliyorsa o iz
+function izKonumda(k) {
+  if (!S || !k || !Number.isInteger(k.p) || !P[k.p]) return null;
+  const n = Math.max(1, P[k.p].metin.length);
+  return S.veri.izler.find((z) => izGecerli(z) && z.bas.p === k.p && Math.abs(z.bas.o / n - (Number(k.oran) || 0)) < 1e-3) || null;
+}
+function izKutusu(z) {
+  const g = izGoruntu(z);
+  if (!g.length) return null;
+  return { x0: Math.min(...g.map((c) => c.kutu.x0)), y0: Math.min(...g.map((c) => c.kutu.y0)), x1: Math.max(...g.map((c) => c.kutu.x1)), y1: Math.max(...g.map((c) => c.kutu.y1)) };
+}
+function izeGit(z) {
+  darsaKapat();
+  menuKapat();
+  const k = izKutusu(z);
+  if (!k) { konumaGit(izKonumu(z)); durumGuncelle(); return; }
+  kaydirGit(k.y0 - S.el.kaydir.clientHeight * 0.35, () => izParlat(z));
+}
+// Seçili iz: kendi küçük tuvalinde bir kez yumuşak hale (TASARIM-3 §7.8); bütün katman değil
+function izParlat(z) {
+  if (!S?.yer) return;
+  const k = izKutusu(z);
+  if (!k) return;
+  const s = S.yer.s, d = Math.min(globalThis.devicePixelRatio || 1, 2), W = k.x1 - k.x0, H = k.y1 - k.y0;
+  const cv = h("canvas", { class: "iz-hedef", "aria-hidden": "true" });
+  cv.width = Math.max(1, Math.ceil(W * d)); cv.height = Math.max(1, Math.ceil(H * d));
+  cv.style.cssText = `left:${k.x0}px;top:${k.y0}px;width:${W}px;height:${H}px`;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(d * s, 0, 0, d * s, -k.x0 * d, -k.y0 * d);
+  for (const c of izGoruntu(z)) cizgiCiz(ctx, c, { koyuSayfa: KOYU_SAYFA.has(S.sayfa) });
+  S.el.ic.append(cv);
+  zamanla(() => cv.remove(), hareketAz() ? 400 : 950);
+}
+// Önceki ve sonraki iz ([ ve ], cetvelin okları): ekranın dışındaki ilk iz
+function izAtla(yon) {
+  if (!S?.yer) return;
+  const { pUst, pAlt } = S.yer, kay = S.el.kaydir;
+  const ust = kay.scrollTop + (S.mod === "koltuk" ? KOLTUK_UST : ustPay()), alt = kay.scrollTop + kay.clientHeight - (S.mod === "koltuk" ? KOLTUK_ALT : 0);
+  const y = (z) => pUst[z.bas.p] + izKonumu(z).oran * (pAlt[z.bas.p] - pUst[z.bas.p]);
+  const l = S.veri.izler.filter(izGecerli).map((z) => [y(z), z]).sort((a, b) => a[0] - b[0]);
+  const hedef = yon > 0 ? l.find(([v]) => v > alt) : l.reverse().find(([v]) => v < ust);
+  if (hedef) izeGit(hedef[1]);
+  else toast(l.length ? (yon > 0 ? "Sonrasında iz yok" : "Öncesinde iz yok") : "Bu kitapta henüz kalem izi yok");
+}
+// Cetvel çentikleri: izlerin kitaptaki oranı
+function izOranlari() {
+  if (!S) return [];
+  return S.veri.izler.filter(izGecerli).map((z) => ({ id: z.id, oran: sinirla(okunanKelime(izKonumu(z)) / TOPLAM, 0, 1) }));
+}
+
+// ---------- havadaki kalem (TASARIM-3 §8) ----------
+function kalemHavada(e) {
+  if (e.pointerType !== "pen" || !S?.yer) return;
+  S.sonKalemZ = performance.now();   // avuç içi: havadaki kalem de sayılır (S Pen 3)
+  if (S.mod === "koltuk") kalemYakin();
+  if ((e.buttons & 1) || S.aktif || S.kose) { havaBitti(); return; }
+  halkaGuncelle(e);
+  if (S.mod !== "koltuk") return;
+  satirIsikGuncelle(e);
+  const R = S.okumaR || (S.okumaR = S.el.okuma.getBoundingClientRect());
+  S.kap.classList.toggle("kalem-kosede", R.right - e.clientX < 56 && e.clientY - R.top < 56 && !S.kap.classList.contains("cubuk-gorunur"));
+}
+function havaBitti() {
+  if (!S) return;
+  S.halka?.classList.remove("gorunur");
+  S.el.satirIsik.classList.remove("acik");
+  S.kap.classList.remove("kalem-kosede");
+}
+// Tek halka belgede bir kez: başka ekran eklediyse o kullanılır
+function halkaAl() {
+  let el = document.querySelector(".kalem-halka");
+  if (!el) { el = h("div", { class: "kalem-halka", "aria-hidden": "true" }); document.body.append(el); S.halkaBizim = el; }
+  return el;
+}
+function halkaGuncelle(e) {
+  const yanTus = silgiTusu(e), s = S.yer.s;
+  let arac = "kalem", cap = 8, renk = null;
+  if (S.mod === "masa" && (yanTus || S.arac === "silgi" || S.arac === "okuma" || S.arac === "kirp")) { S.halka?.classList.remove("gorunur"); return; }   // Masa'da silgi kendi imleciyle
+  if (yanTus) { arac = "silgi"; cap = tercih.silgi.r * 2 * s; }
+  else if (S.mod === "masa" && S.arac === "fosforlu") { const k = kalemAyari("fosforlu"); arac = "fosforlu"; cap = k.w * s; renk = k.renk; }
+  else { const k = S.mod === "masa" ? kalemAyari(S.arac) : izKalemi(); cap = genislik(k.tur, k.mm * 5, 0.5) * s; renk = k.renk; }
+  const el = S.halka || (S.halka = halkaAl());
+  const koyu = KOYU_SAYFA.has(S.sayfa), r = renk && koyu ? ortak.KOYU_SAYFA_ESLEME?.[renk.toUpperCase()] || renk : renk;
+  const anahtar = `${arac}|${Math.round(cap)}|${r}`;
+  if (anahtar !== S.halkaAnahtar) {
+    S.halkaAnahtar = anahtar;
+    el.dataset.arac = arac;
+    el.style.setProperty("--c", Math.max(6, cap).toFixed(1) + "px");
+    if (r) el.style.setProperty("--halka", r); else el.style.removeProperty("--halka");
+  }
+  S.halkaXY = [e.clientX, e.clientY];
+  el.classList.add("gorunur");
+  if (!S.halkaRaf) {
+    S.halkaRaf = requestAnimationFrame(() => {
+      if (!S) return;
+      S.halkaRaf = 0;
+      el.style.transform = `translate3d(${S.halkaXY[0]}px,${S.halkaXY[1]}px,0)`;
+    });
+  }
+}
+// Kalemin altındaki satırın arkası çok hafif belirir (kurşun kalemi kâğıda yaklaştırmak gibi); en çok 30 Hz
+function satirIsikGuncelle(e) {
+  const t = performance.now();
+  if (t - (S.isikT || 0) < 33) return;
+  S.isikT = t;
+  const el = S.el.satirIsik, R = S.okumaR || (S.okumaR = S.el.okuma.getBoundingClientRect());
+  const x = e.clientX - R.left, y = e.clientY - R.top + S.el.kaydir.scrollTop;
+  const { sol, s, lh } = S.yer, sag = sol + s * BIRIM;
+  const r = x > sol - lh && x < sag + lh ? satirAl(y) : null;
+  if (!r || r.blok || r.alt - r.ust < lh * 0.5) { el.classList.remove("acik"); return; }
+  const anahtar = r.ust.toFixed(1);
+  if (anahtar !== S.isikAnahtar) {
+    S.isikAnahtar = anahtar;
+    el.style.cssText = `transform:translate(${(sol - 6).toFixed(1)}px,${r.ust.toFixed(1)}px);width:${(sag - sol + 12).toFixed(1)}px;height:${(r.alt - r.ust).toFixed(1)}px`;
+  }
+  el.classList.add("acik");
+}
+
+// ---------- köşe kıvırma (TASARIM-3 §12) ----------
+// Sağ üst köşeyi çapraz aşağı çekmek köşeyi kıvırır ve yer imi koyar; kıvrık köşeyi çekmek ya da ona dokunmak düzeltir.
+// Düz köşeye dokunuş sağ kenar gibi ileri çevirir.
+function koseBasti(e) {
+  if (S.mod !== "koltuk" || S.aktif || (e.pointerType === "mouse" && e.button !== 0)) return;
+  if (e.pointerType === "touch" && performance.now() - S.sonKalemZ < KALEM_AVUC) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* bırakılmış işaretçi */ }
+  havaBitti();
+  S.kose = { id: e.pointerId, R: S.el.okuma.getBoundingClientRect(), x: e.clientX, y: e.clientY, k: 0, kivrikti: S.el.kose.classList.contains("kivrik") };
+  S.el.kose.classList.add("surukleniyor");
+}
+function koseOynadi(e) {
+  const k = S?.kose;
+  if (!k || e.pointerId !== k.id) return;
+  k.k = sinirla((k.R.right - e.clientX + (e.clientY - k.R.top)) / 2, 0, 120);   // köşeye çapraz uzaklık
+  k.oynadi ||= Math.hypot(e.clientX - k.x, e.clientY - k.y) > 8;
+  if (k.oynadi) S.el.kose.style.setProperty("--k", k.k.toFixed(1) + "px");
+}
+function koseKalkti(e) {
+  const k = S?.kose;
+  if (!k || e.pointerId !== k.id) return;
+  S.kose = null;
+  const el = S.el.kose;
+  el.classList.remove("surukleniyor");
+  el.style.removeProperty("--k");
+  if (e.type === "pointerup") {
+    if (k.oynadi ? k.k >= 28 : k.kivrikti) yerImiDegistir();   // kıvır ya da düzelt
+    else if (!k.oynadi) koltukCevir(1);
+  }
+  yerImiDurumu();
+}
+
+// Koltuk: iki parmakla dokunuş geri alır, üç parmakla yineler (Masa'daki gibi)
+function cokParmakBasti(e) {
+  if (!S.cp || !S.cp.ids.size) S.cp = { ids: new Map(), t0: performance.now(), enCok: 0, yol: 0, iptal: false };
+  S.cp.ids.set(e.pointerId, [e.clientX, e.clientY]);
+  S.cp.enCok = Math.max(S.cp.enCok, S.cp.ids.size);
+}
+function cokParmakOynadi(e) {
+  const g = S.cp, o = g.ids.get(e.pointerId);
+  g.yol += Math.hypot(e.clientX - o[0], e.clientY - o[1]);
+  g.ids.set(e.pointerId, [e.clientX, e.clientY]);
+}
+function cokParmakKalkti(e) {
+  const g = S.cp;
+  g.ids.delete(e.pointerId);
+  if (e.type === "pointercancel") g.iptal = true;
+  if (g.ids.size) return;
+  S.cp = null;
+  if (g.iptal || g.enCok < 2 || g.yol > 16 || performance.now() - g.t0 > 350) return;
+  if (g.enCok === 2) geriAl(); else yinele();
+}
+
+// ---------- Koltuk nüansları (TASARIM-3 §13) ----------
+// 1: kaldığın yerde duran kurdele. Açılışta sayfanın üst kenarından sarkar, bir kez sallanır; sayfa çevrilince yerinde
+// kalır (içerikle kayar). Dokununca oraya döner.
+function kurdeleKur() {
+  const k = S.acilisKonum;
+  if (!k || !S.yer) return;
+  const { sol, s, icGen } = S.yer, r = satirAl(konumY(k) + ustPay());
+  let el = S.el.kurdele;
+  if (!el) {
+    el = S.el.kurdele = h("button", { type: "button", class: "kurdele" + (hareketAz() ? "" : " sallan"), "aria-label": "Buraya dön", title: "Buraya dön", "data-dokunma-yok": "" });
+    el.addEventListener("click", () => { if (!S?.acilisKonum) return; konumaGit(S.acilisKonum); S.olcum = null; durumGuncelle(); });
+    S.el.ic.append(el);
+  }
+  el.style.left = Math.min(sol + s * BIRIM + 20, icGen - 24).toFixed(1) + "px";
+  el.style.top = (r.ust - 14).toFixed(1) + "px";
+}
+// 4: uzun aradan dönünce son okunan satırın altında kurşun kalem çizgisi bir an belirir ("buradaydın")
+function sonSatirBelir() {
+  if (!S?.yer || S.mod !== "koltuk") return;
+  const r = satirAl(S.el.kaydir.scrollTop + koltukSinir().ust + 2);
+  if (r.blok || r.alt <= r.ust) return;
+  const { sol, s } = S.yer;
+  const el = h("div", { class: "satir-isik son-satir", "aria-hidden": "true",
+    style: `transform:translate(${(sol - 4).toFixed(1)}px,${r.ust.toFixed(1)}px);width:${(s * BIRIM + 8).toFixed(1)}px;height:${(r.alt - r.ust).toFixed(1)}px` });
+  S.el.ic.prepend(el);
+  zamanla(() => el.remove(), 1500);
+}
+// 2: sayfa kenarı kalınlığında ilerleme: okunan sayfalar solda, kalanlar sağda ince kâğıt çizgileri (0..6)
+function kalinlikGuncelle(oran) {
+  const sol = Math.round(sinirla(oran, 0, 1) * 6), d = sol + "-" + (6 - sol);
+  if (S.kalinlik === d) return;
+  S.kalinlik = d;
+  S.el.sayfaKenari.dataset.sol = String(sol);
+  S.el.sayfaKenari.dataset.sag = String(6 - sol);
 }
 
 // ---------- kırpma (3.20, 6.4) ----------
@@ -3108,7 +3908,7 @@ function bolgeGorsel(r) {
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const g = cv.getContext("2d");
-  const koyu = S.sayfa === "gece";
+  const koyu = KOYU_SAYFA.has(S.sayfa);
   g.fillStyle = getComputedStyle(S.el.okuma).backgroundColor;
   g.fillRect(0, 0, W, H);
   const icR = S.el.ic.getBoundingClientRect();
@@ -3117,7 +3917,7 @@ function bolgeGorsel(r) {
   g.setTransform(O, 0, 0, O, -E.x * O, -E.y * O);
 
   // 1) vurgu ve eşleşme zeminleri
-  const oran = koyu ? 0.3 : 0.62;
+  const oran = koyu ? 0.3 : 0.48;   // okuma.css --vurgu-oran
   for (const m of S.el.sutun.querySelectorAll("mark")) {
     const renk = m.classList.contains("vurgu") ? rgba(vurguRengi(vurguBul(m.dataset.v)?.renk), oran) : "rgba(244,214,62,.5)";
     g.fillStyle = renk;
@@ -3152,7 +3952,7 @@ function bolgeGorsel(r) {
   const s = S.yer.s;
   g.setTransform(O * s, 0, 0, O * s, -r.x * O, -r.y * O);
   g.globalCompositeOperation = koyu ? "screen" : "multiply";   // ekrandaki CSS karışımıyla aynı
-  for (const c of goruntuler()) {
+  for (const c of gorunenCizgiler(r.y, r.y + r.h)) {
     const k = c.kutu;
     if (k.x1 > r.x && k.x0 < r.x + r.w && k.y1 > r.y && k.y0 < r.y + r.h) cizgiCiz(g, c, { koyuSayfa: koyu });
   }
@@ -3283,7 +4083,8 @@ function icindekilerCiz() {
 }
 
 function sagPanelCiz() {
-  const SEKMELER = [["notlar", "Notlar"], ["kirpintilar", "Kırpılanlar"], ["yerimleri", "Yer imleri"], ["arama", "Arama"]];
+  const SEKMELER = [["notlar", "Notlar"], ["izler", "İzler"], ["kirpintilar", "Kırpılanlar"], ["yerimleri", "Yer imleri"], ["arama", "Arama"]];
+  S.izlerPanel?.kapat(); S.izlerPanel = null;
   const govde = h("div", { class: "panel-govde", role: "tabpanel", id: "okuma-sekme-govde" });
   const sekmeler = h("div", { class: "sekmeler", role: "tablist", "aria-label": "Notlar paneli" }, ...SEKMELER.map(([id, ad]) => h("button", {
     type: "button", class: "sekme", role: "tab", "data-sekme": id, "aria-selected": String(S.sekme === id), "aria-controls": "okuma-sekme-govde",
@@ -3291,8 +4092,17 @@ function sagPanelCiz() {
   }, ad)));
   const kaydirma = S.el.sagPanel.querySelector(".panel-govde")?.scrollTop || 0;
   S.el.sagPanel.replaceChildren(sekmeler, govde);
-  ({ notlar: notlarSekmesi, kirpintilar: kirpintilarSekmesi, yerimleri: yerImleriSekmesi, arama: aramaSekmesi })[S.sekme](govde);
+  ({ notlar: notlarSekmesi, izler: izlerSekmesi, kirpintilar: kirpintilarSekmesi, yerimleri: yerImleriSekmesi, arama: aramaSekmesi })[S.sekme](govde);
   govde.scrollTop = kaydirma;
+}
+// İzler sekmesi (OZELLIKLER-5): izler.js listesi panelin içine çizilir, "belge:degisti" ile kendini tazeler
+function izlerSekmesi(govde) {
+  const kap = h("div", { class: "izler-sekme" }), s = S;
+  govde.append(kap);
+  import("./izler.js").then((m) => {
+    if (S !== s || S.sekme !== "izler" || !kap.isConnected) return;
+    S.izlerPanel = m.izlerPaneli(kap, S.belge);
+  }).catch((e) => console.warn("[okuma] izler:", e));
 }
 const bos = (cumle, aciklama) => h("div", { class: "bos yalin" }, h("h3", {}, cumle), aciklama ? h("p", {}, aciklama) : null);
 const folyo = (gi, o = 0) => yuzde((P[gi].onceki + (o / Math.max(1, P[gi].metin.length)) * P[gi].kelime) / TOPLAM);
@@ -3547,6 +4357,7 @@ function tusBasildi(e) {
     if (e.key === "Enter" && e.target === S.el.kaydir) { e.preventDefault(); S.koltuk?.cubuk(!S.koltuk.gorunur()); return; }
     if (/^[phe]$/.test(tus)) return;
   }
+  if (!ctrl && !e.altKey && (e.key === "[" || e.key === "]")) { e.preventDefault(); izAtla(e.key === "]" ? 1 : -1); return; }
   if (ctrl && tus === "z") { e.preventDefault(); if (e.shiftKey) yinele(); else geriAl(); return; }
   if (ctrl && tus === "y") { e.preventDefault(); yinele(); return; }
   if (ctrl && tus === "f") { e.preventDefault(); aramaAc(); return; }

@@ -90,7 +90,7 @@ export const VARSAYILAN_KALEMLER = [
 ];
 
 // ---------- paylaşılan durum ----------
-// Belge: { id, tur: "pdf" | "epub" | "defter", ad, yazar?, klasor?, sayfaSayisi, sayfa (kaldığı sayfa),
+// Belge: { id, tur: "pdf" | "epub" | "defter" | "cizgi", ad, yazar?, klasor?, sayfaSayisi, sayfa (kaldığı sayfa),
 //          ilerleme (0..1), favori, acilis (zaman damgası), kapak (renk), kagit? (defterde TEMPLATES id),
 //          veri: null }  // veri: düzenleyici/okuyucu modülünün kendi durumu, ilk açılışta modül doldurur
 // Kırpıntı: { id, gorsel (dataURL), belgeId, belgeAd, sayfa, not, zaman }
@@ -215,6 +215,32 @@ export function ikiDokunus(dugme, onayMetni, fn) {
 // ---------- v2: Koltuk ve Masa modları ----------
 // belge.mod: "koltuk" (okuma) | "masa" (çalışma). Alan yoksa türe göre varsayılan.
 export const varsayilanMod = (b) => b.mod || (b.tur === "epub" ? "koltuk" : "masa");
+
+// ---------- 9. tur: çizgi roman (OZELLIKLER-5) ----------
+// Belge: { tur: "cizgi", sayfaSayisi, sayfa, yon: "ltr" | "rtl", seri?, sayi?, yazar?, dosya: true, ... }
+// Bir PDF de çizgi roman olarak okunabilir: belge.cizgi = true. İkisi de cizgi.js ile açılır.
+export const cizgiMi = (b) => !!b && (b.tur === "cizgi" || (b.tur === "pdf" && !!b.dosya && !!b.cizgi));
+
+// ---------- 9. tur: izler ve derlemeler (OZELLIKLER-5 "İzler") ----------
+// belge.veri.izler: [{ id, tur: "alt" | "daire" | "kenar" | "isaret" | "serbest", zaman, renk, metin,
+//   bas?, son?, cizgiler? (Koltuk, metne bağlı) | sayfa?, kutu?, cizgiIdleri? (Masa ve çizgi roman, sayfaya bağlı),
+//   not? (cep defterinde yanına yazılan kısa not) }]
+// store.derlemeler: [{ id, ad, olusturma, girdiler: [{ belgeId, izId }] }] (kayit.js "derlemeler"; olay "derlemeler")
+// Olaylar: "izler:ac" ({ belgeId }: Notlar panelinin İzler sekmesi), "defter:ac" ({ belgeId }: cep defteri),
+//   "iz:goster" ({ belgeId, izId }: belge açıldıktan sonra hedef iz bir an parlar; ekranı açan modül dinler).
+store.derlemeler = [];
+
+// ---------- 9. tur: S Pen ayarları ----------
+// store.ayarlar.yanTusSilgi: false ise yan tuş silgi olmaz (varsayılan açık).
+// store.ayarlar.basincEgrisi: "yumusak" | "orta" | "sert" (varsayılan "orta"). Kalem basıncı çizgiye girmeden önce
+// basincUygula(e.pressure) ile eğriden geçer: yumuşakta hafif dokunuş kalın, sertte bastırmak gerekir.
+export const yanTusSilgiMi = () => store.ayarlar.yanTusSilgi !== false;
+const EGRI_US = { yumusak: 0.6, orta: 1, sert: 1.7 };
+export function basincUygula(p) {
+  const us = EGRI_US[store.ayarlar.basincEgrisi] || 1;
+  if (!Number.isFinite(p) || p <= 0) return p;
+  return us === 1 ? p : Math.pow(Math.min(1, p), us);
+}
 // Mod değiştirme: belge.mod = yeni; bus.emit("git", { ekran: "belge", belgeId, mod: yeni })
 
 // ---------- v2: Tekrar kartları (Leitner kutuları) ----------
@@ -296,7 +322,7 @@ store.ayarlar.yz = {
 // "Karta çevir" -> kartEkle({ tur: "soru", ... }).
 
 // ---------- ekran modülü sözleşmesi ----------
-// duzenleyici.js (PDF, defter) ve okuma.js (EPUB) şunu dışa aktarır:
+// duzenleyici.js (PDF, defter), okuma.js (EPUB) ve cizgi.js (çizgi roman: tur "cizgi" ya da belge.cizgi) şunu dışa aktarır:
 //   export function ac(kap, belge, sayfa, mod)   // kap: boş bir <section>; mod: "koltuk" | "masa" (yoksa varsayilanMod)
 // tekrar.js: export function ac(kap) ve kapat(). asistan.js: export function kur() (bir kez, app.js açılışta çağırır).
 //   export function kapat()          // dinleyicileri ve zamanlayıcıları temizler

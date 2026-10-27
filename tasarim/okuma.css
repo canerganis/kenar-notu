@@ -9,38 +9,41 @@
    üst çubuk, araç çubuğu ve balonlar açık tokenlarla çizilir; sayfa ile çevresi tek parça kâğıt olur. */
 .okuma-ekrani.tema-acik {
   color-scheme: light;
-  --bg: #F4EEE3; --desk: #E3D9C8; --desk-glow: #EEE6D8; --desk-edge: #D3C6AE;
-  --surface: #FAF6EE; --surface-2: #EFE7D9; --surface-3: #E6DCCA; --kraft: #D6C29C;
-  --ink: #221E19; --ink-2: #3B342C; --muted: #685E51; --faint: #9C907E;
-  --line: #DCD1BE; --line-strong: #C3B399; --edge: #877863;
-  --accent: #1F3A68; --accent-hover: #284B82; --accent-soft: #DDE4EF; --accent-ink: #FAF6EE;
-  --mark: #7D1D2C; --mark-soft: #F2DEDD; --gold: #A47D35; --gold-light: #E9D29A;
-  --danger: #A8341B; --danger-soft: #F7DED4; --ok: #4E6A3A; --focus: #1F3A68;
-  --inverse: #2A241E; --inverse-ink: #F4EADA; --inverse-accent: #E9D29A; --inverse-danger: #F09A7E;
-  --scrim: #221E1959;
-  --margin-paper: #FCFAF4; --stitch: #9C7F5C;
-  --golge-1: 0 1px 2px #3C2A1424;
-  --golge-2: 0 1px 2px #3C2A141A, 0 8px 18px -10px #3C2A1459;
-  --golge-3: 0 2px 4px #3C2A141F, 0 18px 40px -16px #3C2A1466;
-  --golge-4: 0 2px 4px #3C2A141F, 0 28px 64px -24px #3C2A1480;
-  --golge-oyuk: inset 0 2px 4px #3C2A142E;
-  --golge-temas: #3C2A1440;
-  --doku-kagit: var(--doku-kagit-acik, none);
-  --zemin-lif: var(--doku-lif, none);
-  --uc-kontur: #3B342C59;
+  /* TASARIM-3 3.1 açık tokenları (uygulama koyuyken de Beyaz ve Sepya sayfanın kromu açık) */
+  --bg: #F7F5F0; --desk: #ECE8E0; --desk-glow: #F2EFE9; --desk-edge: #E2DDD3;
+  --surface: #FDFCF9; --surface-2: #F0EDE6; --surface-3: #E7E3DA; --kraft: #E4D6BC;
+  --ink: #1C1B19; --ink-2: #4D4842; --muted: #69625A; --faint: #A39B8F;
+  --line: #1C1B1914; --line-strong: #1C1B1924; --edge: #8A8277;
+  --accent: #2B4A7E; --accent-hover: #345792; --accent-soft: #E3E9F3; --accent-ink: #FDFCF9;
+  --accent-dolgu: #1C1B19; --accent-dolgu-ink: #FDFCF9; --accent-dolgu-kenar: #1C1B19; --accent-dolgu-hover: #33312D;
+  --mark: #8C2B38; --mark-soft: #F3E3E3; --mark-ink: #FFFFFF; --gold: #7D6029; --gold-light: #E8D5A8;
+  --danger: #A8341B; --danger-soft: #F7E1D8; --ok: #3F6A47; --focus: #2B4A7E;
+  --inverse: #1C1B19; --inverse-ink: #F7F5F0; --inverse-accent: #E8D5A8; --inverse-danger: #F09A7E;
+  --scrim: #1C1B1938;
+  --margin-paper: #FCFBF8; --stitch: #9C7F5C;
+  --golge-1: 0 0 0 .5px #1C1B191A, 0 1px 2px #1C1B190F;
+  --golge-2: 0 0 0 .5px #1C1B1914, 0 1px 2px #1C1B190D, 0 6px 16px -6px #1C1B191F;
+  --golge-3: 0 0 0 .5px #1C1B1914, 0 2px 4px #1C1B190A, 0 12px 32px -8px #1C1B1929;
+  --golge-4: 0 0 0 .5px #1C1B1914, 0 4px 8px #1C1B190D, 0 24px 64px -12px #1C1B1938;
+  --golge-oyuk: inset 0 1px 2px #1C1B191A;
+  --golge-temas: #1C1B1940;
+  --cam-yuzey: rgb(253 252 249 / .8);
+  --doku-kagit: none;
+  --zemin-lif: none;
+  --uc-kontur: #1C1B1959;
   --damla-kontur: #00000026;
 }
-.okuma-ekrani.tema-acik .arac-cubugu { box-shadow: inset 0 1px 0 #FFFFFFB3, var(--golge-2); }
+
 
 /* ---------- Sayfa renkleri (3.27 tablo) ---------- */
 .okuma-ekrani {
   --zemin: #FDFBF6; --metin: #24211E; --ikincil: #6B6358; --ilk-harf: #7D1D2C; --altin: #A47D35; --ilerleme: #1F3A68;
-  --vurgu-oran: 62%; --sm-zemin: #2A241E; --sm-yazi: #F4EADA; --sm-sil: #F09A7E;
+  --vurgu-oran: 48%; --sm-zemin: #2A241E; --sm-yazi: #F4EADA; --sm-sil: #F09A7E;
   position: relative; height: 100dvh; overflow: hidden; background: var(--zemin); color: var(--ink);
 }
 .okuma-ekrani[data-sayfa="sepya"] { --zemin: #F5EDDA; --metin: #3B2F22; --ikincil: #6E5C45; }
 .okuma-ekrani[data-sayfa="gece"] {
-  --zemin: #1B1A17; --metin: #D9D0BE; --ikincil: #A39883; --ilk-harf: #D98A90; --altin: #D2AE68; --ilerleme: #9FB6DC;
+  --zemin: #141413; --metin: #DDD7CC; --ikincil: #A39883; --ilk-harf: #D98A90; --altin: #D2AE68; --ilerleme: #9FB6DC;
   --vurgu-oran: 30%; --sm-zemin: #E9E0CF; --sm-yazi: #221E19; --sm-sil: #A8341B; --sayfa-isaret: #E8A0A6;
 }
 
@@ -88,15 +91,16 @@
 .okuma-sutun p.ilk, .okuma-sutun .sahne + p { text-indent: 0; }
 .okuma-sutun ::selection { background: color-mix(in srgb, var(--ilerleme) 26%, transparent); }
 
-/* Bölüm açılışı: 16vh boşluk, bordo bölüm numarası, altın hedera, Fraunces italik başlık */
+/* Bölüm açılışı: 16vh boşluk, bordo bölüm numarası, altın hedera, Literata başlık */
 .bolum-acilis { padding-top: 16vh; margin-bottom: 48px; text-align: center; }
-.bolum-no { font: 600 var(--fs-12, 12px)/1 var(--f-arayuz); letter-spacing: .32em; text-transform: uppercase; color: var(--ilk-harf); }
+.bolum-no { font: 400 var(--fs-11, 11px)/14px var(--f-olcu); letter-spacing: .16em; text-transform: uppercase; color: var(--ilk-harf); }
 .bolum-acilis .fleuron { display: block; width: 26px; height: 15px; margin: 16px auto; fill: var(--altin); color: var(--altin); }
-.bolum-acilis h2 { font: italic 380 var(--fs-44, 44px)/1.12 var(--f-baslik); font-variation-settings: "opsz" 72, "SOFT" 50; text-wrap: balance; color: var(--metin); }
+/* TASARIM-3 3.3: başlık italik değil; Literata 72 opsz'un ince vitrin yüzü */
+.bolum-acilis h2 { font: 400 var(--fs-44, 44px)/1.12 var(--f-baslik); font-variation-settings: "opsz" 72; letter-spacing: -.02em; text-wrap: balance; color: var(--metin); }
 @media (orientation: portrait) { .bolum-acilis h2 { font-size: var(--fs-30, 30px); } }
 
-/* Büyük ilk harf: üç satır, bordo, Fraunces. İlk satırda yapay küçük büyük harf yok. */
-.okuma-sutun p.ilk::first-letter { initial-letter: 3; font-family: var(--f-baslik); font-weight: 560; font-variation-settings: "opsz" 144, "SOFT" 100;
+/* Büyük ilk harf: üç satır, bordo, Literata vitrin yüzü. İlk satırda yapay küçük büyük harf yok. */
+.okuma-sutun p.ilk::first-letter { initial-letter: 3; font-family: var(--f-baslik); font-weight: 500; font-variation-settings: "opsz" 72;
   color: var(--ilk-harf); margin-right: .08em; }
 @supports not (initial-letter: 3) {
   .okuma-sutun p.ilk::first-letter { float: left; font-size: 4.1em; line-height: .8; margin: .06em .08em 0 0; }
@@ -108,14 +112,14 @@
 /* Kitabın sonu */
 .kitap-sonu { display: grid; justify-items: center; gap: 6px; margin-top: 96px; text-align: center; }
 .kitap-sonu .fleuron { width: 26px; height: 15px; fill: var(--altin); color: var(--altin); }
-.kitap-sonu .son { margin: 6px 0 0; font: italic 400 var(--fs-30, 30px)/1.2 var(--f-baslik); font-variation-settings: "opsz" 36, "SOFT" 50; color: var(--metin); }
+.kitap-sonu .son { margin: 6px 0 0; font: 400 var(--fs-30, 30px)/1.2 var(--f-baslik); font-variation-settings: "opsz" 60; color: var(--metin); }
 .kitap-sonu .kunye { margin: 0 0 12px; font: 450 var(--fs-13, 13px)/18px var(--f-arayuz); color: var(--ikincil); }
 .kitap-sonu .metin-dugme { color: var(--metin); text-decoration: underline 1px; text-underline-offset: 5px; }
 
 /* ---------- Vurgular: düz dikdörtgen değil, fosforlu kalem darbesi ----------
    Tonlar okuma.js'ten kök değişkenlerle gelir (ortak.vurguRengi: eski parlak tonlar yenisine çevrilir).
    Açık sayfada multiply: mürekkep gibi kâğıda işler, harfler vurgunun altında koyu kalır. Koyu sayfada karışım yok. */
-.okuma-sutun mark.vurgu { --v: var(--v-limon, #F4D63E); color: inherit; padding: 0 .14em; margin: 0 -.14em; border-radius: .3em .7em .35em .6em / .5em .4em .6em .4em;
+.okuma-sutun mark.vurgu { --v: var(--v-limon, #F4D63E); color: inherit; padding: 0 .14em; margin: 0 -.14em; border-radius: .15em .4em .2em .35em;
   background: linear-gradient(100deg, transparent 0, color-mix(in srgb, var(--v) var(--vurgu-oran), transparent) .3em,
                 color-mix(in srgb, var(--v) calc(var(--vurgu-oran) - 14%), transparent) calc(100% - .3em), transparent) 0 60% / 100% 82% no-repeat;
   -webkit-box-decoration-break: clone; box-decoration-break: clone; cursor: pointer; }
@@ -123,6 +127,7 @@
 .okuma-sutun mark.vurgu--nane { --v: var(--v-nane, #9CCFAE); }
 .okuma-sutun mark.vurgu--gok { --v: var(--v-gok, #9DBEE0); }
 .okuma-ekrani.tema-acik .okuma-sutun mark.vurgu { mix-blend-mode: multiply; }
+.okuma-ekrani.tema-koyu .okuma-sutun mark.vurgu { mix-blend-mode: screen; }
 /* Notlu vurgunun sonunda 6px bordo nokta; dar ekranda notun tek izi budur */
 .okuma-sutun mark.vurgu.notlu::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 3px; vertical-align: super; border-radius: 50%; background: var(--ilk-harf); }
 
@@ -207,9 +212,9 @@
 .okuma-durum { position: absolute; left: 0; right: 14px; bottom: 0; z-index: 4; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px;
   height: 46px; padding: 0 20px 11px; background: linear-gradient(transparent, var(--zemin) 18px); pointer-events: none; transition: opacity var(--sure-orta); }
 .okuma-durum .bolum { justify-self: start; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font: 600 var(--fs-11, 11px)/16px var(--f-arayuz); letter-spacing: .14em; text-transform: uppercase; color: var(--ikincil); }   /* 16px: büyük Ü ve İ noktaları kesilmesin */
-.okuma-durum .kalan { font: italic 400 var(--fs-15, 15px)/1 var(--f-baslik); font-variation-settings: "opsz" 18; color: var(--ikincil); white-space: nowrap; }
-.okuma-durum .yuzde { justify-self: end; font: 500 var(--fs-13, 13px)/1 var(--f-arayuz); font-variant-numeric: tabular-nums; color: var(--ikincil); }
+  font: 400 var(--fs-11, 11px)/16px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; color: var(--ikincil); }   /* 16px: büyük Ü ve İ noktaları kesilmesin */
+.okuma-durum .kalan { font: 400 var(--fs-12, 12px)/1 var(--f-arayuz); color: var(--ikincil); white-space: nowrap; }
+.okuma-durum .yuzde { justify-self: end; font: 400 var(--fs-12, 12px)/1 var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--ikincil); }
 @container okuma (max-width: 560px) { .okuma-durum .bolum { display: none; } .okuma-durum { grid-template-columns: 1fr auto; } }
 .okuma-ilerleme { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; height: 2px; background: color-mix(in srgb, var(--metin) 12%, transparent); transition: height var(--sure-orta); }
 .okuma-ilerleme i { display: block; height: 100%; transform-origin: left; transform: scaleX(var(--p, 0)); background: var(--ilerleme); transition: transform 200ms; }
@@ -251,13 +256,13 @@
 
 /* ---------- Aa balonu ---------- */
 .aa-yazi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.aa-yazi button { display: grid; justify-items: center; align-content: center; height: 72px; border-radius: var(--r-md); border: 1px solid var(--line); color: var(--ink); }
+.aa-yazi button { display: grid; justify-items: center; align-content: center; height: 72px; border-radius: var(--r-sm); border: 0; box-shadow: inset 0 0 0 .5px var(--line-strong); color: var(--ink); }
 .aa-yazi b { font-size: var(--fs-30, 30px); line-height: 1; font-weight: 500; }
 .aa-yazi [data-aile="serif"] b { font-family: var(--f-okuma); }
 .aa-yazi [data-aile="sans"] b { font-family: var(--f-arayuz); }
 .aa-yazi [data-aile="el"] b { font-family: "Playpen Sans", var(--f-el); font-weight: 400; }
 .aa-yazi small { margin-top: 6px; font: 500 var(--fs-12, 12px) var(--f-arayuz); color: var(--muted); }
-.aa-yazi button[aria-pressed="true"] { background: var(--accent-soft); border: 1.5px solid var(--accent); }
+.aa-yazi button[aria-pressed="true"] { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ink); }
 .aa-yazi button[aria-pressed="true"] small { color: var(--ink); }
 .aa-boyut .aa-harf { justify-self: center; font-family: var(--f-baslik); font-weight: 500; line-height: 1; color: var(--ink-2); }
 .aa-boyut .aa-harf.kucuk { font-size: var(--fs-13, 13px); }
@@ -271,10 +276,10 @@
 .aa-balonu .aa-bolum > .t-etiket { margin: 0 0 8px; }
 .aa-balonu .tema-numuneler { margin-bottom: 0; }
 /* Özel: yazı tipi, kenar boşluğu, sayfa rengi kapalı bir bölümde */
-.aa-ozel { margin-top: 20px; border-top: 1px solid var(--line); }
+.aa-ozel { margin-top: 20px; border-top: .5px solid var(--line-strong); }
 .aa-ozel > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; margin: 0 -4px; padding: 0 4px; list-style: none; cursor: pointer; border-radius: var(--r-sm); }
 .aa-ozel > summary::-webkit-details-marker { display: none; }
-.aa-ozel > summary > span { font: 600 var(--fs-11, 11px)/14px var(--f-arayuz); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.aa-ozel > summary > span { font: 600 var(--fs-12, 12px)/16px var(--f-arayuz); letter-spacing: .01em; color: var(--ink-2); }
 .aa-ozel > summary > small { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: right; font: 450 var(--fs-12, 12px)/16px var(--f-arayuz); color: var(--muted); }
 .aa-ozel > summary .i { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform var(--sure-kisa, 160ms) var(--egri-kagit); }
 .aa-ozel[open] > summary .i { transform: rotate(180deg); }
@@ -333,11 +338,11 @@
 .balon.serbest::before { display: none; }
 
 /* ---------- Paneller ---------- */
-.okuma-icindekiler .kunye { display: grid; gap: 4px; padding: 16px 20px 20px; border-bottom: 1px solid var(--line); }
-.okuma-icindekiler .kunye b { font: italic 400 var(--fs-18, 18px)/24px var(--f-baslik); font-variation-settings: "opsz" 24; color: var(--ink); }
+.okuma-icindekiler .kunye { display: grid; gap: 4px; padding: 16px 20px 20px; border-bottom: .5px solid var(--line-strong); }
+.okuma-icindekiler .kunye b { font: 500 var(--fs-16, 16px)/22px var(--f-baslik); font-variation-settings: "opsz" 18; color: var(--ink); }
 .okuma-icindekiler .kunye > span:not(.kunye-ilerleme) { font: 450 var(--fs-13, 13px)/18px var(--f-arayuz); color: var(--muted); }
 .kunye-ilerleme { position: relative; display: block; height: 2px; margin-top: 10px; background: var(--line); }
-.kunye-ilerleme i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 100%); background: var(--accent); }
+.kunye-ilerleme i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 100%); background: var(--ink-2); }
 .kunye-ilerleme i::after { content: ""; position: absolute; right: -3.5px; top: -4px; width: 7px; height: 11px; background: var(--mark);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%); }
 .okuma-icindekiler .bolum-satir { position: relative; grid-template-columns: 1fr; gap: 2px; padding: 14px 18px 14px 32px; }
@@ -363,20 +368,25 @@
 .okuma-ekrani[data-mod="koltuk"] .okuma-durum { inset: 0; right: 0; bottom: 0; display: block; height: auto; padding: 0; background: none;
   transition: opacity var(--sure-kisa, 160ms); }
 .okuma-ekrani[data-mod="koltuk"] .okuma-durum :is(.kalan, .yuzde) { display: none; }
-.okuma-ekrani[data-mod="koltuk"] .okuma-durum .bolum { position: absolute; top: 0; left: 50%; display: block; max-width: min(70%, 520px); height: 24px; translate: -50% 0;
-  font: italic 400 var(--fs-12, 12px)/24px var(--f-baslik); font-variation-settings: "opsz" 12; letter-spacing: .02em; text-transform: none; color: var(--faint); }
-.okuma-ekrani[data-mod="koltuk"] .okuma-durum .sayfa-no { position: absolute; left: 50%; bottom: 6px; translate: -50% 0; display: block;
-  font: 400 var(--fs-11, 11px)/14px var(--f-olcu); letter-spacing: .04em; font-variant-numeric: tabular-nums; color: var(--faint); white-space: nowrap; }
+/* TASARIM-3 6.4.2: sütun başlığı (bölüm adı, solda) ve sayfa numarası (sağda) aynı sesle, sütuna hizalı, sütunun 28px üstünde.
+   Kitabın kenarındaki çalışma başlığı gibi. --sutun-x ve --sutun-g okuma.js yerleşiminden gelir. */
+.okuma-ekrani[data-mod="koltuk"] .okuma-durum :is(.bolum, .sayfa-no) { position: absolute; top: 22px; display: block; height: 14px;
+  font: 400 var(--fs-11, 11px)/14px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--metin) 45%, transparent); white-space: nowrap; }
+.okuma-ekrani[data-mod="koltuk"] .okuma-durum .bolum { left: var(--sutun-x, 50%); max-width: calc(var(--sutun-g, 520px) - 8em); overflow: hidden; text-overflow: ellipsis; }
+.okuma-ekrani[data-mod="koltuk"] .okuma-durum .sayfa-no { left: calc(var(--sutun-x, 50%) + var(--sutun-g, 0px)); translate: -100% 0; }
+/* TASARIM-3 6.4.3: çubuklar kapalıyken tek ölçü: sayfa numarasının altında 64px'lik çizgi (koltuk.js .koltuk-cizgi) */
+.okuma-ekrani[data-mod="koltuk"] .koltuk-cizgi { inset: 42px auto auto calc(var(--sutun-x, 50%) + var(--sutun-g, 0px) - 64px); width: 64px; margin: 0; }
 .okuma-ekrani:not([data-mod="koltuk"]) .okuma-durum .sayfa-no { display: none; }
 .okuma-ekrani[data-mod="koltuk"].cubuk-gorunur .okuma-durum { opacity: 0; }
 /* Pencere kenarları yalnız kaydırıcının kendi maskesinde kullanılır: kalıtılmaz. Kalıtılınca her sayfa çevirmede
    kitabın bütün öğeleri (uzun kitapta 2500) baştan stilleniyordu. */
-@property --sayfa-ust { syntax: "<length>"; inherits: false; initial-value: 42px; }
-@property --sayfa-alt { syntax: "<length>"; inherits: false; initial-value: 36px; }
+@property --sayfa-ust { syntax: "<length>"; inherits: false; initial-value: 60px; }
+@property --sayfa-alt { syntax: "<length>"; inherits: false; initial-value: 54px; }
 /* Sayfa penceresi: üstte başlığın bandı, altta numaranın bandı. İki kenar da satır sınırına oturur (okuma.js
    koltukSinir): kesilen satır bütünüyle gizlenir. 4px'lik yumuşak kenar satır aralığının içinde kalır, harfe değmez. */
 .okuma-ekrani[data-mod="koltuk"] .okuma-kaydir {
-  --sayfa-ust: 42px; --sayfa-alt: 36px;
+  --sayfa-ust: 60px; --sayfa-alt: 54px;
   -webkit-mask-image: linear-gradient(transparent calc(var(--sayfa-ust) - 2px), #000 calc(var(--sayfa-ust) + 2px),
     #000 calc(100% - var(--sayfa-alt) - 2px), transparent calc(100% - var(--sayfa-alt) + 2px));
   mask-image: linear-gradient(transparent calc(var(--sayfa-ust) - 2px), #000 calc(var(--sayfa-ust) + 2px),
@@ -447,8 +457,8 @@
 .anlam-fis { position: absolute; z-index: var(--z-balon); width: 320px; max-width: calc(100% - 24px); padding: 12px 16px 12px; --satir-bas: 48px;
   animation: balon-ac 200ms var(--egri-kagit); outline: none; }
 .anlam-fis header { display: flex; align-items: baseline; gap: 8px; height: 36px; }
-.anlam-fis h4 { min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: italic 450 var(--fs-22, 22px)/26px var(--f-baslik); font-variation-settings: "opsz" 36; color: var(--fis-yazi); }
-.anlam-fis .anlam-sayfa { margin-left: auto; flex: none; font: 500 var(--fs-12, 12px)/16px var(--f-olcu); letter-spacing: .04em; color: var(--damga); }
+.anlam-fis h4 { min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: italic 400 var(--fs-22, 22px)/26px var(--f-baslik); font-variation-settings: "opsz" 28; color: var(--fis-yazi); }
+.anlam-fis .anlam-sayfa { margin-left: auto; flex: none; font: 400 var(--fs-11, 11px)/16px var(--f-olcu); letter-spacing: .04em; color: var(--muted); }
 .anlam-fis .anlam { margin: 12px 0 0; font: 400 var(--fs-15, 15px)/24px var(--f-okuma); min-height: 48px; max-height: min(40vh, 288px); overflow-y: auto; overscroll-behavior: contain;
   white-space: pre-line; overflow-wrap: anywhere; color: var(--fis-yazi); }
 .anlam-fis .anlam.ipucu-metin { font-style: italic; color: var(--muted); }
@@ -474,10 +484,10 @@
 
 /* ---------- Asistanın kenar notu: makine daktiloyla etiketler, Literata ile yazar (5.3) ---------- */
 .okuma-ekrani .kenar-asistan { position: absolute; left: calc(100% + 28px); width: 192px; padding: 2px 0 2px 12px; text-indent: 0; hyphens: none;
-  border-left: 1.5px solid color-mix(in srgb, var(--damga, #5B3F86) 55%, transparent); color: var(--metin);
+  border-left: 1.5px solid color-mix(in srgb, var(--metin) 28%, transparent); color: var(--metin);
   font: 400 var(--fs-13, 13px)/1.47 var(--f-okuma); overflow-wrap: anywhere; animation: perde-ac 240ms both; }
 .okuma-ekrani .kenar-asistan .etiket { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px;
-  font: 500 var(--fs-12, 12px)/1.3 var(--f-olcu); letter-spacing: .08em; text-transform: uppercase; color: var(--damga, #5B3F86); }
+  font: 400 var(--fs-11, 11px)/1.3 var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; color: var(--ikincil); }
 .okuma-ekrani .kenar-asistan .metin { display: block; white-space: pre-line; }
 .okuma-ekrani .kenar-asistan__sil { position: relative; flex: none; width: 28px; height: 28px; margin: -6px -6px -6px 0; display: grid; place-items: center;
   border-radius: var(--r-sm); color: var(--ikincil); opacity: .7; font: 500 var(--fs-12, 12px) var(--f-arayuz); letter-spacing: 0; text-transform: none; white-space: nowrap; }
@@ -487,7 +497,7 @@
 .okuma-ekrani .kenar-asistan.satir-ici { position: relative; left: auto; width: auto; margin: .5em 0 .9em; padding: 8px 12px; font-size: var(--fs-15, 15px);
   background: color-mix(in srgb, var(--metin) 3.5%, transparent); border-radius: 0 var(--r-sm) var(--r-sm) 0; }
 .okuma-ekrani .kenar-asistan.yeni { animation: perde-ac 420ms both; }
-.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"]) .kenar-asistan { border-left-color: color-mix(in srgb, var(--damga, #B9A3E3) 70%, transparent); }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"]) .kenar-asistan { border-left-color: color-mix(in srgb, var(--metin) 32%, transparent); }
 
 /* ---------- gerçek EPUB (OZELLIKLER-3 §4) ---------- */
 /* <br> satır sonları (şiir, adres) paragraf metninde "\n" olarak durur */
@@ -495,7 +505,7 @@
 .okuma-sutun p strong { font-weight: 640; }
 /* Kitap çözülürken: sayfanın ortasında dizgi yazısı */
 .okuma-yukleniyor { display: grid; place-content: center; justify-items: center; gap: 4px; height: 100%; min-height: 60vh;
-  color: var(--muted); font: italic 400 var(--fs-18, 18px)/24px var(--f-baslik); animation: okuma-yukleniyor 1.6s ease-in-out infinite alternate; }
+  color: var(--muted); font: 400 var(--fs-15, 15px)/22px var(--f-arayuz); animation: okuma-yukleniyor 1.6s ease-in-out infinite alternate; }
 .okuma-yukleniyor .fleuron { width: 26px; height: 15px; fill: var(--altin); color: var(--altin); }
 .okuma-yukleniyor p { margin: 0; }
 @keyframes okuma-yukleniyor { from { opacity: .55; } to { opacity: 1; } }
@@ -508,3 +518,87 @@
 .okuma-ekrani .kenar-asistan__kart .i { width: 16px; height: 16px; }
 .okuma-ekrani .kenar-asistan__kart:disabled { opacity: .7; cursor: default; }
 @media (hover: hover) { .okuma-ekrani .kenar-asistan__kart:not(:disabled):hover { color: var(--metin); background: color-mix(in srgb, var(--metin) 7%, transparent); } }
+
+/* ============ 9. tur · Koltuk: kalem izleri, köşe, havadaki kalem, nüanslar (OZELLIKLER-5 §1, TASARIM-3 §7, 8, 12, 13) ============ */
+
+/* Kalem havadayken metin seçilmez, uzun basış Android balonunu ve büyüteci açmaz (S Pen 4) */
+.okuma-ekrani[data-mod="koltuk"].kalem-yakin .okuma-sutun { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* Havadaki kalemin altındaki satır (TASARIM-3 §8.3): metnin arkasında, en çok 30 Hz yer değiştirir */
+.satir-isik { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; border-radius: 3px; opacity: 0;
+  background: color-mix(in srgb, var(--metin) 4%, transparent); transition: opacity 240ms var(--egri-cekil, ease-out); }
+.satir-isik.acik { opacity: 1; transition-duration: 160ms; transition-timing-function: var(--egri-kagit, ease-out); }
+.okuma-ekrani:not([data-mod="koltuk"]) .satir-isik:not(.son-satir) { display: none; }
+/* Nüans 4: uzun aradan dönünce son okunan satırın altında kurşun kalem çizgisi ("buradaydın") */
+.satir-isik.son-satir { background: none; box-shadow: inset 0 -1.5px 0 #6E6A6499; animation: son-satir 1400ms var(--egri-kagit, ease-out) both; }
+.okuma-ekrani.tema-koyu .satir-isik.son-satir { box-shadow: inset 0 -1.5px 0 #A29D9599; }
+@keyframes son-satir { 0% { opacity: 0; } 18% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* S Pen imleç halkası (TASARIM-3 §8). Belgede tek öğe; kabuk tasarim.css'te aynısını verirse o da aynı kuraldır. */
+.kalem-halka { position: fixed; left: 0; top: 0; z-index: var(--z-bildirim, 90); width: var(--c, 8px); height: var(--c, 8px);
+  margin: calc(var(--c, 8px) / -2) 0 0 calc(var(--c, 8px) / -2); border-radius: 50%; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--halka, var(--ink)) 60%, transparent), 0 0 0 2px color-mix(in srgb, var(--surface) 65%, transparent);
+  transition: opacity 120ms, width 90ms, height 90ms, margin 90ms; will-change: transform; }
+.kalem-halka.gorunur { opacity: 1; }
+.kalem-halka::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 2px; margin: -1px; border-radius: 50%; background: var(--halka, var(--ink)); }
+.kalem-halka[data-arac="silgi"] { box-shadow: 0 0 0 1px var(--ink-2); background: color-mix(in srgb, var(--surface) 40%, transparent); }
+.kalem-halka[data-arac="silgi"]::after { display: none; }
+.kalem-halka[data-arac="fosforlu"] { border-radius: 2px; height: calc(var(--c) * .45); margin-top: calc(var(--c) * -.225); }
+
+/* Seçili iz: kendi küçük tuvalinde bir kez yumuşak hale (TASARIM-3 §7.8) */
+.okuma-ic .iz-hedef { position: absolute; z-index: 2; pointer-events: none; animation: iz-hedef 900ms var(--egri-kagit, ease-out) 1 both; }
+@keyframes iz-hedef {
+  0% { filter: drop-shadow(0 0 0 transparent); opacity: 1; }
+  30% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ilerleme) 55%, transparent)); }
+  80% { opacity: 1; }
+  100% { filter: drop-shadow(0 0 0 transparent); opacity: 0; }
+}
+
+/* Köşe kıvırma (TASARIM-3 §12): sağ üst köşe 56x56 sıcak bölge; çubuklar açıkken bölge kapalı */
+.okuma .kose { position: absolute; top: 0; right: 0; z-index: 6; width: var(--k, 0px); height: var(--k, 0px); pointer-events: none;
+  background:
+    linear-gradient(225deg, var(--kose-alt, color-mix(in srgb, var(--zemin) 86%, #000)) 0 50%, transparent 50%),
+    linear-gradient(45deg, var(--kose-arka, color-mix(in srgb, var(--zemin) 94%, #000)) 0%, color-mix(in srgb, var(--zemin) 98%, #000) 46%, transparent 50%);
+  filter: drop-shadow(-1px 2px 2px #1C1B192E);
+  transition: width var(--sure-orta, 240ms) var(--egri-kalk, cubic-bezier(.3, 1.4, .5, 1)), height var(--sure-orta, 240ms) var(--egri-kalk, cubic-bezier(.3, 1.4, .5, 1)); }
+.okuma .kose.surukleniyor { transition: none; }
+.okuma .kose.kivrik { --k: 22px; }
+.okuma-ekrani.tema-koyu .okuma .kose { --kose-alt: #0B0B0A; --kose-arka: #2A2926; filter: drop-shadow(-1px 2px 2px #00000080); }
+.okuma-ekrani.kalem-kosede .okuma .kose:not(.kivrik) { --k: 6px; }   /* kalem havada köşede: "buradan çekilir" */
+.okuma .kose-bolge { position: absolute; top: 0; right: 0; z-index: 7; width: 56px; height: 56px; display: none; touch-action: none; }
+.okuma-ekrani[data-mod="koltuk"]:not(.cubuk-gorunur) .okuma .kose-bolge { display: block; }
+.okuma-ekrani:not([data-mod="koltuk"]) .okuma .kose { display: none; }
+:root[data-hareket="sade"] .okuma .kose { transition-duration: 120ms; }
+
+/* Nüans 1: kaldığın yerde duran kurdele; içerikle kayar, dokununca oraya döner */
+/* Düğme 44px genişlikte saydam dokunma alanı, kurdelenin kendisi ortasındaki 10px'lik ::before (clip-path dokunmayı da kırpar) */
+.okuma-ic .kurdele { position: absolute; z-index: 2; width: 44px; height: 64px; margin-left: -17px; padding: 0; border: 0; cursor: pointer;
+  background: none; transform-origin: 50% 0; }
+.okuma-ic .kurdele::before { content: ""; position: absolute; left: 17px; top: 0; width: 10px; height: 64px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+  background: linear-gradient(90deg, #6E1F2A, var(--ilk-harf) 40%, #6E1F2A); }
+.okuma-ic .kurdele.sallan { animation: kurdele-salla 600ms var(--egri-kagit, ease-out) 500ms 1; }
+@keyframes kurdele-salla { 0% { rotate: 0deg; } 30% { rotate: 2deg; } 65% { rotate: -1.2deg; } 100% { rotate: 0deg; } }
+.okuma-ekrani:not([data-mod="koltuk"]) .okuma-ic .kurdele { display: none; }
+
+/* Nüans 2: sayfa kenarı kalınlığında ilerleme. Sütunun iki yanında ince kâğıt çizgileri: okunan sayfalar solda,
+   kalanlar sağda (0..6, okuma.js data-sol ve data-sag). Kitabın ortasında iki yan eşit. */
+.sayfa-kenari { --kc: color-mix(in srgb, var(--metin) 13%, transparent); position: absolute; top: 72px; bottom: 80px; z-index: 0; display: none;
+  left: calc(var(--sutun-x, 0px) - 40px); width: calc(var(--sutun-g, 0px) + 80px); pointer-events: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent); }
+.okuma-ekrani[data-mod="koltuk"] .sayfa-kenari { display: block; }
+.sayfa-kenari::before, .sayfa-kenari::after { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: var(--kc); }
+.sayfa-kenari::before { left: 0; }
+.sayfa-kenari::after { right: 0; }
+.sayfa-kenari[data-sol="0"]::before, .sayfa-kenari[data-sag="0"]::after { display: none; }
+.sayfa-kenari[data-sol="2"]::before { box-shadow: -2px 0 0 var(--kc); }
+.sayfa-kenari[data-sol="3"]::before { box-shadow: -2px 0 0 var(--kc), -4px 0 0 var(--kc); }
+.sayfa-kenari[data-sol="4"]::before { box-shadow: -2px 0 0 var(--kc), -4px 0 0 var(--kc), -6px 0 0 var(--kc); }
+.sayfa-kenari[data-sol="5"]::before { box-shadow: -2px 0 0 var(--kc), -4px 0 0 var(--kc), -6px 0 0 var(--kc), -8px 0 0 var(--kc); }
+.sayfa-kenari[data-sol="6"]::before { box-shadow: -2px 0 0 var(--kc), -4px 0 0 var(--kc), -6px 0 0 var(--kc), -8px 0 0 var(--kc), -10px 0 0 var(--kc); }
+.sayfa-kenari[data-sag="2"]::after { box-shadow: 2px 0 0 var(--kc); }
+.sayfa-kenari[data-sag="3"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc); }
+.sayfa-kenari[data-sag="4"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc), 6px 0 0 var(--kc); }
+.sayfa-kenari[data-sag="5"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc), 6px 0 0 var(--kc), 8px 0 0 var(--kc); }
+.sayfa-kenari[data-sag="6"]::after { box-shadow: 2px 0 0 var(--kc), 4px 0 0 var(--kc), 6px 0 0 var(--kc), 8px 0 0 var(--kc), 10px 0 0 var(--kc); }
+@media (max-width: 699px) { .sayfa-kenari { display: none !important; } }

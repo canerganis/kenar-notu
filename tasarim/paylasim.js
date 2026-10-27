@@ -192,6 +192,8 @@ function dosyaTuru(d) {
   const tur = (d.tur || "").toLowerCase();
   if (tur === "application/pdf" || ad.endsWith(".pdf")) return "pdf";
   if (tur === "application/epub+zip" || ad.endsWith(".epub")) return "epub";
+  // Çizgi roman: CBZ belge olarak alınır; CBR'yi kayit.js Türkçe açıklamayla reddeder
+  if (/comicbook/.test(tur) || /\.cb[zr]$/.test(ad)) return "cizgi";
   if (tur.startsWith("image/")) return "gorsel";
   return null;
 }
@@ -250,7 +252,7 @@ async function metinKirpinti(metin, baslik = "", kaynak) {
 async function metinGorseli(metin, baslik) {
   const W = 640, PAD = 36, OLC = 2;
   const govdeYazi = '400 22px "Literata", Georgia, serif';
-  const baslikYazi = '600 15px "Instrument Sans", system-ui, sans-serif';
+  const baslikYazi = '600 15px "Inter", system-ui, sans-serif';
   try { await Promise.all([document.fonts.load(govdeYazi, metin), document.fonts.load(baslikYazi, "GELEN NOT")]); } catch { /* yedek yazı tipi */ }
   const c = document.createElement("canvas");
   const g = c.getContext("2d");

@@ -10,16 +10,20 @@
 @keyframes ipucu-son { to { opacity: 0; } }
 
 /* ---------- Üst çubuk (4.2) ---------- */
+/* TASARIM-3 6.4.4: buzlu cam şerit, altında kıl gölge (kenarlık değil). Çubuk açıkken metin penceresi çubuğun altına
+   daralır (okuma.js koltukSinir), camın arkasından yalnız sayfanın rengi geçer. Geliş kayma ve opaklık. */
 .koltuk-ust { position: absolute; inset: 0 0 auto; z-index: var(--z-ust); display: flex; align-items: center; gap: 4px; height: var(--ust-cubuk);
-  padding: 0 12px 0 6px; background: var(--zemin); color: var(--metin);   /* tam opak: altından kayan satırlar başlığa karışmaz */
-  border-bottom: 1px solid color-mix(in srgb, var(--metin) 10%, transparent);
-  translate: 0 -100%; transition: translate var(--sure-orta) var(--egri-cekil); }
+  padding: 0 12px 0 6px; color: var(--metin);
+  background: color-mix(in srgb, var(--zemin) 80%, transparent);
+  -webkit-backdrop-filter: var(--cam-bulanik, blur(20px) saturate(1.5)); backdrop-filter: var(--cam-bulanik, blur(20px) saturate(1.5));
+  box-shadow: 0 .5px 0 color-mix(in srgb, var(--metin) 16%, transparent);
+  translate: 0 -100%; opacity: 0; transition: translate 168ms var(--egri-cekil), opacity 168ms var(--egri-cekil); }
 .koltuk-ust .ad { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 8px;
-  font: italic 400 var(--fs-18, 18px)/22px var(--f-baslik); font-variation-settings: "opsz" 24; }
+  font: 500 var(--fs-16, 16px)/22px var(--f-baslik); font-variation-settings: "opsz" 18; }
 .koltuk-ust .ikon-dugme { flex: none; color: var(--metin); }
 .koltuk-ust .ikon-dugme[aria-pressed="true"], .koltuk-ust .ikon-dugme[aria-expanded="true"] { background: color-mix(in srgb, var(--metin) 9%, transparent); }
 .koltuk-ust .mod-anahtari { margin-left: 6px; }
-[data-mod="koltuk"].cubuk-gorunur .koltuk-ust { translate: 0 0; transition-timing-function: var(--egri-kagit); }
+[data-mod="koltuk"].cubuk-gorunur .koltuk-ust { translate: 0 0; opacity: 1; transition-duration: 200ms; transition-timing-function: var(--egri-kagit); }
 /* Arama satırı adın yerine geçer */
 .koltuk-ust .ust-arama { flex: 1; min-width: 0; }
 
@@ -47,47 +51,64 @@
 .ritim-gun.bugun small:last-child { color: var(--ink); }
 .ritim-fis .t-etiket { display: block; margin: 0 0 8px; }
 
-/* ---------- Ölçüm yazısı: sayılar Plex Mono, birimler Instrument ---------- */
-.koltuk-alt .olcum, .ritim .olcum { font: 450 var(--fs-13, 13px)/18px var(--f-arayuz); white-space: nowrap; }
-.koltuk-alt .olcum b, .ritim .olcum b, .ritim-ozet b { font: 500 var(--fs-13, 13px)/18px var(--f-olcu); font-variant-numeric: tabular-nums; }
+/* ---------- Ölçüm yazısı: sayılar Plex Mono, birimler Inter ---------- */
+.koltuk-alt .olcum, .ritim .olcum { font: 400 var(--fs-12, 12px)/16px var(--f-arayuz); white-space: nowrap; }
+.koltuk-alt .olcum b, .ritim .olcum b, .ritim-ozet b { font: 500 var(--fs-12, 12px)/16px var(--f-olcu); font-variant-numeric: tabular-nums; }
 .koltuk-alt .olcum i { font-style: italic; color: var(--ikincil); }
 .koltuk-alt .olcum small { margin-left: 4px; font: 500 var(--fs-12, 12px)/18px var(--f-olcu); color: var(--ikincil); font-variant-numeric: tabular-nums; }
 
 /* ---------- Alt çubuk: sürgülü cetvel (4.3) ---------- */
-.koltuk-alt { position: absolute; inset: auto 0 0; z-index: var(--z-ust); display: grid; grid-template-columns: 1fr auto;
-  grid-template-areas: "sol sag" "cetvel cetvel"; grid-template-rows: 18px 44px; height: 64px; padding: 2px 24px 0;
-  background: var(--zemin); color: var(--ikincil);
-  border-top: 1px solid color-mix(in srgb, var(--metin) 10%, transparent);
-  translate: 0 100%; transition: translate var(--sure-orta) var(--egri-cekil); }
-[data-mod="koltuk"].cubuk-gorunur .koltuk-alt { translate: 0 0; transition-timing-function: var(--egri-kagit); }
+/* TASARIM-3 6.4.5: etiket ("Kitapta %18", kalan süre) cetvelin üstünde solda; sağda yalnız önceki ve sonraki iz */
+.koltuk-alt { position: absolute; inset: auto 0 0; z-index: var(--z-ust); display: grid; grid-template-columns: auto auto 1fr auto;
+  grid-template-areas: "sol sag . atla" "cetvel cetvel cetvel cetvel"; grid-template-rows: 20px 44px; align-items: center; height: 68px; padding: 4px 24px 0;
+  color: var(--ikincil);
+  background: color-mix(in srgb, var(--zemin) 80%, transparent);
+  -webkit-backdrop-filter: var(--cam-bulanik, blur(20px) saturate(1.5)); backdrop-filter: var(--cam-bulanik, blur(20px) saturate(1.5));
+  box-shadow: 0 -.5px 0 color-mix(in srgb, var(--metin) 16%, transparent);
+  translate: 0 100%; opacity: 0; transition: translate 168ms var(--egri-cekil), opacity 168ms var(--egri-cekil); }
+[data-mod="koltuk"].cubuk-gorunur .koltuk-alt { translate: 0 0; opacity: 1; transition-duration: 200ms; transition-timing-function: var(--egri-kagit); }
 .koltuk-alt .sol { grid-area: sol; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.koltuk-alt .sag { grid-area: sag; padding-left: 12px; }
+.koltuk-alt .sag { grid-area: sag; }
+.koltuk-alt .sol:not(:empty) + .sag:not(:empty)::before { content: ""; display: inline-block; width: 1px; height: 12px; margin: 0 12px; vertical-align: -1px;
+  background: color-mix(in srgb, var(--metin) 18%, transparent); }
+.koltuk-alt .iz-atla { grid-area: atla; display: flex; gap: 2px; margin-right: -10px; }
+.koltuk-alt .iz-atla[hidden] { display: none; }
+.koltuk-alt .iz-atla .ikon-dugme { position: relative; width: 32px; height: 28px; color: var(--ikincil); }
+.koltuk-alt .iz-atla .ikon-dugme::after { content: ""; position: absolute; inset: -8px -6px; }   /* 44px dokunma alanı */
+.koltuk-alt .iz-atla .i { width: 16px; height: 16px; }
 .koltuk-alt .olcum b { color: var(--metin); }
 
 .koltuk-cetvel { grid-area: cetvel; position: relative; height: 44px; touch-action: none; cursor: pointer; outline: none; }
 .koltuk-cetvel:focus-visible { box-shadow: 0 0 0 2px var(--ilerleme); border-radius: 4px; }
-.koltuk-cetvel::before { content: ""; position: absolute; left: 0; right: 0; top: 14px; height: 16px; border-radius: 3px;
+/* TASARIM-3 6.4.5: kutu yok, ölçü çizgisi. Çentikler 1px kıl; her %10 uzun, bölüm sınırı 8px; dolu kısım 2px mürekkep. */
+.koltuk-cetvel::before { content: ""; position: absolute; left: 0; right: 0; top: 18px; height: 8px;
   background:
-    repeating-linear-gradient(90deg, color-mix(in srgb, var(--metin) 45%, transparent) 0 1px, transparent 1px 10%) 0 0 / 100% 9px no-repeat,
-    repeating-linear-gradient(90deg, color-mix(in srgb, var(--metin) 20%, transparent) 0 1px, transparent 1px 2%) 0 0 / 100% 5px no-repeat,
-    color-mix(in srgb, var(--metin) 5%, var(--zemin));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metin) 14%, transparent); }
-.cetvel-bolum { position: absolute; top: 14px; width: 1px; height: 16px; background: color-mix(in srgb, var(--metin) 60%, transparent); }
-.cetvel-yer-imi { position: absolute; top: 14px; width: 2px; height: 10px; background: var(--ilk-harf); }
-.cetvel-dolu { position: absolute; left: 0; right: 0; top: 28px; height: 2px; background: var(--ilerleme);
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--metin) 30%, transparent) 0 1px, transparent 1px 10%) 0 0 / 100% 7px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--metin) 15%, transparent) 0 1px, transparent 1px 2%) 0 3px / 100% 4px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--metin) 15%, transparent), color-mix(in srgb, var(--metin) 15%, transparent)) 0 100% / 100% 1px no-repeat; }
+.cetvel-bolum { position: absolute; top: 18px; width: 1px; height: 8px; background: color-mix(in srgb, var(--metin) 55%, transparent); }
+.cetvel-yer-imi { position: absolute; top: 14px; width: 2px; height: 8px; background: var(--ilk-harf); }
+.cetvel-dolu { position: absolute; left: 0; right: 0; top: 25px; height: 2px; border-radius: 1px; background: var(--ink-2, var(--metin));
   transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
+/* Kalem izlerinin yeri: küçük mürekkep çentikleri (OZELLIKLER-5, İzler "Okurken bulmak") */
+.cetvel-izler { position: absolute; inset: 0; pointer-events: none; }
+.cetvel-izler i { position: absolute; top: 29px; width: 2px; height: 6px; translate: -50% 0; border-radius: 1px;
+  background: var(--ilerleme, var(--accent)); opacity: .8; }
 .cetvel-iz { position: absolute; inset: 0; transform: translateX(calc(var(--p, 0) * 100%)); pointer-events: none; }
 .cetvel-iz.kayiyor { transition: transform var(--sure-uzun) var(--egri-kagit); }
-.cetvel-imlec { position: absolute; left: 0; top: 4px; width: 18px; height: 36px; translate: -50% 0; border-radius: 3px;
-  border: 1px solid var(--pirinc, #A88443); background: color-mix(in srgb, var(--zemin) 45%, transparent); box-shadow: 0 1px 2px #3C2A1433; }
-.cetvel-imlec::after { content: ""; position: absolute; left: 8px; top: 3px; bottom: 3px; width: 1px; background: var(--ilk-harf); }
+.cetvel-imlec { position: absolute; left: 0; top: 12px; width: 2px; height: 20px; translate: -50% 0; border-radius: 1px; background: var(--metin); }
+/* başında 8px bordo kurdele üçgeni */
+.cetvel-imlec::after { content: ""; position: absolute; left: 50%; top: -9px; width: 8px; height: 9px; translate: -50% 0; background: var(--ilk-harf);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%); }
 .cetvel-etiket { position: absolute; left: 0; bottom: 46px; translate: -50% 0; opacity: 0; transition: opacity var(--sure-kisa); }
 .koltuk-cetvel.suruklen .cetvel-etiket { opacity: 1; }
 
 /* Çubuk kapalıyken kalan 1px ilerleme (TASARIM 3.27) */
-.koltuk-cizgi { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; height: 1px; pointer-events: none;
-  background: color-mix(in srgb, var(--metin) 12%, transparent); }
-.koltuk-cizgi i { display: block; height: 100%; transform-origin: left; transform: scaleX(var(--p, 0)); background: var(--ilerleme); transition: transform 200ms; }
+/* TASARIM-3 6.4.3: çubuklar kapalıyken görünen tek ölçü, 64px'lik ince çizgi (PDF'te altta ortada; EPUB'da okuma.css
+   sayfa numarasının altına alır). Dolu kısım mürekkep. */
+.koltuk-cizgi { position: absolute; left: 50%; bottom: 20px; z-index: 4; width: 64px; height: 1px; margin-left: -32px; pointer-events: none;
+  background: color-mix(in srgb, var(--metin) 14%, transparent); }
+.koltuk-cizgi i { display: block; height: 100%; transform-origin: left; transform: scaleX(var(--p, 0)); background: var(--ink-2, var(--metin)); transition: transform 200ms; }
 [data-mod="koltuk"].cubuk-gorunur .koltuk-cizgi { opacity: 0; }
 
 /* ---------- Gizli kalem (4.9) ---------- */

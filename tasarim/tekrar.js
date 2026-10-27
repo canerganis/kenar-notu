@@ -119,14 +119,12 @@ function sonra(fn, ms) {
   return z;
 }
 
+// TASARIM-3 6.5: zemin her temada düz kâğıt; kareli kâğıt yalnız kartın içinde, tahta ve tebeşir kalktı
 function zeminUygula() {
   if (!D) return;
-  const k = koyuMu();
-  D.kok.classList.toggle("tahta", k);
-  D.kok.classList.toggle("kareli", !k);
-  D.baslik.classList.toggle("tebesir", k);
-  // Açıkta bitiş tahtası çerçeveli küçük tahtadır; koyuda ekran zaten tahta
-  for (const b of D.kok.querySelectorAll(".bitis")) { b.classList.toggle("tahta", !k); b.classList.toggle("tahta--cerceve", !k); }
+  D.kok.classList.remove("tahta", "kareli");
+  D.baslik.classList.remove("tebesir");
+  for (const b of D.kok.querySelectorAll(".bitis")) b.classList.remove("tahta", "tahta--cerceve");
 }
 
 // ======================================================================
@@ -164,7 +162,7 @@ function ustGuncelle() {
   D.gostergeKap.replaceChildren(sinavda ? D.sinav.cam : D.leitnerEl);
 }
 
-// Sayılar Plex, birimler Instrument (TASARIM-2 §2.1 kural 3): "5 kart · yaklaşık 3 dk"
+// Sayılar Plex, birimler Inter (TASARIM-2 §2.1 kural 3): "5 kart · yaklaşık 3 dk"
 function olcumYaz(el, metin) {
   el.replaceChildren(...metin.split(/(\d+)/).map((p, i) => (i % 2 ? h("b", {}, p) : p)).filter((p) => p !== ""));
 }
@@ -202,6 +200,8 @@ function gostergeGuncelle() {
   D.kanallar.forEach(({ el, b }, i) => {
     const n = i + 1, c = say[n];
     el.firstChild.style.setProperty("--dolu", c ? Math.ceil((c / enCok) * 6) / 6 : 0);
+    el.firstChild.style.setProperty("--n", Math.min(7, c));   // kutudaki kart çizgileri: sayı kadar, en çok 7
+    if (c > 7) el.dataset.cok = ""; else delete el.dataset.cok;
     b.textContent = c;
     el.setAttribute("aria-label", `${ROMA[n]}. kutu, ${c} kart, ${n === 1 ? "her gün" : KUTU_ARALIK[n] + " günde bir"}`);
     if (n === simdi) el.dataset.simdi = ""; else delete el.dataset.simdi;
@@ -457,7 +457,22 @@ function cevapla(bildi, { itme = false } = {}) {
   if (!sinav) fosforKalicilik(eski, bildi ? Math.min(5, eski + 1) : 1, bildi);
   D.odakTasi = D.govde.contains(document.activeElement);
   for (const b of c.cevap.el.querySelectorAll("button")) b.disabled = true;
-  cikisOynat(c.el, bildi ? 1 : -1, itme).then(() => { if (D && D.kart === c) sahneCiz(); });
+  // TASARIM-3 nüans 10: düğmeyle "Bildim" denince kartın köşesine kurşun kalemle tik ve yeni kutu yazılır, kart 300ms sonra çekilir.
+  // İtmede (parmak kartı sürüklerken) ve sade harekette beklenmez.
+  const tik = bildi && !sinav && !itme && !hareketAz();
+  if (tik) c.el.append(h("span", { class: "kart-tik", "aria-hidden": "true" },
+    svgTik(), h("b", {}, "→ " + ROMA[Math.min(5, eski + 1)])));
+  const cik = () => cikisOynat(c.el, bildi ? 1 : -1, itme).then(() => { if (D && D.kart === c) sahneCiz(); });
+  if (tik) sonra(cik, 300); else cik();
+}
+function svgTik() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg"), yol = document.createElementNS(ns, "path");
+  svg.setAttribute("viewBox", "0 0 14 14");
+  yol.setAttribute("d", "M2 7.6 5.4 11 12 2.8");
+  yol.setAttribute("pathLength", "1");
+  svg.append(yol);
+  return svg;
 }
 
 function girisOynat(el) {
@@ -476,12 +491,7 @@ function cikisOynat(el, yon, itme) {
   return Promise.race([a.finished.catch(() => {}), new Promise((r) => setTimeout(r, 260))]);
 }
 
-// ---------- deste bitti: tahta (§6.6) ----------
-const FEYNMAN = `<svg class="feynman tebesir" viewBox="0 0 120 72" aria-hidden="true">
-  <path d="M8 8 48 36M8 64 48 36"/>
-  <path d="M24.2 23 30 23.4 27.6 18M31.8 51 26 51.4 28.3 46.1"/>
-  <path d="M48 36q4-6 8 0t8 0 8 0 8 0 8 0 8 0 8 0 8 0"/>
-</svg>`;
+// ---------- deste bitti (§6.6; TASARIM-3: tahta yerine sade kart) ----------
 
 function yarinSayisi() {
   const sinir = gunBasi(Date.now(), 2);
@@ -503,8 +513,7 @@ function bitisOlustur() {
     satir = yarin ? `Bugün kart yok · yarın ${yarin}` : `Sıradaki kart ${g} gün sonra`;
   }
   const tahta = h("div", { class: "bitis", role: "status" },
-    h("h2", { class: "tebesir" }, baslik), h("p", {}, satir));
-  tahta.insertAdjacentHTML("beforeend", FEYNMAN);
+    h("h2", {}, baslik), h("p", {}, satir));
   // Yazılıyor duygusu: örtü sağa çekilir (yalnız oturum bitince)
   if (oturum && !hareketAz()) tahta.append(h("div", { class: "ortu", "aria-hidden": "true" }));
   const eylem = h("div", { class: "bitis-eylem" },

@@ -373,6 +373,24 @@ async function epubDizinle(b, imza) {
   return true;
 }
 
+// İzler (izler.js) için EPUB paragraf kaynağı: vurgunun metni ve izin bölüm adı dizinden okunur.
+// Gövde belleğe alınmadıysa yalnız o belgeninki ayrıca okunur (aramanın kendi önbelleğine konmaz).
+// -> { metin(p), bolum(p), adet } ya da dizin yoksa null
+const izGovde = new Map();
+export async function govdeKaynagi(belgeId) {
+  let g = GOVDE.get(belgeId) || izGovde.get(belgeId);
+  if (!g) {
+    g = await islem("govde", "readonly", (d) => d.govde.get(belgeId)).catch(() => null);
+    if (!g?.parcalar) return null;
+    if (izGovde.size > 8) izGovde.delete(izGovde.keys().next().value);
+    izGovde.set(belgeId, g);
+  }
+  if (!g?.parcalar) return null;
+  const sira = new Map(g.parcalar.map((x) => [x.p, x.m]));
+  return { metin: (p) => sira.get(p) ?? null, bolum: (p) => bolumAdi(g, p), adet: g.parcalar.length };
+}
+bus.on("belgeler", (o) => { if (o?.tur === "sil" && o.id) izGovde.delete(o.id); });
+
 // Tek belgeyi (yeniden) dizinler; bitince true
 export async function dizinle(belgeId) {
   const b = belgeBul(belgeId);
@@ -477,11 +495,30 @@ function sesNotlari(b, cikti) {
   }
 }
 
+// Kalem izleri (OZELLIKLER-5: belge.veri.izler): altındaki metin ve cep defterinde yanına yazılan not "Notlarım" altında.
+// Koltuk izi paragrafa (bas), Masa ve çizgi roman izi ekranda yazan sayfa numarasına bağlıdır.
+const IZ_KAYNAK = { alt: "Altı çizili", daire: "Yuvarlak içinde", kenar: "Kenar işareti", isaret: "İşaret", serbest: "Kalem izi" };
+function izNotlari(b, cikti) {
+  const izler = b.veri?.izler;
+  if (!Array.isArray(izler) || !izler.length) return;
+  const g = GOVDE.get(b.id);
+  const pm = (p) => g?.parcalar?.find((x) => x.p === p)?.m;
+  for (const iz of izler) {
+    if (!iz) continue;
+    const yer = iz.bas && Number.isInteger(iz.bas.p) ? { konum: { p: iz.bas.p, oran: oranAl(pm(iz.bas.p), iz.bas.o) } }
+      : { sayfa: Number.isFinite(Number(iz.sayfa)) ? Number(iz.sayfa) : null };
+    const kaynak = IZ_KAYNAK[iz.tur] || "Kalem izi";
+    if (iz.metin && String(iz.metin).trim()) cikti.push({ kaynak, m: nfc(iz.metin), ...yer, renk: iz.renk, iz: iz.id });
+    if (iz.not && String(iz.not).trim()) cikti.push({ kaynak: "İz notu", m: nfc(iz.not), ...yer, iz: iz.id });
+  }
+}
+
 function belgeNotlari(b) {
   const cikti = [];
   try {
     if (b.tur === "epub") koltukNotlari(b, cikti);
     else masaNotlari(b, cikti);
+    izNotlari(b, cikti);
     sesNotlari(b, cikti);
   } catch (e) { console.warn("[arama] notlar okunamadı:", b.id, e); }
   for (const x of cikti) x.k = notKatla(x.m);
@@ -493,9 +530,9 @@ function belgeNotlari(b) {
 // =====================================================================
 const CIPLER = [
   { id: "tumu", ad: "Tümü" }, { id: "pdf", ad: "PDF" }, { id: "epub", ad: "Kitap" },
-  { id: "defter", ad: "Defter" }, { id: "not", ad: "Notlarım" }, { id: "kart", ad: "Kartlar" },
+  { id: "defter", ad: "Defter" }, { id: "cizgi", ad: "Çizgi roman" }, { id: "not", ad: "Notlarım" }, { id: "kart", ad: "Kartlar" },
 ];
-const TUR_ETIKET = { pdf: "PDF", epub: "Kitap", defter: "Defter" };
+const TUR_ETIKET = { pdf: "PDF", epub: "Kitap", defter: "Defter", cizgi: "Çizgi roman" };
 
 // Sorguda Türkçe harf (ç ğ ı ö ş ü) varsa harf katlamasının bulduğu "kırışık" gibi eşleşmeler "benzer" sayılır:
 // birebir geçenler önce gelir. Birebir denetim yalnız eşleşen parçada, küçük harfe çevrilmiş metinde yapılır.
@@ -913,7 +950,7 @@ function fisCiz(x, s) {
   const bolum = x.bolum ? h("span", { class: "fis-bolum etiket-sayfa" }, x.bolum) : null;
   const metin = h("span", { class: "fis-metin" + (x.not && !x.vurgu ? " el" : "") }, baglam(x.m, x.k, s));
   // Kâğıt fiş görünümü (her temada açık kâğıt) yalnız kırpıntı notunda; öbür fişler temanın yüzeyini kullanır
-  const d = h("button", { class: "arama-fis" + (x.kirpinti ? " kirpinti-fis nesne-acik" : "") + (x.not ? " not" : "") + (x.vurgu ? " vurgu" : ""), type: "button",
+  const d = h("button", { class: "arama-fis" + (x.kirpinti ? " kirpinti-fis" : "") + (x.not ? " not" : "") + (x.vurgu ? " vurgu" : ""), type: "button",
     "aria-current": D.secili === x && genis() ? "true" : null, style: x.renk ? `--not-renk:${x.renk}` : null }, ust, bolum, metin);
   d._sonuc = x;
   // Geniş ekranda ilk dokunuş seçer (önizleme), seçiliye dokunmak sayfaya götürür; dar ekranda doğrudan gider
@@ -1003,6 +1040,7 @@ function git(x) {
   const o = { ekran: "belge", belgeId: b.id, ara };
   if (x.konum) o.konum = x.konum;
   if (x.sayfa != null) o.sayfa = x.sayfa;
+  if (x.iz) o.izId = x.iz;   // kalem izi: belge açılınca iz bir an parlar
   bus.emit("git", o);
 }
 
