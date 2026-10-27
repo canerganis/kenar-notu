@@ -1,0 +1,164 @@
+/* ============ asistan.css · TASARIM-2 §7 ============ */
+/* Panel bir alet değil, laboratuvar defterinin bir sayfasıdır; başlığında aletin tek camı vardır. */
+
+/* ---------- 7.1 Yerleşim ---------- */
+.asistan { --formul-zemin: color-mix(in srgb, var(--accent) 7%, transparent);
+  position: fixed; z-index: var(--z-panel); top: 0; right: 0; bottom: 0; width: 400px; display: flex; flex-direction: column;
+  background: var(--doku-kagit), var(--surface); border-left: 1px solid var(--line); box-shadow: var(--golge-4);
+  transform: translateX(100%); visibility: hidden; outline: none;
+  transition: transform var(--sure-orta) var(--egri-kagit), visibility 0s linear var(--sure-orta); }
+.asistan.acik { transform: none; visibility: visible; transition: transform var(--sure-orta) var(--egri-kagit); }
+/* Sanal klavye açıkken (app.js klavyeKur) panel görünen alana sığar: soru kutusu klavyenin üstünde kalır */
+.klavye-acik .asistan { top: var(--vv-ust, 0px); bottom: var(--klavye, 0px); }
+.asistan::after { /* cilt dikişi */ content: ""; position: absolute; left: 6px; top: 12px; bottom: 12px; width: 1px; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, var(--stitch) 0 6px, transparent 6px 11px); opacity: .45; }
+.asistan-tutamak { display: none; position: relative; place-items: center; height: 20px; flex: none; touch-action: none; cursor: grab; }
+@media (orientation: portrait), (max-width: 699px) {
+  .asistan { top: auto; left: 0; width: auto; height: 70dvh; border-left: 0; border-top: 1px solid var(--line);
+    border-radius: var(--r-lg) var(--r-lg) 0 0; transform: translateY(100%); padding-bottom: env(safe-area-inset-bottom); }
+  .klavye-acik .asistan { top: auto; height: min(70dvh, calc(var(--vv-yuk, 100dvh) - 24px)); padding-bottom: 0; }
+  .asistan::after { display: none; }
+  .asistan-tutamak { display: grid; }
+}
+.asistan-tutamak::before { content: ""; width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.asistan-tutamak::after { content: ""; position: absolute; left: 50%; top: 0; width: 88px; height: 44px; translate: -50% 0; }  /* dokunma alanı */
+
+.asistan-ust { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 8px 0 20px; flex: none; }
+.asistan-ust h2 { flex: 1; min-width: 0; }                                          /* .t-b2 "Asistan" */
+.as-pul { gap: 8px; max-width: 220px; overflow: hidden; text-transform: uppercase; }   /* .cam.cam-k */
+.as-pul .ad { flex: none; }
+.as-pul .model { text-transform: none; color: var(--cam-soluk); text-shadow: none; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.asistan > .iz { flex: none; margin: 0 20px; }
+.asistan-govde { flex: 1; min-height: 0; overflow-y: auto; padding: 0; overscroll-behavior: contain; }
+.as-akis { padding-bottom: 20px; }   /* alt boşluk akışta: kaydırıcının dolgusu yapışık eylem satırının altında boşluk bırakmasın */
+
+/* ---------- 7.2 Kaynak ve hazır sorular ---------- */
+.as-kaynak { margin: 16px 20px 0; }
+.as-etiket { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0 2px; padding: 0; text-align: left; border-radius: var(--r-xs); }
+.as-etiket:disabled { cursor: default; }
+.as-etiket .etiket-sayfa { flex: none; }
+.as-etiket span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); }    /* "Kalkülüs II · s. 47" */
+.as-alinti { margin: 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--mark); font: italic 400 var(--fs-15)/22px var(--f-okuma); color: var(--ink-2);
+  overflow-wrap: break-word;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.as-alinti.tamami { -webkit-line-clamp: unset; }
+.as-gorsel { position: relative; display: grid; place-items: center; margin: 4px 0 26px; padding: 14px; border-radius: var(--r-xs); background: var(--kraft);
+  animation: as-otur 200ms var(--egri-kagit) both; }
+.as-gorsel img { max-width: 100%; max-height: 180px; background: #fff; box-shadow: var(--golge-1); }
+.as-gorsel::before { /* matbaacı kırpma işaretleri, dört köşe */ content: ""; position: absolute; inset: 5px; pointer-events: none; --m: var(--ink-2);
+  background:
+    linear-gradient(var(--m) 0 0) 0 6px / 6px 1px no-repeat, linear-gradient(var(--m) 0 0) 6px 0 / 1px 6px no-repeat,
+    linear-gradient(var(--m) 0 0) 100% 6px / 6px 1px no-repeat, linear-gradient(var(--m) 0 0) calc(100% - 6px) 0 / 1px 6px no-repeat,
+    linear-gradient(var(--m) 0 0) 0 calc(100% - 6px) / 6px 1px no-repeat, linear-gradient(var(--m) 0 0) 6px 100% / 1px 6px no-repeat,
+    linear-gradient(var(--m) 0 0) 100% calc(100% - 6px) / 6px 1px no-repeat, linear-gradient(var(--m) 0 0) calc(100% - 6px) 100% / 1px 6px no-repeat; }
+.as-gorsel figcaption { position: absolute; left: 14px; bottom: -22px; font: 500 var(--fs-12)/16px var(--f-olcu); color: var(--muted); }  /* "KIRPINTI · 412×188" */
+@keyframes as-otur { from { transform: translateY(-6px); opacity: 0; } }
+
+.as-hazir { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 20px 0; }
+/* Hazır sorular ortak .cip ile çizilir (KABUK); burada yalnız ızgaraya oturması: 3 + 2 dizilir, uzun ad kısalmaz, sarar */
+.as-hazir .cip { justify-content: center; min-width: 0; padding-inline: 10px; text-align: center; }
+.as-hazir .cip:active { translate: 0 1px; }
+
+/* ---------- 7.3 Cevap ---------- */
+.as-tur { display: block; }
+.as-tur + .as-tur { margin-top: 8px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.as-tur:first-child { margin-top: 4px; }
+.as-soru { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 10px; margin: 20px 20px 0; }
+.as-soru .t-daktilo { color: var(--muted); }
+.as-soru p { margin: 0; font: 500 var(--fs-15)/22px var(--f-arayuz); color: var(--ink-2); overflow-wrap: anywhere; white-space: pre-line; }
+.as-cevap { margin: 20px 20px 0; max-width: 60ch; font: 400 var(--fs-15)/26px var(--f-okuma); color: var(--ink); overflow-wrap: break-word; }
+.as-soru + .as-cevap { margin-top: 10px; }
+.as-cevap p { margin: 0 0 .7em; }
+.as-cevap ol, .as-cevap ul { margin: 0 0 .7em; padding-left: 1.3em; }
+.as-cevap li { margin: 0 0 .25em; }
+.as-cevap li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+.as-cevap > :last-child { margin-bottom: 0; }
+.as-cevap b { font-weight: 600; }
+.as-cevap code { font: 500 .88em/1 var(--f-olcu); padding: 0 .2em; border-radius: 3px; background: var(--surface-2); }
+/* Formül metnin içinde dizilir: zemin yok, satır aralığı bozulmaz, bölünmez. Değişkenler italik, rakam ve işleçler dik. */
+.formul { background: none; padding: 0; white-space: nowrap; font: italic 400 1em var(--f-okuma); font-variant-numeric: lining-nums; }
+.formul .dik { font-style: normal; }
+.formul sup, .formul sub { font-size: .7em; line-height: 0; }
+/* KAYIT damgası solda, ölçüm pulu sağda; ikisi cevabın altında aynı satırda */
+.as-kayit { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 20px 0; }
+.as-kayit:empty { display: none; }
+.as-kayit .as-olcu:only-child { margin-left: auto; }
+.as-olcu { flex: none; font-size: var(--fs-12); }
+.as-not { margin: 6px 20px 0; font: 450 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); }   /* Deneme: "Bu hazır bir örnek cevaptır." */
+/* Eylemler soru kutusunun hemen üstünde yapışık durur: uzun cevapta kaydırmadan görünür.
+   .as-tur-alt kutu üretmez; böylece yapışma alanı bütün cevap olur. */
+.as-tur-alt { display: contents; }
+.as-eylem { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 48px; margin: 8px 0 0; padding: 0 6px;
+  background: var(--doku-kagit), var(--surface); box-shadow: 0 -1px 0 var(--line); }
+.as-eylem .metin-dugme { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 0 10px; }
+.as-eylem .metin-dugme:disabled { opacity: .45; }
+.as-eylem .damga { align-self: center; margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 7.4 Alt alan ---------- */
+.as-alt { flex: none; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; padding: 10px 12px 12px 20px;
+  border-top: 1px solid var(--line); background: var(--surface); }
+.as-alt textarea { min-height: 48px; max-height: calc(5 * 22px + 26px); resize: none; padding: 12px 14px; border: 0; border-radius: var(--r-sm);
+  background: var(--surface-2); box-shadow: var(--golge-oyuk), 0 0 0 1px var(--edge); color: var(--ink); font: 450 var(--fs-15)/22px var(--f-arayuz); field-sizing: content; }
+.as-alt textarea::placeholder { color: var(--muted); }
+.as-alt textarea:focus-visible { outline: none; box-shadow: var(--golge-oyuk), 0 0 0 2px var(--focus); }
+.as-alt .gonder { color: var(--accent); }                                           /* .ikon-dugme, i-gonder; boşken devre dışı */
+.as-alt .gonder:disabled { color: var(--muted); opacity: .5; }
+.as-alt .gonder.durdur { color: var(--ink-2); }
+.as-dur-kare { width: 14px; height: 14px; border-radius: 2px; background: currentColor; }
+.as-alt .hesap-sor { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.as-alt .hesap-sor .birincil, .as-alt .hesap-sor .metin-dugme { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.as-alt .hesap-sor .birincil:disabled { opacity: .5; }
+.asistan[data-yol="hesap"] .as-alt textarea { grid-column: 1 / -1; }
+.as-uygulamalar { display: flex; gap: 6px; }
+
+/* ---------- 7.5 Hesap yolu: bekleme ve geri dönüş ---------- */
+.as-bekleme { --kareli-zemin: var(--surface); display: grid; gap: 6px; margin: 20px 20px 0; padding: 16px 18px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); }                      /* class="as-bekleme kareli" */
+.as-bekleme h3 { margin: 0; font: italic 400 var(--fs-18)/24px var(--f-baslik); font-variation-settings: "opsz" 24; }
+.as-bekleme p { margin: 0; font: 450 var(--fs-15)/22px var(--f-arayuz); color: var(--muted); }
+.as-bekleme .eylemler { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.as-bekleme .birincil.vurgulu { animation: geri-don 420ms var(--egri-kagit); box-shadow: 0 0 0 3px var(--accent-soft), inset 0 1px 0 #FFFFFF26, inset 0 -2px 0 #00000033; }
+@keyframes geri-don { from { box-shadow: 0 0 0 10px transparent; } }
+.as-yapistir-kap { display: grid; gap: 6px; margin-top: 8px; }
+.as-yapistir-kap .eylemler { margin-top: 0; justify-content: flex-end; }
+.as-yapistir-kap .metin-dugme { display: inline-flex; align-items: center; gap: 8px; }
+.as-yapistir { width: 100%; min-height: 120px; resize: vertical; padding: 12px 14px; border: 0; border-radius: var(--r-sm);
+  background: var(--surface); box-shadow: var(--golge-oyuk), 0 0 0 1px var(--edge); color: var(--ink); font: 400 var(--fs-15)/22px var(--f-okuma); }
+.as-yapistir:focus-visible { outline: none; box-shadow: var(--golge-oyuk), 0 0 0 2px var(--focus); }
+
+/* Henüz soru yokken: boş defter sayfası. Çizgiler 32px, yazı çizginin üstüne oturur; ne olacağını tek cümleyle söyler */
+.as-akis:empty { min-height: 160px; margin: 28px 20px 0; border-top: 1px solid var(--line);
+  background: repeating-linear-gradient(transparent 0 31px, var(--fis-cizgi) 31px 32px); }
+.as-akis:empty::before { display: block; max-width: 34ch; font: italic 400 var(--fs-15)/32px var(--f-baslik); font-variation-settings: "opsz" 18;
+  color: var(--muted); white-space: pre-line; content: "Yukarıdan bir tuş seç ya da aşağıya yaz.\A Cevap bu sayfaya yazılır."; }
+.asistan[data-yol="hesap"] .as-akis:empty::before { content: "Yukarıdan bir tuş seç ya da aşağıya yaz.\A Soru uygulamada açılır, cevabı buraya getirirsin."; }
+
+/* ---------- 7.6 Boş durum ve hata fişi ---------- */
+.as-bos { display: grid; justify-items: center; gap: 10px; margin: 20px; text-align: center; }
+.as-bos .tahta { width: 100%; height: 168px; display: grid; place-items: center; }     /* class="tahta tahta--cerceve" */
+.as-bos .tahta .feynman { position: static; width: 160px; height: 96px; color: var(--tebesir); opacity: .82; }
+.as-bos h3 { margin-top: 8px; }                                                    /* .t-b2 "Anahtar girilmemiş." */
+.as-bos p { margin: 0; max-width: 32ch; font: 450 var(--fs-15)/22px var(--f-arayuz); color: var(--muted); }
+.as-bos-eylem { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+
+.as-hata { display: grid; grid-template-columns: 10px 1fr; column-gap: 12px; row-gap: 2px; align-items: center; margin: 20px 20px 0; padding: 12px 14px;
+  border-radius: var(--r-sm); background: var(--surface-2); box-shadow: inset 3px 0 0 var(--hata-cizgi, var(--danger)); }
+.as-hata .kod { font: 500 var(--fs-12)/16px var(--f-olcu); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.as-hata p { grid-column: 2; margin: 0; font: 450 var(--fs-15)/22px var(--f-arayuz); color: var(--ink); }
+.as-hata .metin-dugme { grid-column: 2; justify-self: start; margin-left: -14px; display: inline-flex; align-items: center; gap: 8px; }
+.as-hata[data-tur="sinir"], .as-hata[data-tur="sunucu"] { --hata-cizgi: var(--kehribar); }
+.as-hata[data-tur="ag"] { --hata-cizgi: var(--edge); }
+.as-hata[data-tur="ret"] { --hata-cizgi: transparent; }
+
+/* Ekran okuyucu için görünmez canlı alan */
+.as-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Sade hareket: anlar 120ms opaklığa iner (TASARIM-2 §9) ---------- */
+:root[data-hareket="sade"] .asistan .as-gorsel,
+:root[data-hareket="sade"] .asistan .damga { animation: as-belir 120ms linear both; }
+:root[data-hareket="sade"] .asistan .birincil.vurgulu { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .asistan .as-gorsel, .asistan .damga { animation: as-belir 120ms linear both; }
+  .asistan .birincil.vurgulu { animation: none; }
+}
+@keyframes as-belir { from { opacity: 0; } }

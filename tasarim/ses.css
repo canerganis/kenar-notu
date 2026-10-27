@@ -1,0 +1,109 @@
+/* ============ 4. tur · ses kaydı şeridi (OZELLIKLER-4 §2) ============ */
+/* Masa üst çubuğunun hemen altında 48px'lik kâğıt şerit. Ölçülen her şey camda (TASARIM-2 1.2).
+   Açıkken gerçek yüksekliği kökte --ses-serit'te durur (ses.js); araç çubuğu ve sayfa Masa'da tek formülle onun altına iner. */
+.ses-serit { position: absolute; top: var(--ust-cubuk); left: 0; right: 0; z-index: var(--z-ust); display: flex; align-items: center; gap: 10px;
+  height: 48px; padding: 0 8px 0 10px; background: var(--doku-kagit), var(--surface); border-bottom: 1px solid var(--line);
+  color: var(--ink-2); font: 450 var(--fs-13)/18px var(--f-arayuz); contain: layout paint; }
+.ses-serit-acik .calisma > .panel { margin-top: calc(var(--ust-cubuk) + var(--ses-serit, 48px)); }
+
+.ses-sekil { width: 20px; height: 20px; }
+.ses-dugme { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; min-width: 44px; padding: 0 10px; flex: none;
+  border-radius: var(--r-md); color: var(--ink-2); font: 500 var(--fs-15)/1 var(--f-arayuz); }
+@media (hover: hover) { .ses-dugme:hover { background: var(--surface-2); } }
+.ses-dugme:active { translate: 0 1px; background: var(--surface-3); }
+.ses-dugme:disabled { opacity: .45; pointer-events: none; }
+.ses-dugme:focus-visible, .ses-cetvel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Ana düğme: Kaydet (kırmızı nokta), Durdur (kare), Oynat/Duraklat */
+/* Çerçeveli düğmeler 36px görünür, dokunma alanı şeridin 44px'i */
+.ses-ana::after, .ses-hiz::after { content: ""; position: absolute; inset: -4px -2px; }
+.ses-ana { height: 36px; padding: 0 14px 0 10px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: var(--golge-1); }
+.ses-ana.kaydet .ses-sekil { color: var(--danger); }
+/* Kaydet: 8px dolu kırmızı lamba */
+.ses-kayit-lamba { width: 8px; height: 8px; flex: none; margin: 0 2px; border-radius: 50%; background: var(--danger); }
+.ses-ana.durdur { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-strong)); color: var(--danger); }
+.ses-serit[data-durum="oynat"] .ses-ana { width: 40px; padding: 0; }
+
+.ses-gosterge { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.ses-gosterge .t-daktilo { color: var(--danger); }
+.ses-serit .lamba[data-durum="kayit"] { background: var(--danger); box-shadow: none; }
+/* Işıma yalnız koyu temada (TASARIM-2 1.2.3) */
+:root[data-theme="dark"] .ses-serit .lamba[data-durum="kayit"] { box-shadow: 0 0 5px color-mix(in srgb, var(--danger) 60%, transparent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ses-serit .lamba[data-durum="kayit"] { box-shadow: 0 0 5px color-mix(in srgb, var(--danger) 60%, transparent); } }
+
+/* Yuvarlanan sayaç: ":" ayracı hane boyunda */
+.ses-sayac { min-width: 64px; }
+.ses-sayac .ayrac { display: block; height: 20px; line-height: 20px; }
+.yaziyor .ses-sayac .hane i { transition: none; }
+
+/* Boştaki ölçü aleti: 120x28 bakalit cam, sönük düz iz ve 00:00. Kayıtta yerini akan ize bırakır. */
+.ses-bosta { flex: none; width: 120px; height: 28px; gap: 8px; padding: 0 10px; justify-content: space-between; }
+.ses-bosta svg { flex: 1; min-width: 0; height: 16px; overflow: visible; }
+.ses-bosta path { fill: none; stroke: var(--cam-fosfor); stroke-width: 1.25; opacity: .4; vector-effect: non-scaling-stroke; }
+.ses-bosta span { font: 500 var(--fs-12)/1 var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--cam-soluk); text-shadow: none; }
+
+/* Osiloskop izi: camın içinde ince fosfor dalga */
+.ses-iz { flex: 1 1 120px; min-width: 60px; max-width: 360px; padding: 0 8px; }
+.ses-iz svg { display: block; width: 100%; height: 16px; overflow: visible; }
+.ses-iz path { fill: none; stroke: var(--cam-fosfor); stroke-width: 1.25; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+
+.ses-ad { min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+.ses-not { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: var(--muted); font-size: var(--fs-13); line-height: 17px;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ses-not.hata { display: inline-flex; color: var(--danger); }
+.ses-not.hata > span:last-child { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ses-serit[data-durum="kayit"] .ses-ad { margin-left: auto; }
+.ses-serit[data-durum="bos"] .ses-liste-dugme, .ses-serit[data-durum="hata"] .ses-liste-dugme { margin-left: auto; }
+.ses-liste-dugme .t-deger-k { color: var(--muted); }
+.ses-hiz { height: 36px; min-width: 52px; border: 1px solid var(--line); }
+.ses-toplam { flex: none; }
+.ses-canli { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* Oynatma cetveli: koltuk cetvelinin küçüğü; çentikler %10 ve %2, pirinç imleç, bordo kıl çizgi */
+.ses-cetvel { position: relative; flex: 1 1 200px; min-width: 120px; height: 40px; touch-action: none; cursor: pointer; }
+.ses-cetvel::before { content: ""; position: absolute; left: 0; right: 0; top: 13px; height: 14px; border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 40%, transparent) 0 1px, transparent 1px 10%) 0 0 / 100% 8px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 18%, transparent) 0 1px, transparent 1px 2%) 0 0 / 100% 4px no-repeat,
+    color-mix(in srgb, var(--ink) 5%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent); }
+.ses-cetvel-dolu { position: absolute; left: 0; right: 0; top: 25px; height: 2px; background: var(--fosfor);
+  transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
+.ses-cetvel-iz { position: absolute; inset: 0; transform: translateX(calc(var(--p, 0) * 100%)); pointer-events: none; }
+.ses-cetvel-imlec { position: absolute; left: 0; top: 5px; width: 14px; height: 30px; translate: -50% 0; border-radius: 3px;
+  border: 1px solid var(--pirinc); background: color-mix(in srgb, var(--surface) 45%, transparent); box-shadow: 0 1px 2px #3C2A1433; }
+.ses-cetvel-imlec::after { content: ""; position: absolute; left: 6px; top: 3px; bottom: 3px; width: 1px; background: var(--mark); }
+.ses-cetvel-etiket { position: absolute; left: 0; top: 42px; translate: -50% 0; opacity: 0; transition: opacity var(--sure-kisa); }
+.ses-cetvel.suruklen .ses-cetvel-etiket { opacity: 1; }
+
+/* Kayıt listesi: şeridin sağ altında fiş */
+.ses-liste.fis { position: absolute; top: calc(var(--ust-cubuk) + var(--ses-serit, 48px) + 6px); right: 8px; left: auto; width: min(380px, calc(100% - 16px));
+  max-height: min(60vh, 460px); overflow-y: auto; overscroll-behavior: contain; }
+.ses-liste-baslik { display: flex; align-items: center; justify-content: space-between; padding: 0 0 4px 6px; font: inherit; }
+.ses-liste-baslik .t-daktilo { color: var(--muted); }
+.ses-satirlar { list-style: none; margin: 0; padding: 0; }
+.ses-satir { display: grid; grid-template-columns: 44px 1fr 44px 44px; align-items: center; gap: 2px; min-height: 56px; padding: 2px 0; border-radius: var(--r-md); }
+.ses-satir + .ses-satir { border-top: 1px solid var(--line); }
+.ses-satir.caliyor { background: var(--surface-2); }
+.ses-satir.caliyor b { color: var(--ink); }
+.ses-satir .ikon-dugme:disabled { opacity: .4; }
+.ses-satir-metin { display: grid; min-width: 0; padding: 0 4px; }
+.ses-satir-metin b { font: 500 var(--fs-15)/20px var(--f-arayuz); color: var(--ink-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ses-satir-metin small { font: 500 var(--fs-12)/16px var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
+.ses-ad-girdi { width: 100%; height: 30px; padding: 0 2px; border: 0; border-bottom: 1.5px solid var(--accent); border-radius: 0; background: transparent;
+  color: var(--ink); font: 500 var(--fs-15)/20px var(--f-arayuz); }
+.ses-ad-girdi:focus { outline: none; }
+.ses-sil[data-onay="1"] { width: auto; padding: 0 8px; color: var(--danger); font: 600 var(--fs-13)/1 var(--f-arayuz); white-space: nowrap; }
+.ses-satir:has(.ses-sil[data-onay="1"]) { grid-template-columns: 44px 1fr 44px auto; }
+.ses-bos { margin: 6px 10px 10px; color: var(--muted); font: 450 var(--fs-13)/20px var(--f-arayuz); }
+
+@media (max-width: 559px) { .ses-not.ses-ipucu { visibility: hidden; } }
+
+/* Dar ekran: ad ve uzun not gizlenir, iz kısalır */
+@media (max-width: 720px) {
+  .ses-serit { gap: 6px; }
+  .ses-ad, .ses-toplam { display: none; }
+  .ses-iz { flex-basis: 60px; }
+  .ses-ana span { display: none; }
+  .ses-ana { padding: 0; width: 40px; justify-content: center; }
+}
