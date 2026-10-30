@@ -46,6 +46,7 @@
 .izler-grup { padding: 4px 0 16px; }
 .izler-grup > h3 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 20px 6px; background: var(--surface);
   font: 600 12px/16px var(--f-arayuz); color: var(--muted); }
+.izlerim-devam { height: 1px; }
 .iz-satir { position: relative; display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: start; min-height: 56px; padding: 10px 12px 10px 20px;
   cursor: pointer; text-align: left; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .iz-satir:active, .iz-satir:focus-visible { background: color-mix(in srgb, var(--ink) 5%, transparent); outline: none; }
@@ -173,7 +174,7 @@
   border-radius: 2px 6px 6px 2px; color: #F2EDE4; overflow: hidden;
   background: linear-gradient(90deg, #0000004D 0 3px, #FFFFFF14 3px 4px, transparent 4px 10px), var(--c);
   box-shadow: 0 0 0 .5px #0000004D, 0 1px 2px #1C1B191A, 0 10px 18px -10px #1C1B1959; transition: transform 160ms var(--egri-kagit, ease-out); }
-.defter-raf__kapak b { font: 500 13px/16px var(--f-okuma); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; }
+.defter-raf__kapak b { font: 500 13px/16px var(--f-okuma); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; hyphens: auto; }
 .defter-raf__kapak small { font: 400 10px/12px var(--f-olcu); color: #F2EDE4B3; letter-spacing: .04em; }
 .defter-raf__kapak .defter-raf__bant { position: absolute; top: 0; bottom: 0; right: 14px; width: 5px; background: linear-gradient(90deg, #00000040, #1B1A19 35%, #3A3836 60%, #1B1A19); }
 .defter-raf__defter:hover .defter-raf__kapak { transform: translateY(-2px); }
@@ -200,6 +201,7 @@
 .izlerim-kitap .sirt { height: 28px; }
 .izlerim-kitap h2 { margin: 0; font: 500 22px/28px var(--f-okuma); letter-spacing: -.01em; color: var(--ink); min-width: 0; }
 .izlerim-kitap > header .izlerim-sayac { padding: 0; }
+.izlerim-kitap > header .izlerim-sayac, .izlerim-kitap > header .hayalet { white-space: nowrap; flex: none; }
 .izlerim-satir { position: relative; display: grid; grid-template-columns: 120px 1fr auto; column-gap: 24px; padding: 14px 0; box-shadow: 0 .5px 0 var(--line); cursor: pointer; }
 .izlerim-satir:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
 .izlerim-satir .izlerim-kenar { position: relative; display: grid; justify-items: end; align-content: start; gap: 6px; padding-top: 4px; }

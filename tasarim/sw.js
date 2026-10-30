@@ -1,7 +1,7 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "6.0.2";
+const VERSION = "6.0.3";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
 // Çeviri motoru (lib/ceviri, wasm 5 MB): kabuğa girmez, ilk kullanımda alınır; sürüm artınca yeniden inmesin diye ayrı önbellekte
@@ -24,7 +24,7 @@ const KABUK = [
   "./ceviri.js", "./ceviri-isci.js",
   "./ikon/ikon.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
   "./ikon/ikon-maskable-192.png", "./ikon/ikon-maskable-512.png", "./ikon/apple-touch-icon.png",
-  "../lib/jszip.min.js", "../lib/epub.min.js",
+  "../lib/jszip.min.js",
   "../lib/pdf.min.mjs", "../lib/pdf.worker.min.mjs", "../lib/pdf-lib.esm.min.js",
 ];
 
@@ -46,7 +46,8 @@ let kotaZamani = 0;
 function kotaBildir(hata) {
   if (hata?.name !== "QuotaExceededError" || Date.now() - kotaZamani < 600000) return;
   kotaZamani = Date.now();
-  self.clients.matchAll({ type: "window" }).then((l) => l.forEach((c) => c.postMessage({ tur: "kota" }))).catch(() => {});
+  // Kurulan SW henüz sayfa denetlemiyor: denetlenmeyenler de listelenir, yoksa ileti kimseye gitmez
+  self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((l) => l.forEach((c) => c.postMessage({ tur: "kota" }))).catch(() => {});
 }
 
 self.addEventListener("activate", (e) => {

@@ -70,8 +70,12 @@ function htmlAc(metin) {
 
 // XML ve XHTML baytları kendi kodlamasıyla çözülür: JSZip "string" hep UTF-8 sanır, UTF-16 kitap bozulurdu.
 // Sıra: BOM, UTF-16'nın ilk "<" baytları, XML bildirimi ya da meta charset, yoksa UTF-8.
+// Tek metin dosyası en çok 64 MB açılır: 300 KB'lık zip bombası 300 MB'a açılıp sekmeyi düşürmesin
+const METIN_SINIRI = 64 * 2 ** 20;
 async function metinOku(dosya) {
+  if (dosya?._data?.uncompressedSize > METIN_SINIRI) throw Object.assign(new Error("EPUB içinde aşırı büyük bölüm"), { kod: "buyuk" });
   const b = await dosya.async("uint8array");
+  if (b.length > METIN_SINIRI) throw Object.assign(new Error("EPUB içinde aşırı büyük bölüm"), { kod: "buyuk" });
   let kod = "utf-8", bas = 0;
   if (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) bas = 3;
   else if (b[0] === 0xff && b[1] === 0xfe) { kod = "utf-16le"; bas = 2; }
@@ -96,6 +100,15 @@ function zipDosya(zip, yol) {
 async function paketOku(blob) {
   const JSZip = await jszip();
   const zip = await JSZip.loadAsync(blob);
+  // DRM: içerik şifreliyse metin çöp karakter olarak görünürdü. Yazı tipi karartması (font obfuscation) DRM değildir.
+  const sifre = zipDosya(zip, "META-INF/encryption.xml");
+  if (sifre) {
+    const d = xmlAc(await metinOku(sifre));
+    const yontemler = d ? etiketler(d, "EncryptionMethod").map((e) => e.getAttribute("Algorithm") || "") : [];
+    if (yontemler.some((a) => !/idpf\.org\/2008\/embedding|ns\.adobe\.com\/pdf\/enc#RC/.test(a))) {
+      throw Object.assign(new Error("EPUB DRM ile korunuyor"), { kod: "drm" });
+    }
+  }
   const kap = zipDosya(zip, "META-INF/container.xml");
   let opfYol = "";
   if (kap) {
@@ -127,6 +140,10 @@ async function paketOku(blob) {
     .map((r) => ogeler.get(r.getAttribute("idref")))
     .filter((o) => o && /html|xml/.test(o.tur || "html"));
   // linear="no" olanlar (dipnot sayfaları vb.) sona eklenmez; okuma akışında yer almazlar
+  // Okuma sırasında zip'te gerçekten bulunan bölüm yoksa kitap açılamaz
+  if (!sira.some((o) => zipDosya(zip, o.yol))) throw Object.assign(new Error("EPUB'da okunacak bölüm yok"), { kod: "bos" });
+  // Aşırı büyük bölüm içe aktarırken yakalanır (açılınca sekmeyi düşürmeden önce)
+  if (sira.some((o) => zipDosya(zip, o.yol)?._data?.uncompressedSize > METIN_SINIRI)) throw Object.assign(new Error("EPUB içinde aşırı büyük bölüm"), { kod: "buyuk" });
 
   return { zip, opf, taban, baslik, yazar: yazarlar.join(", "), dil, ogeler, sira, ncxId: spineEl?.getAttribute("toc") || "" };
 }

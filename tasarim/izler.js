@@ -40,7 +40,9 @@ function neZaman(t) {
   if (gun < 7) return `${gun} gün önce`;
   return tarih(t);
 }
-const tarih = (t) => (t ? new Date(t).toLocaleDateString("tr", { day: "numeric", month: "short", year: "numeric" }) : "");
+// Biçimleyici bir kez kurulur: her satırda toLocaleDateString çağırmak 5000 izde 1 sn'yi aşıyordu
+const TARIH_BICIM = new Intl.DateTimeFormat("tr", { day: "numeric", month: "short", year: "numeric" });
+const tarih = (t) => (t ? TARIH_BICIM.format(new Date(t)) : "");
 
 /* ================= Önizleme: izin kendi mürekkep yolu ================= */
 // Çizgiler 48x32'lik kutuya en-boy oranı korunarak sığdırılır; yol çizildiği gibi kalır (el titremesi dahil)
@@ -608,6 +610,7 @@ export function kapat() {
   if (!E) return;
   fisKapat();
   for (const c of E.cozuculer) c();
+  for (const g of E.gozlemciler || []) g.disconnect();
   clearTimeout(E.plan);
   E.kap.classList.remove("izlerim");
   E = null;
@@ -644,7 +647,8 @@ function ciz() {
   yanCiz();
   if (E.secim.startsWith("derleme:")) derlemeCiz(E.secim.slice(8));
   else govdeCiz();
-  E.govde.scrollTop = y;
+  // Yerleşim yalnız gerekiyorsa zorlanır (en üstteyken binlerce satır için boşa yerleşim olurdu)
+  if (y) E.govde.scrollTop = y;
 }
 
 function yanCiz() {
@@ -682,7 +686,34 @@ function ustCiz(baslik, sayacMetni, ...ek) {
   return h("header", { class: "izlerim-ust" }, h("h1", {}, baslik), h("span", { class: "izlerim-sayac" }, sayacMetni), h("span", { class: "izlerim-ust__bosluk" }), ...ek);
 }
 
+// Binlerce iz tek seferde kurulmaz (5000 izde 7 sn donuyordu): ilk satırlar hemen, kalanı kaydırdıkça
+// parça parça eklenir. Her listenin sonundaki işaret görünüme yaklaşınca sıradaki parça gelir.
+const ILK_SATIR = 120, PARCA = 150;
+function satirListesi(gorunen, butce) {
+  const liste = h("div", { role: "list" });
+  let i = 0;
+  const ekle = (n) => {
+    const son = Math.min(gorunen.length, i + n), yeni = [];
+    for (; i < son; i++) yeni.push(izlerimSatiri(gorunen[i]));
+    liste.append(...yeni);
+  };
+  ekle(butce);
+  if (i >= gorunen.length) return [liste];
+  const devam = h("div", { class: "izlerim-devam", "aria-hidden": "true" });
+  const g = new IntersectionObserver((girdiler) => {
+    if (!girdiler.some((x) => x.isIntersecting)) return;
+    ekle(PARCA);
+    if (i >= gorunen.length) { g.disconnect(); devam.remove(); }
+  }, { root: E.govde, rootMargin: "1200px 0px" });
+  g.observe(devam);
+  E.gozlemciler.push(g);
+  return [liste, devam];
+}
+
 function govdeCiz() {
+  for (const g of E.gozlemciler || []) g.disconnect();
+  E.gozlemciler = [];
+  let butce = ILK_SATIR;
   const hepsi = tumIzler();
   const kitapSecili = E.secim.startsWith("kitap:") ? E.secim.slice(6) : null;
   const kitaplar = E.veri.filter((k) => !kitapSecili || k.belge.id === kitapSecili);
@@ -708,7 +739,8 @@ function govdeCiz() {
     parcalar.push(h("section", { class: "izlerim-kitap", "aria-label": belge.ad },
       h("header", {}, h("i", { class: "sirt", style: `--kapak-renk:${belge.kapak || "#7D1D2C"}` }), h("h2", {}, belge.ad),
         h("span", { class: "izlerim-sayac" }, `${gorunen.length} iz`), h("span", { class: "izlerim-ust__bosluk" }), defterD),
-      h("div", { role: "list" }, gorunen.map((x) => izlerimSatiri(x)))));
+      ...satirListesi(gorunen, butce)));
+    butce = Math.max(0, butce - gorunen.length);
   }
   if (parcalar.length === 1 + (kitapSecili ? 0 : 1) + (E.birlestir ? 1 : 0)) parcalar.push(bosDurum("Bu süzgeçte iz yok.", "Başka bir süzgeç seç.",
     { etiket: "Tümünü göster", calistir: () => { E.secim = "hepsi"; E.suzgec = "tumu"; ciz(); } }));
@@ -738,7 +770,8 @@ function defterRafi() {
     const secili = E.birlestir?.has(belge.id);
     const d = h("button", { class: "defter-raf__defter", type: "button", role: "listitem", style: `--c:${belge.kapak || "#24324F"}`,
       "aria-pressed": E.birlestir ? String(!!secili) : null, "aria-label": `${belge.ad} cep defteri, ${alinti} alıntı` },
-      h("span", { class: "defter-raf__kapak" }, h("b", {}, belge.ad), h("small", {}, `${alinti} alıntı`), h("i", { class: "defter-raf__bant", "aria-hidden": "true" })),
+      // b'nin dili: uzun kelime ("Lighthouse") harf ortasından değil hecesinden bölünür
+      h("span", { class: "defter-raf__kapak" }, h("b", { lang: belge.dil || null }, belge.ad), h("small", {}, `${alinti} alıntı`), h("i", { class: "defter-raf__bant", "aria-hidden": "true" })),
       E.birlestir ? h("span", { class: "defter-raf__tik", "aria-hidden": "true" }, icon("tik", "i-16")) : null);
     d.addEventListener("click", () => {
       if (!E.birlestir) { defterAc(belge); return; }
@@ -852,7 +885,7 @@ function surukle(tutamak, satir, liste, d) {
   let bas = 0, satirlar = [], hedef = -1;
   tutamak.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    tutamak.setPointerCapture(e.pointerId);
+    try { tutamak.setPointerCapture(e.pointerId); } catch { /* işaretçi çoktan kalktı */ }
     bas = e.clientY;
     satirlar = [...liste.children];
     hedef = satirlar.indexOf(satir);

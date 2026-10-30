@@ -129,7 +129,7 @@ export function altCekmece({ baslik = "", govde, duraklar = ["yarim", "tam"], il
     if (durakAd !== "tam" && duraklar.includes("tam") && dy < -8) { dokunY = null; durak("tam"); return; }
     if (durakAd === "tam" && govdeEl.scrollTop <= 0 && dy > 6) {
       if (!govdeSurukle) { govdeSurukle = true; basla(dokunY); }
-      e.preventDefault();
+      if (e.cancelable) e.preventDefault();
       tasi(y);
     }
   }, { passive: false });

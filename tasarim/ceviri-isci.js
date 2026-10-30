@@ -144,7 +144,8 @@ async function parcaliIndir(anahtar, url, signal, ilerle) {
     if (e?.name === "AbortError") throw e;
     throw hataYap("ag", "adres açılmadı", { adresHatasi: !alinan });
   }
-  if (!res.ok) throw hataYap("ag", String(res.status), { adresHatasi: true });
+  // Sunucu cevap verdi ama dosya yok ya da hata: bağlantı sorunu değil, öbür kaynak denenir
+  if (!res.ok) throw hataYap("sunucu", String(res.status), { adresHatasi: true });
   if (alinan && res.status !== 206) { await yarimSil(anahtar); onceki.length = 0; alinan = 0; }   // sunucu baştan gönderdi
   ilerle(alinan);
   const okuyucu = res.body.getReader();
@@ -175,7 +176,9 @@ async function parcaliIndir(anahtar, url, signal, ilerle) {
   return new Blob(onceki);
 }
 async function dogrula(blob, gz, boyut, sha256) {
-  const acik = gz ? await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).blob() : blob;
+  let acik = blob;
+  // Açılamayan gzip bozuk dosyadır (bağlantı hatası değil)
+  if (gz) { try { acik = await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).blob(); } catch { return null; } }
   if (acik.size !== boyut) return null;
   const ozet = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await acik.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join("");
   return ozet === sha256 ? new Blob([acik], { type: "application/octet-stream" }) : null;

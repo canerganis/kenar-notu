@@ -417,9 +417,22 @@ function konumMetni(b) {
   if (b.tur === "epub") return `EPUB · %${Math.round(ilerlemeOrani(b) * 100)}`;
   return `${turAdi(b)} · s. ${b.sayfa || 1} / ${b.sayfaSayisi || 1}`;
 }
+// Tembel yüklenen ekran modülü açılamadı. SyntaxError: eksik dışa aktarım, yani sayfa eski sürümde kaldı
+function modulHatasi(hata, metin) {
+  if (hata instanceof SyntaxError) guncellemeVar();
+  else toast(metin);
+}
+function guncellemeVar() {
+  if (guncellemeVar.soylendi) return;
+  guncellemeVar.soylendi = true;
+  toast("Kenar Notu güncellendi. Yeni sürümü açmak için yenile.", {
+    kalici: true, etiket: "Yenile",
+    calistir: async () => { await kayit.hemenKaydet({ tam: true }); location.reload(); },
+  });
+}
 function ciltRengi(ad = "") {
   let t = 0;
-  for (const c of ad) t = (t * 31 + c.charCodeAt(0)) >>> 0;
+  for (const c of String(ad ?? "")) t = (t * 31 + c.charCodeAt(0)) >>> 0;
   return CILT_RENKLERI[t % CILT_RENKLERI.length];
 }
 
@@ -793,7 +806,12 @@ function kitaplikKur({ gizli = false } = {}) {
   K.aramaGirdi = h("input", { type: "search", placeholder: "Kitaplıkta ara", "aria-label": "Kitaplıkta ara", enterkeyhint: "search", autocomplete: "off", spellcheck: "false" });
   K.aramaTemizle = h("button", { class: "arama-temizle", type: "button", "aria-label": "Aramayı temizle", hidden: true }, icon("kapat"));
   K.arama = h("label", { class: "arama" }, icon("ara"), K.aramaGirdi, K.aramaTemizle);
-  K.aramaGirdi.addEventListener("input", () => aramaYap(K.aramaGirdi.value));
+  // Hızlı yazarken her harfte bütün kitaplık yeniden kurulmaz: yazma durunca (büyük kitaplıkta harf başına 350 ms)
+  let aramaZaman = 0;
+  K.aramaGirdi.addEventListener("input", () => {
+    clearTimeout(aramaZaman);
+    aramaZaman = setTimeout(() => aramaYap(K.aramaGirdi.value), store.belgeler.length > 60 ? 140 : 0);
+  });
   K.aramaGirdi.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && K.aramaGirdi.value) { e.stopPropagation(); aramaYap(""); }
     // Enter: yazılı terim varsa bütün kitaplıkta aranır, yoksa yalnız klavye kapanır
@@ -1602,7 +1620,7 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
       sonuclar.push({ b, vardi: once.has(b.id) });
     } catch (hata) {
       console.warn("[kenar-notu] İçe aktarılamadı:", f.name, hata);
-      toast(hata?.kod === "cbr" ? hata.message
+      toast(hata?.kod === "cbr" || hata?.kod === "bozuk" ? hata.message
         : hata?.kod === "tur" ? `“${f.name}” açılamadı: yalnız PDF, EPUB ve CBZ.` : `“${f.name}” içe aktarılamadı.`);
     } finally {
       const j = dizgiler.indexOf(yerler[i]);
@@ -2482,7 +2500,7 @@ function ceviriOzet() {
 }
 const paketAdi = (p) => `${dilAdi(p.kaynak)} → ${dilAdi(p.hedef)}`;
 function ceviriHataMetni(e) {
-  return { ag: "Bağlantı yok; internet gelince yeniden dene.", yer: "Cihazda yer yetmiyor.", bozuk: "İnen dosya doğrulanamadı; yeniden dene.",
+  return { ag: "Bağlantı yok; internet gelince yeniden dene.", sunucu: "Paket sunucusu şu an cevap vermiyor; biraz sonra yeniden dene.", yer: "Cihazda yer yetmiyor.", bozuk: "İnen dosya doğrulanamadı; yeniden dene.",
     "paket-yok": "Bu dil çifti için paket bulunamadı.", "motor-yok": "Bu Chrome bu dili cihazda çeviremiyor.",
     hareket: "İndirme için düğmeye yeniden dokun." }[e?.tur] || "İndirilemedi.";
 }
@@ -2940,7 +2958,7 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, iz, kaynak = null, gecmi
   } catch (hata) {
     console.warn("[kenar-notu] Ekran modülü yüklenemedi:", hata);
     acikPencere?.close();
-    toast(cizgi ? "Çizgi roman okuyucu henüz hazır değil." : belge.tur === "epub" ? "Okuma görünümü henüz hazır değil." : "Düzenleyici henüz hazır değil.");
+    modulHatasi(hata, cizgi ? "Çizgi roman okuyucu henüz hazır değil." : belge.tur === "epub" ? "Okuma görünümü henüz hazır değil." : "Düzenleyici henüz hazır değil.");
     if (K.ekran.hidden) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3132,7 +3150,7 @@ async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] Tekrar modülü yüklenemedi:", hata);
-    toast("Tekrar ekranı henüz hazır değil.");
+    modulHatasi(hata, "Tekrar ekranı henüz hazır değil.");
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3184,7 +3202,7 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] Arama modülü yüklenemedi:", hata);
-    toast("Arama ekranı henüz hazır değil.");
+    modulHatasi(hata, "Arama ekranı henüz hazır değil.");
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3224,7 +3242,7 @@ async function izlerAc({ gecmis = "it" } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] İzler modülü yüklenemedi:", hata);
-    toast("İzlerim ekranı açılamadı.");
+    modulHatasi(hata, "İzlerim ekranı açılamadı.");
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3302,12 +3320,12 @@ const izlerModulu = () => import("./izler.js");
 bus.on("defter:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  izlerModulu().then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); toast("Cep defteri açılamadı."); });
+  izlerModulu().then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); modulHatasi(hata, "Cep defteri açılamadı."); });
 });
 bus.on("izler:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  izlerModulu().then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); toast("İzler açılamadı."); });
+  izlerModulu().then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); modulHatasi(hata, "İzler açılamadı."); });
 });
 bus.on("belgeler", (o) => { if (!sessiz && o?.tur !== "dil") kitaplikYenile(); });
 bus.on("kirpintilar", () => { if (!sessiz) kitaplikYenile(); });
@@ -3858,6 +3876,10 @@ try {
 if (!karsilama) aramaDizininiBaslat();
 // iOS'ta Safari sekmesinde bir kez kurulum fişi
 if (!karsilama) setTimeout(() => iosKurulumFisi(), 3000);
+// Yeni sürüm devreye girdi (sw.js skipWaiting ve claim): açık sayfa eski modüllerle kalır, sonradan yüklenen
+// ekranlar eski ortak.js ile uyuşmaz. Kullanıcıya yenilemesi söylenir; yenilemeden önce her şey yazılır.
+const ilkDenetci = navigator.serviceWorker?.controller;
+navigator.serviceWorker?.addEventListener("controllerchange", () => { if (ilkDenetci) guncellemeVar(); });
 // Hizmet çalışanı önbelleğe yazamadı (depo dolu): çevrimdışı açılış eksik kalabilir
 navigator.serviceWorker?.addEventListener("message", (e) => {
   if (e.data?.tur === "kota") toast("Cihazda yer azaldı; çevrimdışı açılış eksik kalabilir. Yer aç ya da yedek al.", { etiket: "Yedekle", calistir: () => yedekPenceresi() });

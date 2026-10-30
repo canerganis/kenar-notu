@@ -548,6 +548,7 @@ export function kaydet() {
   if (!D) return;
   islakAktar();
   try { izKuyruguBosalt(); } catch { /* boş */ }
+  try { D.oduncYaz?.(); } catch { /* süre bir sonraki dilimde */ }
   try { konumKaydet(); } catch { /* yerleşim yoksa geç */ }
   try { D.yan?.modul?.kaydet?.(); } catch { /* bölme yarım kurulduysa geç */ }
   D.belge.sayfaSayisi = toplamNo();
@@ -644,9 +645,28 @@ function arayuzKur() {
 // ---------- araç çubuğu ----------
 function aracCubuguKur() {
   D.aracDugme = {};
-  D.geriAlDugme = h("button", { class: "arac", "aria-label": "Geri al", disabled: true, onclick: () => geriAl() }, icon("geri-al"));
+  // Telefonda (alt raf) Yinele düğmesi yok: geri alınca fişte "Yinele" çıkar, uzun basış da yineler
+  D.geriAlDugme = h("button", { class: "arac", "aria-label": "Geri al", disabled: true, onclick: (e) => {
+    if (D.geriAlDugme.dataset.yineledi) { delete D.geriAlDugme.dataset.yineledi; e.preventDefault(); return; }
+    const oldu = geriAl();
+    if (konum() === "alt") parmakGeriBildirim([], true, oldu);
+  } }, icon("geri-al"));
   D.yineleDugme = h("button", { class: "arac", "aria-label": "Yinele", disabled: true, onclick: () => yinele() }, icon("yinele"));
   ipucuBagla(D.geriAlDugme, () => "Geri al", "Ctrl+Z");
+  let uzunYinele = 0;
+  const uzunBirak = () => { clearTimeout(uzunYinele); uzunYinele = 0; };
+  D.geriAlDugme.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" || konum() !== "alt") return;
+    uzunBirak();
+    uzunYinele = setTimeout(() => {
+      if (!D || !D.gecmis.yinelenebilir) return;
+      ipucuGizle();   // ipucunun zamanlayıcısı aynı anda dolar, önce o çalışır
+      D.geriAlDugme.dataset.yineledi = "1";
+      const oldu = yinele();
+      parmakGeriBildirim([], false, oldu);
+    }, 520);
+  });
+  for (const ad of ["pointerup", "pointercancel", "pointerleave"]) D.geriAlDugme.addEventListener(ad, uzunBirak);
   ipucuBagla(D.yineleDugme, () => "Yinele", "Ctrl+Y");
 
   const kutu = h("div", { class: "kalem-kutusu" });
@@ -1407,6 +1427,8 @@ function oduncKur() {
     d.oduncT = d.sonEtkilesim = performance.now();
   };
   document.addEventListener("visibilitychange", gorunurluk);
+  // kaydet() (kayıt yazılmadan hemen önce) de son dilimi ekler: kayit.js'in gizlenme dinleyicisi bundan önce çalışır
+  d.oduncYaz = () => { if (D === d) yaz(); };
   d.temizlik.push(() => {
     clearInterval(id);
     document.removeEventListener("visibilitychange", gorunurluk);
@@ -1890,8 +1912,8 @@ function geriAlDurumu() {
   D.yineleDugme.disabled = !D.gecmis.yinelenebilir;
 }
 // Islak (600ms) çizgi önce kalıcı katmana geçer; yoksa geri alınan çizgi canlı katmanda bir an daha görünür
-function geriAl() { islakAktar(); odagiBirak(); const r = D.gecmis.geriAl(); if (r) { kayitUygula(r, "once"); icerikDegisti(); } geriAlDurumu(); }
-function yinele() { islakAktar(); odagiBirak(); const r = D.gecmis.yinele(); if (r) { kayitUygula(r, "sonra"); icerikDegisti(); } geriAlDurumu(); }
+function geriAl() { islakAktar(); odagiBirak(); const r = D.gecmis.geriAl(); if (r) { kayitUygula(r, "once"); icerikDegisti(); } geriAlDurumu(); return !!r; }
+function yinele() { islakAktar(); odagiBirak(); const r = D.gecmis.yinele(); if (r) { kayitUygula(r, "sonra"); icerikDegisti(); } geriAlDurumu(); return !!r; }
 
 function kayitUygula(r, yon) {
   const durum = r[yon];
@@ -5634,7 +5656,7 @@ function sayfaMenusuAc(acan, i) {
 function kucukSurukleKur(S) {
   const btn = S.kucukBtn, kap = S.kucukKap;
   let j = null;
-  const dokunmaEngel = (e) => { if (j?.basladi) e.preventDefault(); };
+  const dokunmaEngel = (e) => { if (j?.basladi && e.cancelable) e.preventDefault(); };
   const bitir = (birak) => {
     if (!j) return;
     const jj = j;

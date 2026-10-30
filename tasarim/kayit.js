@@ -125,13 +125,14 @@ const uyar = (kod) => bus.emit("kayit:uyari", { kod });
 /* ---------- tek yazan sekme ---------- */
 // Aynı anda tek sekme yazar: PWA penceresi ve bir sekme açıkken eski liste yeni belgeleri silmesin.
 // Kilidi alamayan sekme kaydı okur ama yazmaz (kilit); öbür pencere kapanınca yenilemesi söylenir.
-let yazarDegil = false;
+let yazarDegil = false, kilitBizde = false;
 export const baskaPencere = () => yazarDegil;
 function yazarKilidiAl() {
   if (!navigator.locks?.request) return Promise.resolve(true);
   return new Promise((tamam) => {
     navigator.locks.request("kn-yazar", { ifAvailable: true }, (l) => {
       tamam(!!l);
+      kilitBizde = !!l;
       if (l) return new Promise(() => {});   // sayfa kapanana kadar tutulur
     }).catch(() => tamam(true));
   });
@@ -297,8 +298,8 @@ export function kayitKur({ oncesi, mesgul, yakinda } = {}) {
   document.addEventListener("pointerup", kaydetPlanla, { capture: true, passive: true });
   document.addEventListener("input", kaydetPlanla, { capture: true, passive: true });
   // Android Chrome arka plandaki sekmeyi kapatabilir: gizlenince her şey hemen yazılır
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") hemenKaydet({ tam: true }); });
-  addEventListener("pagehide", () => hemenKaydet({ tam: true }));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") hemenKaydet({ tam: true, cikis: true }); });
+  addEventListener("pagehide", () => hemenKaydet({ tam: true, cikis: true }));
 }
 
 export function kaydetPlanla() {
@@ -317,7 +318,9 @@ export function kaydetPlanla() {
 
 // tam: liste dışındaki kartlar ve kırpıntılar da değişmemiş olsa yazılır (sekme gizlenirken)
 // Dönen söz yazıldıysa true, yazılamadıysa false olur (hata fırlatmaz)
-export function hemenKaydet({ tam = false } = {}) {
+// cikis: sayfa gidiyor (yenileme, kapanış). Yazar kilidi bu sekmedeyse damga okunmadan hemen yazılır:
+// okumanın cevabını beklerken sayfa kapanır ve yazma hiç gitmez (son 2 sn'nin izi kaybolurdu)
+export function hemenKaydet({ tam = false, cikis = false } = {}) {
   clearTimeout(zaman);
   zaman = 0;
   bekleyenBas = 0;
@@ -335,7 +338,8 @@ export function hemenKaydet({ tam = false } = {}) {
   degisen.clear();
   // Ayrı işlemler: liste önce ve tek başına gider. Büyük bir belgenin ya da kırpıntıların kota hatası
   // ilerlemeyi, yeni belgeleri ve öbür belgelerin verisini götürmez. put kopyayı işlem sırası gelince alır.
-  const yaz = (fn, geri) => denetliYaz(fn).then(() => true, (hata) => { geri(); return hata; });
+  const hizli = cikis && kilitBizde;
+  const yaz = (fn, geri) => denetliYaz(fn, hizli).then(() => true, (hata) => { geri(); return hata; });
   const isler = [yaz((d) => d.put(listeKaydi(), LISTE), () => {})];
   if (kartY || yzY || derY) isler.push(yaz((d) => {
     if (kartY) d.put(store.kartlar, "kartlar");
@@ -391,12 +395,21 @@ export function ornekVeriSifirla(belge) {
 
 // Tek "durum" işlemi; önce liste damgası denetlenir, başka sekme yazdıysa iptal edilir (kod "degisti").
 // fn false dönerse işlem yazmadan biter (kod "ertele")
-async function denetliYaz(fn) {
+async function denetliYaz(fn, hizli = false) {
   const db = await vtAc();
   return new Promise((tamam, hata) => {
     let yabanci = false, ertele = false;
     const t = db.transaction("durum", "readwrite");
     const d = t.objectStore("durum");
+    t.oncomplete = () => { listeVardi = true; tamam(true); };
+    t.onerror = t.onabort = () => hata(yabanci ? Object.assign(new Error("Kitaplık başka pencerede değişti"), { kod: "degisti" })
+      : ertele ? Object.assign(new Error("kalem"), { kod: "ertele" }) : t.error);
+    if (hizli) {
+      // Tek yazan bu sekme (Web Locks): damga denetimine gerek yok, istekler hemen kuyruğa girer
+      try { fn(d); } catch (e) { console.warn("[kenar-notu] Kayıt hazırlanamadı:", e); }
+      try { t.commit?.(); } catch { /* eski tarayıcı: işlem kendiliğinden biter */ }
+      return;
+    }
     const q = d.get(LISTE);
     q.onsuccess = () => {
       const k = q.result;
@@ -404,9 +417,6 @@ async function denetliYaz(fn) {
       if (yabanci) { t.abort(); return; }
       try { if (fn(d) === false) { ertele = true; t.abort(); } } catch (e) { console.warn("[kenar-notu] Kayıt hazırlanamadı:", e); }
     };
-    t.oncomplete = () => { listeVardi = true; tamam(true); };
-    t.onerror = t.onabort = () => hata(yabanci ? Object.assign(new Error("Kitaplık başka pencerede değişti"), { kod: "degisti" })
-      : ertele ? Object.assign(new Error("kalem"), { kod: "ertele" }) : t.error);
   });
 }
 
@@ -545,7 +555,7 @@ async function belgeBilgisi(tur, blob) {
     return await zamanAsimi(import("./epub-belge.js").then((m) => m.epubBilgi(blob)), 30000);
   } catch (hata) {
     console.warn("[kenar-notu] Belge bilgisi okunamadı, adla basılıyor:", hata);
-    return { hata: true };
+    return { hata: true, neden: hata };
   }
 }
 // Kapak: dataURL (pdf-belge, epub-belge) ya da Blob (cizgi-belge)
@@ -594,13 +604,23 @@ export async function belgeIceAktar(file, { klasor } = {}) {
   if (vardi) return vardi;
 
   const bilgi = (await belgeBilgisi(tur, file)) || {};
+  // Okunamayan dosya kitaplığa girmez (açılınca yine hata verirdi). Zaman aşımı bozukluk sayılmaz:
+  // büyük ya da yavaş dosya eklenir, bilgisi sonra tamamlanır.
+  if (bilgi.hata && bilgi.neden?.message !== "zaman aşımı") {
+    const n = bilgi.neden, kod = n?.kod || (n?.name === "PasswordException" ? "parola" : "bozuk");
+    throw Object.assign(new Error(
+      kod === "drm" ? `“${ad}” DRM ile korunuyor; Kenar Notu korumalı kitapları açamıyor.`
+        : kod === "parola" ? `“${ad}” parolalı; parolasız bir kopyasını ekle.`
+          : kod === "buyuk" ? `“${ad}” açılamadı: içinde aşırı büyük bir bölüm var.`
+            : `“${ad}” okunamadı; dosya bozuk ya da yarım inmiş olabilir.`), { kod: "bozuk" });
+  }
   const kapakGorsel = await kapakHazirla(bilgi.kapak);
   const dosyaAd = ad.replace(/\.(pdf|epub|cbz|zip)$/i, "").trim() || "Adsız";
-  const belgeAd = (tur !== "pdf" && String(bilgi.baslik || "").trim()) || dosyaAd;
+  const belgeAd = ((tur !== "pdf" && String(bilgi.baslik || "").replace(YON_DENETIM, "").trim()) || dosyaAd).replace(YON_DENETIM, "");
   const sayfali = tur === "pdf" || tur === "cizgi";
   const belge = {
     id: yeniId("b"), tur, ad: belgeAd.slice(0, 200),
-    yazar: String(bilgi.yazar || "").trim() || undefined,
+    yazar: String(bilgi.yazar || "").replace(YON_DENETIM, "").trim() || undefined,
     klasor: tur === "pdf" && klasor ? klasor : undefined,
     sayfaSayisi: sayfali ? Math.max(1, Math.floor(Number(bilgi.sayfaSayisi)) || 1) : 0,
     sayfa: sayfali ? 1 : 0, ilerleme: 0, favori: false, acilis: Date.now(),
@@ -713,13 +733,25 @@ function ayarlarYedegi() {
   return kopya;
 }
 
+// Cihazda localStorage'da duran okuma ve görünüm tercihleri de yedeğe girer (yazı boyutu, tema, cetvel...)
+const YEREL_TERCIHLER = ["okuma-tercih", "okuma-temalari", "ceviriyle-oku", "ses-hiz"];
+function yerelTercihler() {
+  const o = {};
+  try { for (const k of YEREL_TERCIHLER) { const v = localStorage.getItem("kn-tasarim:" + k); if (v != null) o[k] = v; } } catch { /* gizli pencere */ }
+  return o;
+}
+function yerelTercihleriYaz(o) {
+  if (!o || typeof o !== "object") return;
+  try { for (const k of YEREL_TERCIHLER) if (typeof o[k] === "string" && o[k].length < 200000) localStorage.setItem("kn-tasarim:" + k, o[k]); } catch { /* yer yok */ }
+}
+
 export async function yedekAl() {
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
   const durum = {
     uygulama: "Kenar Notu", bicim: 1, surum: VT.surum, ornekSurum: ornekSurumu, zaman: Date.now(),
     belgeler: store.belgeler, kirpintilar: store.kirpintilar, kartlar: store.kartlar, klasorler: KLASORLER,
     derlemeler: store.derlemeler, ornekCizgi: ornekCizgi || undefined,
-    ayarlar: ayarlarYedegi(),
+    ayarlar: ayarlarYedegi(), yerel: yerelTercihler(),
   };
   const girdiler = [];   // [yol, Blob]
   // Ek dosyaların türleri durum.json'da durur (zip türü saklamaz): { belgeId: { ad: tür } }
@@ -912,9 +944,53 @@ function yedektekiYeni(yerel, y) {
 
 // Birleştirir: yedekte olup burada olmayan eklenir; ikisinde de olan belgede yeni olan kalır (yedektekiYeni).
 // Kartlar, kırpıntılar ve klasörler id ile birleşir. Sonra sayfa yenilenir.
+// Yedek dışarıdan gelir: görsel alanları yalnız data:image ya da blob: olabilir (yoksa uygulama her açılışta
+// yabancı adrese istek atar, izleme pikseli), renk alanları yalnız renk (style özniteliğine CSS girmesin)
+const GORSEL_ALAN = /(gorsel|Gorsel|src|resim)$/;
+const RENK_ALAN = /^(renk|kapak|cilt|zemin)$|Renk$/;
+const RENK_DEGER = /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([\d\s.,%/]+\)|var\(--[\w-]+\)|[a-z][a-z0-9-]{0,30})$/i;   // ad: "limon", "transparent" (yalnız harf, rakam, tire)
+const GORSEL_DEGER = /^(data:image\/(png|jpe?g|webp|gif|avif|svg\+xml)[;,]|blob:)/i;
+// U+202A..U+202E ve U+2066..U+2069: metnin yönünü değiştiren görünmez karakterler
+const YON_DENETIM = new RegExp("[" + String.fromCharCode(0x202A) + "-" + String.fromCharCode(0x202E)
+  + String.fromCharCode(0x2066) + "-" + String.fromCharCode(0x2069) + "]", "g");
+function yedegiTemizle(x, derinlik = 0) {
+  if (!x || typeof x !== "object" || derinlik > 40) return;
+  if (Array.isArray(x)) { for (const o of x) yedegiTemizle(o, derinlik + 1); return; }
+  for (const k of Object.keys(x)) {
+    const v = x[k];
+    if (typeof v === "string") {
+      if (GORSEL_ALAN.test(k) && !GORSEL_DEGER.test(v)) delete x[k];
+      else if (RENK_ALAN.test(k) && !RENK_DEGER.test(v.trim())) delete x[k];
+      // Yön değiştiren denetim karakterleri adı ters gösterip aldatabilir
+      else if (k === "ad" || k === "yazar") x[k] = v.replace(YON_DENETIM, "");
+    } else if (v && typeof v === "object") yedegiTemizle(v, derinlik + 1);
+  }
+}
+const BELGE_TURLERI = new Set(["pdf", "epub", "defter", "cizgi"]);
+// Yedekteki belge verisi türüne uymalı: EPUB verisi sayfasız, PDF ve defter verisi sayfalı. Uymayan veri bırakılır
+// (belge baştan açılır), listelerdeki boş ya da nesne olmayan girdiler atılır: açılışta ekranı düşürmesinler.
+const EPUB_LISTELERI = ["vurgular", "cizgiler", "yerImleri", "asistanNotlari", "izler"];
+const SAYFA_LISTELERI = ["cizgiler", "notlar", "metinler", "bantlar", "gorseller"];
+const nesneMi = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+function veriDuzelt(y) {
+  const v = y.veri;
+  if (v == null) return;
+  if (!nesneMi(v)) { y.veri = null; return; }
+  if (y.tur === "epub") {
+    if ("sayfalar" in v) { y.veri = null; return; }
+    for (const k of EPUB_LISTELERI) if (k in v) v[k] = Array.isArray(v[k]) ? v[k].filter(nesneMi) : [];
+  } else if (y.tur === "pdf" || y.tur === "defter") {
+    if (!Array.isArray(v.sayfalar)) { y.veri = null; return; }
+    v.sayfalar = v.sayfalar.filter(nesneMi);
+    if (!v.sayfalar.length) { y.veri = null; return; }
+    for (const sf of v.sayfalar) for (const k of SAYFA_LISTELERI) sf[k] = Array.isArray(sf[k]) ? sf[k].filter((o) => o != null) : [];
+  }
+}
+
 export async function yedekYukle(file) {
   if (yazarDegil) throw Object.assign(new Error("Kitaplık başka pencerede açık"), { kod: "baska" });
   const { arsiv, durum } = await yedekArsivi(file);
+  for (const alan of ["belgeler", "kirpintilar", "kartlar", "klasorler", "derlemeler"]) yedegiTemizle(durum[alan]);
 
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
   // Birleşim kopyalar üstünde hazırlanır; canlı durum ancak her şey yazılınca değişir (yarıda kalırsa eskisi durur)
@@ -927,7 +1003,12 @@ export async function yedekYukle(file) {
   // Eski yedekten gelen dosyasız belge verisi kendi örnek sürümünü taşır: açılışta app.js örnekse onu yeni düzene çeker
   const yedekOrnek = Number(durum.ornekSurum) || 0;
   for (const y of durum.belgeler) {
-    if (!y || !y.id || !y.tur) continue;
+    if (!y || typeof y.id !== "string" || !y.id || !BELGE_TURLERI.has(y.tur)) continue;
+    // Belge verisi düz bir nesne olmalı (başka türün dizisi ya da metni açılışta ekranı düşürür)
+    veriDuzelt(y);
+    if (typeof y.kapak !== "string") y.kapak = renkSec(y.ad || "");
+    // Bozuk ad tek kayıtla bütün kitaplığı düşürmesin
+    if (typeof y.ad !== "string" || !y.ad.trim()) y.ad = "Adsız belge";
     const i = belgeler.findIndex((b) => b.id === y.id);
     if (i >= 0 && !yedektekiYeni(belgeler[i], y)) continue;
     // Dosyası yedekte olmayan belge alınmaz (açılamazdı); burada da varsa yerel hâli kalır
@@ -967,7 +1048,10 @@ export async function yedekYukle(file) {
   let ayarlar = null;
   if (durum.ayarlar && typeof durum.ayarlar === "object") {
     const { yz, ...digerleri } = durum.ayarlar;
-    ayarlar = digerleri;
+    // Bilinen ayar yalnız aynı türdeyse alınır (tema: 42 gibi bozuk değer uygulamaya girmesin)
+    const tur = (v) => (Array.isArray(v) ? "dizi" : v === null ? "bos" : typeof v);
+    ayarlar = Object.fromEntries(Object.entries(digerleri)
+      .filter(([k, v]) => store.ayarlar[k] == null || tur(store.ayarlar[k]) === tur(v)));
     if (yz && yzKopya) {
       for (const k of ["yol", "uygulama", "saglayici"]) if (typeof yz[k] === "string") yzKopya[k] = yz[k];
       if (yz.modeller && typeof yz.modeller === "object") Object.assign(yzKopya.modeller ||= {}, yz.modeller);
@@ -1015,6 +1099,7 @@ export async function yedekYukle(file) {
   // Yazıldı: yenilenene kadar kilit kalır. Ayarların localStorage kısmı app.js'te pagehide ile yazılır.
   if (ayarlar) Object.assign(store.ayarlar, ayarlar);
   if (yzKopya) store.ayarlar.yz = yzKopya;
+  yerelTercihleriYaz(durum.yerel);
   try { sessionStorage.setItem("kn-tasarim:yedek-sonuc", JSON.stringify(sonuc)); } catch { /* bildirim çıkmaz */ }
   bus.emit("kayit:yuklendi", sonuc);
   setTimeout(() => location.reload(), 0);

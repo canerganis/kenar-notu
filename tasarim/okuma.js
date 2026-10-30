@@ -481,6 +481,7 @@ function parlaTemizle() {
 export function kaydet() {
   if (!S) return;
   islakAktar();
+  oduncYaz();   // birikmiş okuma süresi kayıtla birlikte gider (yenilemede kaybolmasın)
   izleriSiniflandir();   // kalem kalkalı az olduysa bekleyen izler şimdi metne bağlanır
   if (S.yer && S.el.kaydir.scrollHeight === S.yer.kayYuk) S.veri.konum = konumAl();
   S.veri.sonOkuma = Date.now();
@@ -1831,7 +1832,7 @@ function satirMotoru(motorlar = []) {
 }
 function hataMetni(e) {
   return {
-    ag: "İnternete ulaşılamadı.", anahtar: "API anahtarı geçersiz ya da süresi dolmuş.", sinir: "Sağlayıcının sınırına takıldı. Biraz sonra yeniden dene.",
+    ag: "İnternete ulaşılamadı.", sunucu: "Çeviri sunucusu şu an cevap vermiyor.", anahtar: "API anahtarı geçersiz ya da süresi dolmuş.", sinir: "Sağlayıcının sınırına takıldı. Biraz sonra yeniden dene.",
     "motor-yok": "Çeviri motoru hazır değil.", "paket-yok": "Çeviri paketi yüklü değil.", bozuk: "Çeviri paketi bozuk. Ayarlar'dan silip yeniden indir.",
     yer: "Cihazda yer kalmadı.", dil: "Kitabın dili bulunamadı.", hareket: "İndirmek için düğmeye yeniden dokun.",
   }[e?.tur] || "Çeviri yapılamadı.";
