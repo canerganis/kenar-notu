@@ -102,6 +102,16 @@ async function islem(depo, kip, fn) {
   });
 }
 const aralik = (on) => IDBKeyRange.bound(on, on + "\uffff");
+// Blob yazılamayan IndexedDB'de (eski Safari, bazı gizli pencereler) aynı veri ArrayBuffer olarak yazılır; okurken ikisi de olur
+async function blobYaz(depo, deger, anahtar, sar = (x) => x) {
+  try { return await islem(depo, "readwrite", (d) => d.put(sar(deger), anahtar)); }
+  catch (e) {
+    if (e?.name === "QuotaExceededError") throw e;
+    const tampon = await deger.arrayBuffer();
+    return islem(depo, "readwrite", (d) => d.put(sar(tampon), anahtar));
+  }
+}
+const blobYap = (x) => (x instanceof Blob ? x : x ? new Blob([x]) : x);
 async function dosyalariOku(cift, turler) {
   const r = await islem("dosyalar", "readonly", (d) => turler.map((t) => d.get(`${cift}/${t}`)));
   return Object.fromEntries(turler.map((t, i) => [t, r[i] || null]));
@@ -125,7 +135,7 @@ async function parcaliIndir(anahtar, url, signal, ilerle) {
     for (const k of ks) {
       const v = await islem("yarim", "readonly", (d) => d.get(k));
       if (!v || v.url !== url) { onceki.length = 0; break; }
-      onceki.push(v.blob);
+      onceki.push(blobYap(v.blob));
     }
   } catch { onceki.length = 0; }
   let alinan = onceki.reduce((t, b) => t + b.size, 0);
@@ -145,7 +155,7 @@ async function parcaliIndir(anahtar, url, signal, ilerle) {
     onceki.push(b);
     tampon = []; boy = 0;
     const k = `${anahtar}#${sira++}`;
-    await islem("yarim", "readwrite", (d) => d.put({ blob: b, url }, k));
+    await blobYaz("yarim", b, k, (x) => ({ blob: x, url }));
   };
   try {
     for (;;) {
@@ -189,7 +199,7 @@ async function indir({ anahtar, adresler, boyut, sha256, ad }, isId) {
         const ham = await parcaliIndir(anahtar, a.url, signal, ilerle);
         const blob = await dogrula(ham, a.gz, boyut, sha256);
         if (!blob) { await yarimSil(anahtar); throw hataYap("bozuk", `${ad} doğrulanamadı`); }
-        await islem("dosyalar", "readwrite", (d) => d.put(blob, anahtar));
+        await blobYaz("dosyalar", blob, anahtar);
         await yarimSil(anahtar);
         return { tamam: true };
       } catch (e) {

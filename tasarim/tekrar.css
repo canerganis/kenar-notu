@@ -47,7 +47,7 @@
 .kanal[data-cok] b { display: block; }
 .kanal[data-simdi] i { box-shadow: inset 0 0 0 1.5px var(--ink); }
 .kanal:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
-@media (hover: hover) { .kanal:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .kanal:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .kanal-isik { position: absolute; left: 50%; top: 6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
   background: var(--ink); pointer-events: none; }
 .kanal-isik.kehribar { background: var(--mark); }
@@ -84,7 +84,7 @@
 .kart-kaynak { justify-self: start; display: inline-flex; align-items: center; max-width: 100%; height: 44px; color: var(--muted);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
-@media (hover: hover) { button.kart-kaynak:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; } }
+@media (hover: hover) and (pointer: fine) { button.kart-kaynak:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; } }
 .kart-yuz { position: relative; display: grid; place-items: center; min-height: 0; }
 
 /* Görsel kart: ön ve arka aynı yerde üst üste; görüntü kendi oranıyla ortalanır */
@@ -150,10 +150,10 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .tekrar-cevap button small { font: 400 var(--fs-11)/14px var(--f-olcu); opacity: .72; }
 .tekrar-cevap :is(.goster, .bildim) { background: var(--accent-dolgu); color: var(--accent-dolgu-ink);
   box-shadow: 0 0 0 .5px #00000033, 0 1px 2px #1C1B1926, inset 0 .5px 0 #FFFFFF1F; }
-@media (hover: hover) { .tekrar-cevap :is(.goster, .bildim):hover { background: var(--accent-dolgu-hover, var(--accent-dolgu)); } }
+@media (hover: hover) and (pointer: fine) { .tekrar-cevap :is(.goster, .bildim):hover { background: var(--accent-dolgu-hover, var(--accent-dolgu)); } }
 .tekrar-cevap .bilemedim { background: var(--surface); color: var(--ink); box-shadow: var(--golge-1); }
 .tekrar-cevap .bilemedim small { color: var(--muted); opacity: 1; }
-@media (hover: hover) { .tekrar-cevap .bilemedim:not(:disabled):hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .tekrar-cevap .bilemedim:not(:disabled):hover { background: var(--surface-2); } }
 .tekrar-cevap:not(.acik) :is(.bildim, .bilemedim), .tekrar-cevap.acik .goster { opacity: 0; pointer-events: none; }
 .tekrar-cevap button:active { translate: 0 1px; }
 .tekrar-ipucu { margin: 0; min-height: 18px; font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); text-align: center; }
@@ -204,10 +204,10 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .sonuc-satir .on { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 400 var(--fs-15)/20px var(--f-okuma); }
 .sonuc-satir .kaynak { white-space: nowrap; }
 .sonuc-satir .i { color: var(--muted); }
-@media (hover: hover) { .sonuc-satir:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } .sonuc-satir:hover .kaynak { color: var(--ink-2); } }
+@media (hover: hover) and (pointer: fine) { .sonuc-satir:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } .sonuc-satir:hover .kaynak { color: var(--ink-2); } }
 .sonuc-satir:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .kart-satir .kaynak { min-height: 44px; padding: 0 8px; border-radius: var(--r-sm); font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); white-space: nowrap; }
-@media (hover: hover) { .kart-satir .kaynak:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .kart-satir .kaynak:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .sonuc-eylem { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 
 /* Galvanometre 220x132: pirinç yay, ayna şeridi, ana ve ara çentikler, fosfor bölge, karşı ağırlıklı ibre */
@@ -243,7 +243,7 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .kart-satir .kart-sil { width: 44px; padding: 0; justify-content: center; }
 /* Silme simgesi her satırda kırmızı bağırmasın: sakin durur, üstüne gelince ya da onay anında kırmızı */
 .kart-satir .kart-sil:not([data-onay="1"]) { color: var(--muted); }
-@media (hover: hover) { .kart-satir .kart-sil:hover { color: var(--danger); } }
+@media (hover: hover) and (pointer: fine) { .kart-satir .kart-sil:hover { color: var(--danger); } }
 /* Liste kareli zeminin üstünde bir kâğıt yaprağı: kareler satırların arasından geçmez.
    Malzeme sabit ebeveynde kalır; yaprak düz renktir, kayarken yeniden boyanacak doku yok. */
 .kart-liste-ic { margin-top: 4px; padding: 4px 12px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--golge-2); }
@@ -279,3 +279,50 @@ button.kart-kaynak { margin-left: -6px; padding: 0 6px; border-radius: 4px; }
 .kart-tik b { font: 400 var(--fs-12)/1 var(--f-olcu); font-variant-numeric: tabular-nums; opacity: 0; animation: kart-tik-yazi 160ms 120ms forwards; }
 @keyframes kart-tik { to { stroke-dashoffset: 0; } }
 @keyframes kart-tik-yazi { to { opacity: .9; } }
+
+/* ================= 11. tur (TASARIM-4 1.1.8, 1.2, 2.10) ================= */
+/* Başlıkta Literata’nın alt uzantıları kesilmesin */
+.tekrar-ust h1 { padding-bottom: 8px; margin-bottom: -8px; }
+.tekrar-baslik { padding-bottom: 2px; }
+/* Kart yüzü italik değil: noktasız ı ince kalıp l gibi okunuyordu */
+.kart-kelime { font-style: normal; font-variation-settings: "opsz" 48; }
+/* Leitner: boş V kutusu koyuda da görünsün */
+.kanal i { box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 0 0 1px color-mix(in srgb, var(--ink) 5%, transparent); }
+/* Koyu temada kart krem kalıp parlamasın: koyu kâğıt */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tekrar { --fis-kagit: #24221E; --fis-yazi: #EEEAE2; --fis-baslik: #E08D97; }
+  :root:not([data-theme="light"]) .tekrar-kart { --fis-cizgi: #EEEAE214; background-blend-mode: overlay, normal, normal; }
+  :root:not([data-theme="light"]) .tekrar .kart-bant { --bant-lacivert: #5D6F94; }
+}
+:root[data-theme="dark"] .tekrar { --fis-kagit: #24221E; --fis-yazi: #EEEAE2; --fis-baslik: #E08D97; }
+:root[data-theme="dark"] .tekrar-kart { --fis-cizgi: #EEEAE214; background-blend-mode: overlay, normal, normal; }
+:root[data-theme="dark"] .tekrar .kart-bant { --bant-lacivert: #5D6F94; }
+/* Dikeyde kart ve düğme bir grup, kalan yükseklikte ortalı; düğme kartın 24 px altında (ekranın dibinde değil) */
+@media (orientation: portrait) {
+  /* Ortalama otomatik kenar boşluğuyla: içerik uzunsa üstü kesilmez, kaydırılır ("center" taşanı yukarı iterdi) */
+  .tekrar-sahne { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+  .tekrar-sahne > :first-child { margin-top: auto; }
+  .tekrar-sahne > :last-child { margin-bottom: auto; }
+  .tekrar-sahne:has(.tekrar-cevap) { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+  .tekrar-cevap { position: static; translate: none; width: min(420px, 100%); margin-top: 4px; }
+}
+.bitis-eylem .birincil { height: 44px; }
+@media (max-width: 599px) {
+  .tekrar-ust { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+  .tekrar-sahne { padding: 16px 20px 24px; }
+  .tekrar-kart { width: 100%; }
+  .tekrar-cevap { width: 100%; grid-template-columns: 1fr 1fr; }
+  .tekrar-cevap .goster { width: 100%; }
+}
+@media (max-height: 499px) and (orientation: landscape) {
+  .tekrar-ust { min-height: 64px; padding-top: 8px; }
+  .tekrar-ust h1 { font-size: var(--fs-30); line-height: 36px; }
+  .tekrar-sahne { padding-top: 12px; }
+}
+
+/* 12. tur cila: iPad dikeyde kart raydan ve ekran kenarından 8 px'te duruyordu; kenar tokenı kadar pay bırakır */
+@media (min-width: 480px) { .tekrar-kart { width: min(640px, calc(100vw - 2 * var(--kenar-bosluk, 32px))); } }
+@media (min-width: 600px) and (max-width: 999px), (max-height: 499px) and (orientation: landscape) {
+  .tekrar-kart { width: min(640px, calc(100vw - var(--ray-gen, 72px) - 2 * var(--kenar-bosluk, 32px))); } }
+/* Boş kutu (V) koyu zeminde kayboluyordu: kenarı her temada seçilir (TASARIM-4 1.1.7) */
+.kanal:not([data-simdi]) i { box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 0 0 1px color-mix(in srgb, var(--ink) 6%, transparent); }

@@ -62,5 +62,10 @@
         ]
       }
     }
+  ],
+  "shortcuts": [
+    { "name": "Kart çalış", "short_name": "Tekrar", "url": "./#tekrar", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
+    { "name": "Her yerde ara", "short_name": "Ara", "url": "./#arama", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
+    { "name": "İzlerim", "short_name": "İzlerim", "url": "./#izler", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] }
   ]
 }

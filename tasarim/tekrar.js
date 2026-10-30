@@ -1,7 +1,7 @@
 // Tekrar ekranı: günlük deste, Leitner göstergesi, sınav ve kart listesi.
 // İş tanımı OZELLIKLER-2 §4, görünüm TASARIM-2 §6. Sözleşme: ac(kap), kapat().
 import {
-  h, icon, bus, store, belgeBul, hareketAz, ikiDokunus, KLASORLER, BANTLAR,
+  h, icon, bus, store, belgeBul, hareketAz, toast, KLASORLER, BANTLAR,
   KUTU_ARALIK, kartEkle, kartSil, kartCevapla, bugunTekrar, gunBasi, gunFarki,
 } from "./ortak.js";
 import { PW, PH, PDF_PAGES } from "./sayfalar.js";
@@ -498,6 +498,16 @@ function yarinSayisi() {
   return store.kartlar.filter((k) => k.sonraki < sinir).length;
 }
 
+function kartSilGeriAlinir(k) {
+  const i = store.kartlar.indexOf(k);
+  if (i < 0) return;
+  kartSil(k.id);
+  toast("Kart silindi", { etiket: "Geri al", calistir: () => {
+    store.kartlar.splice(Math.min(i, store.kartlar.length), 0, k);
+    bus.emit("kartlar", { tur: "ekle", kart: k });
+  } });
+}
+
 function bitisOlustur() {
   const d = D.deste, oturum = d.cevap.length > 0;
   const bildi = d.cevap.filter((x) => x.bildi).length;
@@ -506,7 +516,7 @@ function bitisOlustur() {
   const kalan = bugunTekrar().length;
   let baslik = kalan ? "Bu tur bitti." : "Bugünlük bu kadar.", satir;
   if (oturum) satir = `${d.cevap.length} kart · ${bildi} bildin · ${yarin ? `yarın ${yarin}` : "yarın boş"}`;
-  else if (!store.kartlar.length) { baslik = "Henüz kart yok."; satir = "Masada bant koy ya da bir kelimeyi ekle"; }
+  else if (!store.kartlar.length) { baslik = "Henüz kart yok."; satir = "Masa’da bir cevabın üstüne bant koy ya da Koltuk’ta bir kelimeyi karta ekle."; }
   else {
     const en = Math.min(...store.kartlar.map((k) => k.sonraki));
     const g = Math.max(1, gunFarki(en));
@@ -516,8 +526,16 @@ function bitisOlustur() {
     h("h2", {}, baslik), h("p", {}, satir));
   // Yazılıyor duygusu: örtü sağa çekilir (yalnız oturum bitince)
   if (oturum && !hareketAz()) tahta.append(h("div", { class: "ortu", "aria-hidden": "true" }));
-  const eylem = h("div", { class: "bitis-eylem" },
-    h("button", { class: "metin-dugme", type: "button", onclick: () => listeyiAc() }, icon("liste", "i-20"), "Kart listesi"),
+  // Boş durum tek düğme verir (TASARIM-4 3.5): kart yoksa "Nasıl yapılır", bugünlük bittiyse "Yine de çalış"
+  const kartYok = !store.kartlar.length;
+  const birincil = kartYok
+    ? h("button", { class: "birincil", type: "button", onclick: () => import("./rehber.js").then((m) => m.rehberBaslat(0)) }, "Nasıl yapılır")
+    : !oturum && !kalan ? h("button", { class: "birincil", type: "button", onclick: () => desteBaslat(store.kartlar.slice().sort((a, b) => a.sonraki - b.sonraki).slice(0, 20).map((k) => k.id), "Erken çalışma") }, "Yine de çalış")
+    : null;
+  if (!kartYok && !oturum && !kalan) satir += ". İstersen erken çalışabilirsin.";
+  tahta.querySelector("p").textContent = satir;
+  const eylem = h("div", { class: "bitis-eylem" }, birincil,
+    kartYok ? null : h("button", { class: "metin-dugme", type: "button", onclick: () => listeyiAc() }, icon("liste", "i-20"), "Kart listesi"),
     h("button", { class: "metin-dugme", type: "button", onclick: () => bus.emit("git", { ekran: "kitaplik" }) }, "Kitaplığa dön"));
   // Bilinemeyenler I. kutuda, bugün yeniden bekliyor
   if (oturum && kalan) eylem.prepend(h("button", { class: "metin-dugme vurgulu", type: "button", onclick: () => desteBaslat() },
@@ -781,8 +799,9 @@ function listeCiz() {
   for (const k of kartlar) {
     const mini = miniOlustur(k);
     const kalanGun = gunFarki(k.sonraki, simdi);
-    const sil = h("button", { class: "ikon-dugme kart-sil onayli", type: "button", "aria-label": "Kartı sil" }, icon("sil", "i-20"));
-    ikiDokunus(sil, "Sil", () => kartSil(k.id));
+    // Silme anında yapılır, "Geri al" bildirimiyle geri gelir (TASARIM-4 3.6)
+    const sil = h("button", { class: "ikon-dugme kart-sil", type: "button", "aria-label": "Kartı sil" }, icon("sil", "i-20"));
+    sil.addEventListener("click", (e) => { e.stopPropagation(); kartSilGeriAlinir(k); });
     ic.append(h("li", { class: "kart-satir" },
       mini,
       h("span", { class: "on-kap" }, h("span", { class: "on", title: onMetni(k) }, onMetni(k)),

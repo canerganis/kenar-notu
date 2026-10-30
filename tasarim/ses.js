@@ -1,5 +1,5 @@
 // Ses kaydı: ders sesini belgeyle birlikte saklar, Masa'daki çizgileri kayıt zamanına bağlar.
-// Sözleşme OZELLIKLER-4 "ses.js". Meta veri belge.veri.sesler, ses verisi kayit.js ek dosyası "ses-<id>.webm".
+// Sözleşme OZELLIKLER-4 "ses.js". Meta veri belge.veri.sesler, ses verisi kayit.js ek dosyası "ses-<id>.webm" (Safari: "ses-<id>.m4a").
 // Kalem önce gelir: dalga izi en fazla 15 fps, kalem yazarken 4 fps; kayıt ve oynatma ayrı iş parçacığında.
 
 import { h, icon, bus, belgeBul, store, yeniId, toast, ikiDokunus, hareketAz } from "./ortak.js";
@@ -35,7 +35,10 @@ async function sesSilDosya(belgeId, ad) {
   const m = await depo();
   if (m) await m.ekDosyaSil(belgeId, ad);
 }
-const dosyaAdi = (id) => `ses-${id}.webm`;
+// Dosya adı türe göre: Safari audio/mp4 kaydeder (.m4a), öbürleri WebM. Türü yazılmamış eski kayıtlar .webm kalır.
+const uzantiTur = (tur) => (/mp4|aac|m4a/i.test(tur || "") ? "m4a" : "webm");
+const dosyaAdi = (id, tur) => `ses-${id}.${uzantiTur(tur)}`;
+const metaDosyasi = (m) => dosyaAdi(m.id, m.tur);
 
 /* ---------- meta veri ---------- */
 // kayit: { id, belgeId, baslangic, sure, ad, tur?, boyut?, yarim? }  (yarim: kayıt sürüyor ya da kapanmadan kesildi)
@@ -80,7 +83,9 @@ function hataOlustur(kod, e) {
   return Object.assign(new Error(metinler[kod]), { kod, neden: e });
 }
 function mimeSec() {
-  const adaylar = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  // Safari (iOS ve macOS) yalnız audio/mp4 kaydeder; yeni Safari WebM'i de "destekliyorum" der ama çalarken mp4 daha güvenli
+  const safari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+  const adaylar = safari ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus"] : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
   return adaylar.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || "";
 }
 
@@ -111,6 +116,7 @@ export async function kayitBaslat(belge) {
     const no = liste.reduce((m, k) => Math.max(m, Number(/^Kayıt (\d+)$/.exec(k.ad)?.[1]) || 0), 0) + 1;
     // Meta hemen yazılır: sekme kapanırsa ara kayıt yeniden açılışta listede kalır
     const meta = { id, belgeId: belge.id, baslangic: Date.now(), sure: 0, ad: `Kayıt ${no}`, tur: rec.mimeType || tur || "audio/webm", yarim: true };
+    meta.tur = meta.tur.split(";")[0] || "audio/webm";   // dosya adı ve Blob türü için kodek eki gerekmez
     const K = { id, belgeId: belge.id, baslangic: meta.baslangic, t0: performance.now(), rec, akis, parcalar: [], tur: meta.tur, meta, ctx: null, analiz: null, kilit: null };
     rec.ondataavailable = (e) => { if (e.data?.size) K.parcalar.push(e.data); };
     const basladi = new Promise((tamam) => { rec.onstart = tamam; setTimeout(tamam, 1500); });
@@ -166,12 +172,12 @@ export async function kayitDurdur() {
   // sekme gizlenince yeniden yazılmaya çalışılır, istenirse dosya olarak indirilir
   let yazildi = true;
   try {
-    await sesYaz(K.belgeId, dosyaAdi(K.id), blob);
+    await sesYaz(K.belgeId, metaDosyasi(meta), blob);
   } catch (e) {
     yazildi = false;
     console.error("[ses] kayıt yazılamadı:", e);
-    bellek.set(K.belgeId + "/" + dosyaAdi(K.id), blob);
-    yazilamayan.set(K.id, { belgeId: K.belgeId, ad: dosyaAdi(K.id), blob, meta });
+    bellek.set(K.belgeId + "/" + metaDosyasi(meta), blob);
+    yazilamayan.set(K.id, { belgeId: K.belgeId, ad: metaDosyasi(meta), blob, meta });
   }
   if (yazildi) delete meta.yarim;
   degisti(K.belgeId);
@@ -195,7 +201,7 @@ async function yazilamayanlariDene() {
   }
 }
 function sesIndir(blob, meta) {
-  const uzanti = /mp4/.test(blob.type) ? "m4a" : "webm";
+  const uzanti = uzantiTur(blob.type || meta?.tur);
   const a = h("a", { href: URL.createObjectURL(blob), download: `${meta.ad || "Ses kaydı"}.${uzanti}` });
   document.body.append(a);
   a.click();
@@ -225,7 +231,7 @@ async function araKayit() {
   const blob = new Blob(K.parcalar, { type: K.tur });
   K.meta.boyut = blob.size;
   degisti(K.belgeId);
-  try { await sesYaz(K.belgeId, dosyaAdi(K.id), blob); } catch { /* sonraki denemede */ }
+  try { await sesYaz(K.belgeId, metaDosyasi(K.meta), blob); } catch { /* sonraki denemede */ }
 }
 // Kayıt sürerken dakikada bir de yazılır: sekme çökerse ya da pil biterse ders sesi gitmesin.
 // Kalem yazarken beklenir, tarayıcı boş bir an bulunca yazılır.
@@ -276,7 +282,7 @@ async function sureyiBul() {
 }
 async function yukle(meta) {
   if (sesKayitId === meta.id && sesUrl) return true;
-  const blob = await sesGetir(meta.belgeId, dosyaAdi(meta.id));
+  const blob = await sesGetir(meta.belgeId, metaDosyasi(meta));
   if (!blob) return false;
   if (sesUrl) URL.revokeObjectURL(sesUrl);
   sesUrl = URL.createObjectURL(blob);
@@ -373,7 +379,7 @@ export async function kayitSil(kayitId) {
   const i = liste.findIndex((k) => k.id === kayitId);
   if (i >= 0) liste.splice(i, 1);
   if (sesKayitId === kayitId) { ses.removeAttribute("src"); if (sesUrl) URL.revokeObjectURL(sesUrl); sesUrl = sesKayitId = null; }
-  try { await sesSilDosya(meta.belgeId, dosyaAdi(kayitId)); } catch (e) { console.warn("[ses] dosya silinemedi:", e); }
+  try { await sesSilDosya(meta.belgeId, metaDosyasi(meta)); } catch (e) { console.warn("[ses] dosya silinemedi:", e); }
   degisti(meta.belgeId);
   haber();
 }
@@ -392,7 +398,7 @@ async function yarimlariToparla(belge) {
   for (const k of [...liste]) {
     // Diske yazılamamış kayıt yalnız bellekte: yarım kalır (kapanınca listeden düşer)
     if (!k.yarim || S.kayit?.id === k.id || yazilamayan.has(k.id)) continue;
-    const blob = await sesGetir(belge.id, dosyaAdi(k.id)).catch(() => null);
+    const blob = await sesGetir(belge.id, metaDosyasi(k)).catch(() => null);
     if (blob) { delete k.yarim; k.boyut = blob.size; }
     else liste.splice(liste.indexOf(k), 1);
     degisen = true;
@@ -563,7 +569,7 @@ export function cubukKur(kap, belge) {
     if (K) {
       sayac.yaz(sureYaz(performance.now() - K.t0));
       parcalar = [
-        h("button", { class: "ses-dugme ses-ana durdur", type: "button", onclick: () => kayitDurdur() }, sekil("durdur"), h("span", {}, "Durdur")),
+        h("button", { class: "ses-dugme ses-ana durdur", type: "button", "aria-label": "Durdur", onclick: () => kayitDurdur() }, sekil("durdur"), h("span", {}, "Durdur")),
         h("span", { class: "ses-gosterge" }, h("span", { class: "lamba", "data-durum": "kayit" }), h("span", { class: "t-daktilo" }, "Kayıt"), sayac),
         izKap,
         h("span", { class: "ses-ad" }, K.meta.ad),
@@ -595,7 +601,7 @@ export function cubukKur(kap, belge) {
       else if (!window.isSecureContext) not = h("span", { class: "ses-not hata" }, h("span", { class: "lamba", "data-durum": "hata" }), h("span", {}, hataOlustur("guvensiz").message));
       else not = h("span", { class: "ses-not ses-ipucu" }, "Kayıtta yazdıkların sese bağlanır. Çizgiye dokun, o ana dön.");
       parcalar = [
-        h("button", { class: "ses-dugme ses-ana kaydet", type: "button", disabled: !!baskaKayit,
+        h("button", { class: "ses-dugme ses-ana kaydet", type: "button", "aria-label": "Kaydet", disabled: !!baskaKayit,
           onclick: () => kayitBaslat(belge).catch((e) => console.warn("[ses]", e.message)) },
           h("span", { class: "ses-kayit-lamba", "aria-hidden": "true" }), h("span", {}, "Kaydet")),
         bostaCam,

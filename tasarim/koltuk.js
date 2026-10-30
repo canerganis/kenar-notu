@@ -22,6 +22,10 @@
 //   izler: () => [{ id, oran }]          cetvelde kalem izlerinin mürekkep çentikleri (OZELLIKLER-5, İzler)
 //   izeGit: (id) => void                 çentiğe dokununca o ize gidiş
 //   izAtla: (yon: -1 | 1) => void        önceki ve sonraki iz okları (izler varsa görünür)
+//   altAraclar: [öğeler]                 telefonda alt çubuğun ikinci katı (TASARIM-4 2.6: İçindekiler, Ara, İzler, Kalem)
+//   anahtarDaha: true                    telefonda mod anahtarı üst çubukta gizlenir (çağıran ⋯ içinde "Masa'da aç" verir)
+//   sure: (sn) => void                   okuma süresi: her saniye, yalnız sayfa görünür ve son etkileşimden 90 sn
+//                                        geçmemişken (ödünç kartı, OZELLIKLER-7 §6.3)
 // Dönen nesnede izleriYenile(): izler değişince çentikleri yeniden çizer.
 
 import { h, icon, bus, store, ayarla, hareketAz } from "./ortak.js";
@@ -118,7 +122,8 @@ export function koltukKur(kok, s) {
   el.ritim = h("button", { type: "button", class: "ritim", "aria-haspopup": "dialog", "aria-expanded": "false", onclick: () => ritimFisi() }, el.ritimYay, el.ritimDk);
   el.ad = h("span", { class: "ad" }, s.ad || "");
   el.anahtar = modAnahtari("koltuk", (m) => s.modDegistir?.(m));
-  el.ust = h("header", { class: "koltuk-ust" },
+  el.ad.title = s.ad || "";   // uzun ad tek satırda kesilir, tamamı ipucunda (TASARIM-4 3.7)
+  el.ust = h("header", { class: "koltuk-ust" + (s.anahtarDaha ? " anahtar-daha" : "") },
     h("button", { type: "button", class: "ikon-dugme", "aria-label": "Kitaplığa dön", onclick: () => (s.geri ? s.geri() : bus.emit("git", { ekran: "kitaplik" })) }, icon("geri", "i-22")),
     el.ad, el.ritim, ...(s.araclar || []), el.anahtar);
 
@@ -139,7 +144,9 @@ export function koltukKur(kok, s) {
   ...(s.bolumler || []).filter((b) => b.oran > 0.001).map((b) => h("i", { class: "cetvel-bolum", style: `left:${(b.oran * 100).toFixed(3)}%`, title: b.ad })),
   ...(s.yerImleri || []).map((o) => h("i", { class: "cetvel-yer-imi", style: `left:${(o * 100).toFixed(3)}%` })),
   el.izCentik, el.dolu, el.iz);
-  el.alt = h("div", { class: "koltuk-alt" }, el.sol, el.sag, el.izAtla, el.cetvel);
+  // Telefonda ikinci kat: dört düğme, başparmak erişiminde (yalnız altAraclar verildiyse ve dar ekranda görünür)
+  el.altAraclar = s.altAraclar?.length ? h("div", { class: "koltuk-alt-araclar", role: "toolbar", "aria-label": "Okuma araçları" }, ...s.altAraclar) : null;
+  el.alt = h("div", { class: "koltuk-alt" + (el.altAraclar ? " iki-kat" : "") }, el.sol, el.sag, el.izAtla, el.cetvel, el.altAraclar);
   el.cizgi = h("div", { class: "koltuk-cizgi", "aria-hidden": "true" }, h("i"));
 
   // Gizli kalem (4.9)
@@ -215,8 +222,10 @@ export function koltukKur(kok, s) {
   }, { capture: true, ...sinyal });
   const kalemBirak = (e) => { if (e.pointerType === "pen") { sonKalem = performance.now(); kalemBasili = Math.max(0, kalemBasili - 1); } };
   addEventListener("pointerup", kalemBirak, { capture: true, ...sinyal });
+  // Havada gezinmeyen kalemde (Apple Pencil, M2 öncesi iPad) kalem ucu düğmesi kalem kâğıda değince belirir
+  addEventListener("pointerdown", (e) => { if (ucVar && e.pointerType === "pen" && !el.kalemUcu.contains(e.target)) ucGoster(); }, { capture: true, passive: true, ...sinyal });
   // Havadaki kalem de avuç içi süresini başlatır
-  addEventListener("pointermove", (e) => { if (e.pointerType === "pen") sonKalem = performance.now(); }, { capture: true, passive: true, ...sinyal });
+  addEventListener("pointermove", (e) => { if (e.pointerType === "pen") { sonKalem = performance.now(); sonEtkilesim = Date.now(); } }, { capture: true, passive: true, ...sinyal });
   addEventListener("pointercancel", kalemBirak, { capture: true, ...sinyal });
   addEventListener("pointerup", (e) => {
     const b = bas;
@@ -313,13 +322,16 @@ export function koltukKur(kok, s) {
     el.kalemUcu.classList.add("gorunur");
     s.kalem?.(acik);
     iptalEt(ucZ);
-    if (!acik) ucZ = zamanla(() => { if (!kalemAcik()) el.kalemUcu.classList.remove("gorunur"); }, 1500);
+    if (!acik) ucZ = zamanla(() => { if (!kalemAcik() && !el.kalemUcu.classList.contains("silgide")) el.kalemUcu.classList.remove("gorunur"); }, 1500);
+  }
+  function ucGoster() {
+    el.kalemUcu.classList.add("gorunur");
+    iptalEt(ucZ);
+    ucZ = zamanla(() => { if (!kalemAcik() && !el.kalemUcu.classList.contains("silgide")) el.kalemUcu.classList.remove("gorunur"); }, 4000);
   }
   kok.addEventListener("pointermove", (e) => {
     if (!ucVar || e.pointerType !== "pen" || e.buttons !== 0) return;
-    el.kalemUcu.classList.add("gorunur");
-    iptalEt(ucZ);
-    ucZ = zamanla(() => { if (!kalemAcik()) el.kalemUcu.classList.remove("gorunur"); }, 1500);
+    ucGoster();
   }, { passive: true, ...sinyal });
 
   // ---------- ritim fişi (4.5) ----------
@@ -385,6 +397,7 @@ export function koltukKur(kok, s) {
       ritimEkle(dt);
       ritimGuncelle();
     }
+    if (s.sure && Date.now() - sonEtkilesim < 90e3) s.sure(dt);   // ödünç kartı: 90 sn kuralı (TASARIM-4 4.3)
     iptalEt(depoZ);
     depoZ = zamanla(depoYaz, 15e3);
   }, 1000);

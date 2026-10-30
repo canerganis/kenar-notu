@@ -1,7 +1,7 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "5.1.0";
+const VERSION = "6.0.2";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
 // Çeviri motoru (lib/ceviri, wasm 5 MB): kabuğa girmez, ilk kullanımda alınır; sürüm artınca yeniden inmesin diye ayrı önbellekte
@@ -20,6 +20,7 @@ const KABUK = [
   "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./tekrar.js", "./asistan.js",
   "./kayit.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
   "./arama.js", "./ses.js", "./izler.js", "./cizgi.js", "./cizgi-belge.js", "./cizgi-ornek.js",
+  "./cekmece.js", "./rehber.js",
   "./ceviri.js", "./ceviri-isci.js",
   "./ikon/ikon.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
   "./ikon/ikon-maskable-192.png", "./ikon/ikon-maskable-512.png", "./ikon/apple-touch-icon.png",
@@ -34,10 +35,19 @@ const PAYLASIM_DEPO = "bekleyen";
 self.addEventListener("install", (e) => {
   // Kabuğun hepsi gelmezse kurulum düşer: eski sürüm ve onun eksiksiz önbelleği yerinde kalır.
   // Yarım kalan yeni önbellek silinir, bir sonraki açılışta yeniden denenir.
+  // Yer yoksa (QuotaExceededError) açık sayfalara söylenir: eski sürüm çevrimdışı çalışmaya devam eder
   e.waitUntil(caches.open(ONBELLEK)
     .then((c) => c.addAll(KABUK.map((u) => new Request(u, { cache: "reload" }))))
-    .then(() => self.skipWaiting(), (hata) => caches.delete(ONBELLEK).then(() => { throw hata; })));
+    .then(() => self.skipWaiting(), (hata) => caches.delete(ONBELLEK).then(() => { kotaBildir(hata); throw hata; })));
 });
+
+// Önbelleğe yazılamadı: depo dolu. Sayfalar bir kez uyarır (app.js "kota" iletisi)
+let kotaZamani = 0;
+function kotaBildir(hata) {
+  if (hata?.name !== "QuotaExceededError" || Date.now() - kotaZamani < 600000) return;
+  kotaZamani = Date.now();
+  self.clients.matchAll({ type: "window" }).then((l) => l.forEach((c) => c.postMessage({ tur: "kota" }))).catch(() => {});
+}
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()
@@ -85,7 +95,7 @@ async function agOnce(istek, gezinme, onbellek = ONBELLEK) {
   try {
     // no-cache: tarayıcının HTTP önbelleği de sunucuya sorar (değişmediyse 304, ucuz); yoksa eski dosya "ağdan" gelebiliyor
     const yanit = await fetch(istek.url, { cache: "no-cache", credentials: "same-origin" });
-    if (yanit.ok && yanit.type === "basic") c.put(anahtar, yanit.clone()).catch(() => {});
+    if (yanit.ok && yanit.type === "basic") c.put(anahtar, yanit.clone()).catch(kotaBildir);
     return yanit;
   } catch (hata) {
     const eski = (await c.match(anahtar, { ignoreSearch: true }))

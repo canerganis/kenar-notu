@@ -9,7 +9,7 @@
 .ses-sekil { width: 20px; height: 20px; }
 .ses-dugme { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; min-width: 44px; padding: 0 10px; flex: none;
   border-radius: var(--r-sm); color: var(--ink-2); font: 500 var(--fs-14)/1 var(--f-arayuz); }
-@media (hover: hover) { .ses-dugme:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .ses-dugme:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .ses-dugme:active { background: color-mix(in srgb, var(--ink) 9%, transparent); }
 .ses-dugme:disabled { opacity: .45; pointer-events: none; }
 .ses-dugme:focus-visible, .ses-cetvel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -106,6 +106,7 @@
   .ses-serit { gap: 6px; }
   .ses-ad, .ses-toplam { display: none; }
   .ses-iz { flex-basis: 60px; }
-  .ses-ana span { display: none; }
+  .ses-ana span:not(.ses-kayit-lamba) { display: none; }   /* lamba kalır: düğme boş görünmesin */
+  .ses-ana .ses-kayit-lamba { width: 10px; height: 10px; }
   .ses-ana { padding: 0; width: 40px; justify-content: center; }
 }

@@ -10,7 +10,7 @@
 // Belge notları, kırpıntılar ve kartlar zaten bellekte ve küçük: her aramada belge verisinden okunur, hep günceldir.
 // Ekran sayfa numarasını açılışta belgenin o anki sayfa düzeninden çözer (Masa'da araya sayfa eklenmiş olabilir).
 
-import { h, icon, bus, store, belgeBul } from "./ortak.js";
+import { h, icon, bus, store, belgeBul, komutlar, acikEkran, odakla, cizgiMi } from "./ortak.js";
 import { dosyaGetir } from "./kayit.js";
 import * as SAYFALAR from "./sayfalar.js";
 import METIN, { SAHNE } from "./okuma-metni.js";
@@ -876,20 +876,22 @@ function ciz() {
   D.sonucSayi.textContent = toplam.toLocaleString("tr");
   D.sureDeger.textContent = sure < 10 ? sure.toFixed(1).replace(".", ",") : String(Math.round(sure));
 
+  // Komutlar ve belge adları metin sonuçlarının üstünde (TASARIM-4 3.2)
+  const hizli = hizliGrup(D.sorgu);
   if (!gorunen.length) {
     D.secili = null;
     onizlemeCiz();
     const eksik = store.belgeler.some((b) => !dizinli(b) && !hatali.has(b.id));
-    D.liste.replaceChildren(h("div", { class: "bos arama-bos-durum" }, icon("ara"),
+    D.liste.replaceChildren(...(hizli ? [hizli] : []), h("div", { class: "bos arama-bos-durum" }, icon("ara"),
       h("h3", {}, `“${D.sorgu}” için sonuç yok.`),
-      h("p", {}, eksik ? "Dizinleme sürüyor, sonuçlar eksik olabilir. Başka bir kelime de deneyebilirsin." : "Başka bir kelime dene.")));
+      h("p", {}, eksik ? "Yazımı kontrol et ya da daha kısa bir kelime dene. Dizinleme sürüyor, sonuçlar gelir." : "Yazımı kontrol et ya da daha kısa bir kelime dene.")));
     return;
   }
   const tek = gorunen.length === 1;
   // Seçili sonuç görünür listede yoksa ilk sonuç seçilir (önizleme yalnız geniş ekranda)
   const hepsi = gorunen.flatMap((x) => x.sonuclar);
   if (!D.secili || !hepsi.includes(D.secili)) D.secili = hepsi[0] || null;
-  D.liste.replaceChildren(...gorunen.map(({ g, sonuclar }) => grupCiz(g, sonuclar, s, tek)));
+  D.liste.replaceChildren(...(hizli ? [hizli] : []), ...gorunen.map(({ g, sonuclar }) => grupCiz(g, sonuclar, s, tek)));
   onizlemeCiz();
 }
 
@@ -1031,8 +1033,8 @@ function sayfaResmi(sayfa, s) {
   return c;
 }
 
-function git(x) {
-  const ara = D?.sorgu || "";
+function git(x, aramaTerimi = null) {
+  const ara = aramaTerimi ?? (D?.sorgu || "");
   sonAramaEkle(ara);
   if (x.kart) { bus.emit("git", { ekran: "tekrar", kartId: x.kart.id }); return; }
   const b = x.belge || (x.kirpinti && belgeBul(x.kirpinti.belgeId));
@@ -1048,8 +1050,16 @@ function bosCiz() {
   const son = sonAramalar();
   const parca = [];
   parca.push(h("div", { class: "arama-giris" },
-    h("p", { class: "arama-tanim" }, "PDF sayfalarında, kitaplarda, notlarında, kırpıntılarında ve kartlarında ara."),
+    h("h2", { class: "arama-giris__baslik" }, "Her şeyi buradan bulursun."),
+    h("p", { class: "arama-tanim" }, "Kitap adı, sayfadaki bir kelime, notun ya da bir komut yaz."),
     h("p", { class: "dizin-ayrinti t-kucuk" })));
+  // Hızlı erişim: son belgeler ve sık komutlar (Ctrl K penceresiyle aynı liste)
+  const devam = sonBelgeler(3);
+  if (devam.length) parca.push(h("section", { class: "hizli-bolum" }, h("h2", { class: "t-daktilo" }, "Devam et"),
+    h("div", { class: "hizli-liste" }, devam.map((b) => satirDugme(belgeSatiri(b), () => satirCalistir(belgeSatiri(b)))))));
+  const sik = ["dosya-ac", "yeni-defter", "yedekle", "kart-calis", "rehber"].map((id) => komutlar().find((k) => k.id === id)).filter(Boolean);
+  if (sik.length) parca.push(h("section", { class: "hizli-bolum" }, h("h2", { class: "t-daktilo" }, "Komutlar"),
+    h("div", { class: "hizli-liste" }, sik.map((k) => { const r = komutSatiri(k, baglamAl(), ""); return satirDugme(r, () => satirCalistir(r)); }))));
   if (son.length) {
     const temizleDugme = h("button", { class: "metin-dugme", type: "button" }, "Temizle");
     temizleDugme.addEventListener("click", () => { try { localStorage.removeItem(SON_ANAHTAR); } catch { /* boş */ } bosCiz(); });
@@ -1067,3 +1077,211 @@ function bosCiz() {
 
 // Deneme ve ölçüm için (konsoldan): dizinin durumu
 export const _dizinDurumu = () => ({ ...durum, kuyruk: [...kuyruk], meta: Object.fromEntries(META), govde: GOVDE.size });
+
+// =====================================================================
+// Hızlı erişim (TASARIM-4 3.2): komutlar, belgeler ve metin sonuçları tek listede.
+// Ara ekranında (boş sorguda ve sonuçların üstünde) ve Ctrl+K penceresinde (paletAc). Komutlar ortak.js komutEkle ile gelir.
+// =====================================================================
+const KOMUT_SAYAC = "kenar-notu-arama:komut";
+const TUR_IKON = { pdf: "pdf", epub: "kitap", defter: "defter", cizgi: "cizgi-roman" };
+const baglamAl = () => {
+  const b = acikEkran.ekran === "belge" && acikEkran.belgeId ? belgeBul(acikEkran.belgeId) : null;
+  return { ekran: acikEkran.ekran, belge: b, mod: acikEkran.mod };
+};
+function komutUyar(k, c) {
+  const bg = k.baglam || "her";
+  if (bg !== "her") {
+    if (!c.belge) return false;
+    if ((bg === "koltuk" || bg === "masa") && c.mod !== bg) return false;
+    if (bg === "epub" && c.belge.tur !== "epub") return false;
+    if (bg === "pdf" && (!(c.belge.tur === "pdf" || c.belge.tur === "defter") || cizgiMi(c.belge))) return false;
+  }
+  try { return !k.kosul || !!k.kosul(c); } catch { return false; }
+}
+const komutSayaci = () => { try { return JSON.parse(localStorage.getItem(KOMUT_SAYAC) || "{}") || {}; } catch { return {}; } };
+function sayacArtir(id) {
+  const s = komutSayaci();
+  s[id] = (s[id] || 0) + 1;
+  try { localStorage.setItem(KOMUT_SAYAC, JSON.stringify(s)); } catch { /* özel pencere */ }
+}
+// Sıralama: tam başlangıç > kelime başı > içinde > eş sözcük; bağlama uyan önce; eşitlikte sık kullanılan
+function komutPuan(k, c, q, sayac) {
+  if (!q) return 1;
+  if (k.sayi && /^\d+$/.test(q)) return 10;
+  const ad = katla(typeof k.ad === "function" ? k.ad(c, "") : k.ad), es = katla(k.es || "");
+  let p = ad.startsWith(q) ? 6 : (" " + ad).includes(" " + q) ? 5 : ad.includes(q) ? 4 : (" " + es).includes(" " + q) ? 3 : es.includes(q) ? 2 : 0;
+  if (!p) return 0;
+  if ((k.baglam || "her") !== "her") p += 0.5;
+  return p + Math.min(0.4, (sayac[k.id] || 0) / 50);
+}
+function komutSatiri(k, c, q) {
+  return { tur: "komut", id: "k-" + k.id, ikon: k.ikon || "ok", ad: typeof k.ad === "function" ? k.ad(c, q) : k.ad, alt: k.alt?.(c, q) || "",
+    calistir: () => { sayacArtir(k.id); k.calistir(c, q); } };
+}
+const sonBelgeler = (n) => [...store.belgeler].filter((b) => !b.dizgi).sort((a, b) => (b.acilis || 0) - (a.acilis || 0)).slice(0, n);
+function belgeSatiri(b) {
+  const alt = b.tur === "epub" ? `%${Math.round(Math.min(1, b.ilerleme || 0) * 100)}` : `s. ${b.sayfa || 1}`;
+  return { tur: "belge", id: "b-" + b.id, ikon: cizgiMi(b) ? "cizgi-roman" : TUR_IKON[b.tur] || "kitap", ad: b.ad, alt,
+    calistir: () => bus.emit("git", { ekran: "belge", belgeId: b.id }) };
+}
+function belgeAra(q, n) {
+  const puan = (b) => {
+    const ad = katla(b.ad || ""), yz = katla(b.yazar || "");
+    return ad.startsWith(q) ? 4 : (" " + ad).includes(" " + q) ? 3 : ad.includes(q) ? 2 : yz.includes(q) ? 1 : 0;
+  };
+  return store.belgeler.filter((b) => !b.dizgi).map((b) => [b, puan(b)]).filter(([, p]) => p)
+    .sort((a, b) => b[1] - a[1] || (b[0].acilis || 0) - (a[0].acilis || 0)).slice(0, n).map(([b]) => b);
+}
+// { komutlar, belgeler, yalnizKomut }: ">" ile başlayan sorgu yalnız komut arar
+export function hizliErisim(sorgu, { komutSiniri = 5, belgeSiniri = 5 } = {}) {
+  const c = baglamAl();
+  let ham = String(sorgu || "").trim();
+  const yalnizKomut = ham.startsWith(">");
+  if (yalnizKomut) ham = ham.slice(1).trim();
+  const q = katla(ham);
+  const sayac = komutSayaci();
+  const kl = komutlar().filter((k) => komutUyar(k, c)).map((k) => [k, komutPuan(k, c, q, sayac)]).filter(([, p]) => p > 0)
+    .sort((a, b) => b[1] - a[1]).slice(0, komutSiniri).map(([k]) => komutSatiri(k, c, ham));
+  const bl = !q || yalnizKomut ? [] : belgeAra(q, belgeSiniri).map(belgeSatiri);
+  return { komutlar: kl, belgeler: bl, yalnizKomut, ham };
+}
+// Ara ekranında sonuçların üstünde: en çok üç komut ve üç belge
+function hizliGrup(sorgu) {
+  const { komutlar: kl, belgeler: bl } = hizliErisim(sorgu, { komutSiniri: 3, belgeSiniri: 3 });
+  if (!kl.length && !bl.length) return null;
+  return h("section", { class: "hizli-bolum hizli-ust" }, h("h2", { class: "t-daktilo" }, "Komutlar ve belgeler"),
+    h("div", { class: "hizli-liste" }, [...kl, ...bl].map((r) => satirDugme(r, () => satirCalistir(r)))));
+}
+function satirDugme(r, fn, ekSinif = "") {
+  const d = h("button", { class: `hizli-satir ${ekSinif}`.trim(), type: "button", dataset: { tur: r.tur } },
+    icon(r.ikon || "ok", "i-20"), h("span", { class: "hizli-ad" }, r.adEl || r.ad), r.alt ? h("small", {}, r.alt) : h("small"));
+  d.addEventListener("click", fn);
+  return d;
+}
+function satirCalistir(r) {
+  if (r.tur !== "komut" && D?.girdi.value.trim()) sonAramaEkle(D.girdi.value);
+  r.calistir();
+}
+
+/* ---------- Ctrl+K penceresi ---------- */
+let P = null;
+export function paletAc({ terim = "" } = {}) {
+  if (P) { P.girdi.focus(); P.girdi.select(); return; }
+  // Telefonda (klavyesiz) Ara ekranının kendisi açılır
+  if (matchMedia("(max-width: 599px)").matches && !document.querySelector(".ekran-belge:not([hidden])")) { bus.emit("git", { ekran: "arama", terim: terim || undefined }); return; }
+  cssYukle();
+  // Açık rehber balonu pencerenin üstünde kalmasın
+  import("./rehber.js").then((m) => m.rehberKapat?.()).catch(() => {});
+  const acan = document.activeElement;
+  const girdi = h("input", { type: "search", class: "palet-alan", role: "combobox", "aria-expanded": "true", "aria-controls": "paletListe",
+    "aria-autocomplete": "list", "aria-label": "Hızlı erişim: belge, ekran ya da komut", placeholder: "Belge, ekran ya da komut ara",
+    enterkeyhint: "go", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
+  girdi.value = terim;
+  const liste = h("div", { class: "palet-liste", id: "paletListe", role: "listbox", "aria-label": "Sonuçlar" });
+  const kutu = h("div", { class: "palet", role: "dialog", "aria-modal": "true", "aria-label": "Hızlı erişim" },
+    h("div", { class: "palet-girdi" }, icon("ara", "i-20"), girdi, h("kbd", {}, "Esc")),
+    liste,
+    h("div", { class: "palet-alt", "aria-hidden": "true" }, h("span", {}, "↑↓ seç"), h("span", {}, "Enter aç"), h("span", {}, "Esc kapat"), h("span", {}, "> komut")));
+  const perde = h("div", { class: "palet-perde", "aria-hidden": "true" });
+  let satirlar = [], secili = 0;
+
+  const kapat = () => {
+    if (!P) return;
+    document.removeEventListener("keydown", tus, true);
+    P = null;
+    perde.remove(); kutu.remove();
+    for (const el of inertler) el.inert = false;
+    if (acan?.isConnected) acan.focus?.({ preventScroll: true });
+  };
+  const calistir = (r) => { kapat(); try { r.calistir(); } catch (hata) { console.warn("[kenar-notu] Komut çalışmadı:", hata); } };
+  const sec = (i, kaydir = true) => {
+    if (!satirlar.length) return;
+    secili = (i + satirlar.length) % satirlar.length;
+    satirlar.forEach((s, j) => s.el.setAttribute("aria-selected", String(j === secili)));
+    girdi.setAttribute("aria-activedescendant", satirlar[secili].el.id);
+    if (kaydir) satirlar[secili].el.scrollIntoView({ block: "nearest" });
+  };
+  const ciz = () => {
+    const q = girdi.value;
+    const gruplar = [];
+    if (!q.trim()) {
+      const c = baglamAl();
+      const tum = komutlar().filter((k) => komutUyar(k, c));
+      gruplar.push(["Devam et", sonBelgeler(3).map(belgeSatiri)]);
+      gruplar.push(["Git", tum.filter((k) => k.grup === "git").map((k) => komutSatiri(k, c, ""))]);
+      if (c.belge) gruplar.push(["Bu belgede", tum.filter((k) => (k.baglam || "her") !== "her").slice(0, 6).map((k) => komutSatiri(k, c, ""))]);
+      gruplar.push(["Son aramalar", sonAramalar().slice(0, 5).map((s) => ({ tur: "son", id: "s-" + s, ikon: "ara", ad: s, alt: "",
+        calistir: () => bus.emit("git", { ekran: "arama", terim: s }) }))]);
+    } else {
+      const { komutlar: kl, belgeler: bl, yalnizKomut, ham } = hizliErisim(q);
+      gruplar.push(["Komutlar", kl], ["Belgeler", bl]);
+      if (!yalnizKomut && yeterli(katla(ham))) {
+        const s = ara(ham);
+        if (s) {
+          const ilk = s.gruplar.flatMap((g) => g.sonuclar).slice(0, 3);
+          const metin = ilk.map((x, i) => ({ tur: "metin", id: "m-" + i, ikon: "ara", adEl: baglam(x.m, x.k, s.sorgu, { pencere: 28 }),
+            alt: [x.belge?.ad || x.belgeAd || x.kaynak, konumEtiketi(x)].filter(Boolean).join(" · "), calistir: () => git(x, ham) }));
+          if (s.sayilar.tumu > ilk.length) metin.push({ tur: "tumu", id: "m-tumu", ikon: "sag", ad: `Bütün sonuçlar: ${s.sayilar.tumu.toLocaleString("tr")}`, alt: "",
+            calistir: () => { sonAramaEkle(ham); bus.emit("git", { ekran: "arama", terim: ham }); } });
+          gruplar.push(["Metinde", metin]);
+        }
+      }
+    }
+    satirlar = [];
+    const parcalar = [];
+    for (const [ad, rs] of gruplar) {
+      if (!rs.length) continue;
+      parcalar.push(h("div", { class: "palet-grup", role: "presentation" }, ad));
+      for (const r of rs) {
+        const el = h("div", { class: "palet-satir", role: "option", id: "palet-" + satirlar.length, "aria-selected": "false" },
+          icon(r.ikon || "ok", "i-20"), h("span", { class: "palet-ad" }, r.adEl || r.ad), r.alt ? h("small", {}, r.alt) : h("small"));
+        const i = satirlar.length;
+        el.addEventListener("pointermove", () => { if (secili !== i) sec(i, false); });
+        el.addEventListener("click", () => calistir(r));
+        satirlar.push({ el, r });
+        parcalar.push(el);
+      }
+    }
+    if (!satirlar.length) parcalar.push(h("p", { class: "palet-bos" }, q.trim() ? `“${q.trim()}” için bir şey yok. Enter ile bütün kitaplıkta ara.` : "Henüz bir şey yok."));
+    liste.replaceChildren(...parcalar);
+    sec(0);
+  };
+  function tus(e) {
+    if (e.key === "Escape") {
+      e.preventDefault(); e.stopPropagation();
+      if (girdi.value) { girdi.value = ""; ciz(); } else kapat();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); sec(secili + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Tab") {
+      // Tab grubun ilk satırına atlar
+      e.preventDefault();
+      const ileri = !e.shiftKey;
+      for (let j = 1; j <= satirlar.length; j++) {
+        const k = (secili + (ileri ? j : -j) + satirlar.length) % satirlar.length;
+        if (satirlar[k].el.previousElementSibling?.classList.contains("palet-grup")) { sec(k); break; }
+      }
+    } else if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      const r = satirlar[secili]?.r;
+      if (r) calistir(r);
+      else if (girdi.value.trim()) { const t = girdi.value.trim(); kapat(); bus.emit("git", { ekran: "arama", terim: t }); }
+    }
+  }
+  let zaman = 0;
+  girdi.addEventListener("input", () => { clearTimeout(zaman); zaman = setTimeout(ciz, 80); });
+  perde.addEventListener("pointerdown", (e) => { e.preventDefault(); kapat(); });
+  document.addEventListener("keydown", tus, true);
+  // Modal: arka plan ekran okuyucuya ve odağa kapalı (focus girdide kalır, Tab gruplar arasında gezer)
+  const inertler = [];
+  for (const el of document.body.children) {
+    if (el.inert || el.tagName === "SCRIPT" || el.matches("#bildirimler")) continue;
+    el.inert = true;
+    inertler.push(el);
+  }
+  document.body.append(perde, kutu);
+  P = { girdi, kapat };
+  ciz();
+  odakla(girdi, { klavye: true });
+  girdi.select();
+}
+export const paletKapat = () => P?.kapat();

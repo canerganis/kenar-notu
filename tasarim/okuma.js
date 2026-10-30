@@ -21,6 +21,8 @@
 //   izler:     [{ id, tur, zaman, renk, metin, bas, son, cizgiler, capa, bolum? }] Koltuk'ta kalemin metne bıraktığı izler
 //              (OZELLIKLER-5 İzler sözleşmesi, EPUB biçimi). Ayrıntı "İzler" bölümünde. Eski kayıtta yoksa [].
 //   sonOkuma:  son okuma zamanı (ms); uzun aradan dönünce son satır bir an belirir
+//   exLibrisBasildi: true  ex libris mührü iç kapağa bir kez basıldı (OZELLIKLER-7 §6.1)
+// Ödünç kartının okuma süresi belge.odunc'ta (kitaplık kaydı, ortak.okumaSay); kabuk yoksa yedek olarak veri.odunc'ta.
 
 import {
   h, icon, bus, store, ayarla, toast, hareketAz, kirpintiEkle, yeniId, belgeBul, ikiDokunus,
@@ -64,14 +66,16 @@ const SAYFA_RENKLERI = [
   { id: "sepya", ad: "Sepya", kd: "#F5EDDA", kdy: "#3B2F22" },
   { id: "gece", ad: "Gece", kd: "#1B1A17", kdy: "#D9D0BE" },
   { id: "tahta", ad: "Tahta", kd: "#1F2622", kdy: "#DCD8CB" },
+  { id: "mum", ad: "Mum", kd: "#1E1710", kdy: "#E6CFA5" },   // mum ışığı (TASARIM-4 4.4): sıcak, mavi ışığı az
 ];
-const SAYFA_META = { beyaz: "#FDFBF6", sepya: "#F5EDDA", gece: "#141413", tahta: "#1F2622" };   // tarayıcı çubuğu sayfayla bir olsun
-const KOYU_SAYFA = new Set(["gece", "tahta"]);
-const SAYFA_ADI = { beyaz: "Beyaz", sepya: "Sepya", gece: "Gece", tahta: "Tahta" };
+const SAYFA_META = { beyaz: "#FDFBF6", sepya: "#F5EDDA", gece: "#141413", tahta: "#1F2622", mum: "#1E1710" };   // tarayıcı çubuğu sayfayla bir olsun
+const KOYU_SAYFA = new Set(["gece", "tahta", "mum"]);
+const SAYFA_ADI = { beyaz: "Beyaz", sepya: "Sepya", gece: "Gece", tahta: "Tahta", mum: "Mum" };
 // Hazır okuma temaları (TASARIM-2 §4.6). Kullanıcının kaydettikleri store.ayarlar.okumaTemalari'nda.
 const HAZIR_TEMALAR = [
   { id: "gunduz", ad: "Gündüz", boyut: 19, satir: 1.62, olcu: 66, aile: "serif", sayfa: "beyaz" },
   { id: "gece", ad: "Gece okuması", boyut: 20, satir: 1.7, olcu: 66, aile: "serif", sayfa: "gece" },
+  { id: "mum", ad: "Mum ışığı", boyut: 20, satir: 1.7, olcu: 62, aile: "serif", sayfa: "mum" },
   { id: "sinav", ad: "Sınav haftası", boyut: 18, satir: 1.85, olcu: 58, aile: "serif", sayfa: "sepya" },
   { id: "tahta", ad: "Tahta", boyut: 19, satir: 1.62, olcu: 66, aile: "serif", sayfa: "tahta" },
 ];
@@ -201,6 +205,8 @@ const tercih = {
   fosforlu: { renk: FOSFORLAR[0][1], w: 22, duz: false },
   silgi: { r: 14, sadeceFosforlu: false },
   temaId: null,   // Aa'dan seçilen tema; ayar elle değişince boşalır
+  cetvel: false, cetvelKalem: true,   // okuma cetveli ve havadaki kalemi izlemesi (TASARIM-4 4.5)
+  satirAltiNot: false,                // dar ekranda notlar satırın altında kâğıt şerit (TASARIM-4 2.6)
 };
 (() => {
   let k = null;
@@ -213,10 +219,11 @@ const tercih = {
   if (sayi(k.olcu, 20, 140)) tercih.olcu = k.olcu;
   if (typeof k.sonVurgu === "string") tercih.sonVurgu = k.sonVurgu;
   if (typeof k.temaId === "string") tercih.temaId = k.temaId;
+  for (const ad of ["cetvel", "cetvelKalem", "satirAltiNot"]) if (typeof k[ad] === "boolean") tercih[ad] = k[ad];
 })();
 function tercihSakla() {
-  const { aile, boyut, satir, olcu, sonVurgu, temaId } = tercih;
-  try { localStorage.setItem(TERCIH_DEPO, JSON.stringify({ aile, boyut, satir, olcu, sonVurgu, temaId })); } catch { /* gizli pencere */ }
+  const { aile, boyut, satir, olcu, sonVurgu, temaId, cetvel, cetvelKalem, satirAltiNot } = tercih;
+  try { localStorage.setItem(TERCIH_DEPO, JSON.stringify({ aile, boyut, satir, olcu, sonVurgu, temaId, cetvel, cetvelKalem, satirAltiNot })); } catch { /* gizli pencere */ }
 }
 
 // Kaydedilmiş okuma temaları: store.ayarlar'da yaşar, app.js dizileri saklamadığı için ayrıca burada saklanır
@@ -277,11 +284,32 @@ const sayfaHam = () => store.ayarlar.sayfaRengi || "oto";
 function sayfaAl() {
   const ham = sayfaHam();
   const c = typeof ortak.sayfaCoz === "function" ? ortak.sayfaCoz("koltuk") : ham === "oto" ? (koyuTema() ? "koyu" : "beyaz") : ham;
-  return { koyu: "gece", gece: "gece", sepya: "sepya", tahta: "tahta" }[c] || "beyaz";
+  return { koyu: "gece", gece: "gece", sepya: "sepya", tahta: "tahta", mum: "mum" }[c] || "beyaz";
 }
 const zamanla = (fn, ms) => { const z = setTimeout(() => { S && S.zamanlar.delete(z); fn(); }, ms); S.zamanlar.add(z); return z; };
 const dar = () => matchMedia("(max-width: 999px)").matches;
 const kabaIsaretci = () => matchMedia("(pointer: coarse)").matches;
+// Telefon düzeni (TASARIM-4 2.1): 600 px altı ya da yatay telefon. Paneller alt çekmece, çubuk iki kat.
+const telefon = () => matchMedia("(max-width: 599px), (max-height: 499px) and (orientation: landscape)").matches;
+// iPhone ve iPad (iPadOS kendini Macintosh diye tanıtır). Sistem seçim balonu seçimin yanında açılır: menü şeride iner.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+// S Pen'in yan tuşu silgidir; başka kalemde (Apple Pencil) silgi kalem tepsisinden seçilir
+const SAMSUNG = /SM-|Samsung/i.test(navigator.userAgent);
+// Boşta çalıştır: kabuğun ortak.bosta'sı varsa o, yoksa Safari için küçük yedek (requestIdleCallback yok)
+const bosta = (fn, ms = 500) => (typeof ortak.bosta === "function" ? ortak.bosta(fn, { timeout: ms })
+  : typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 16));
+// Güvenli alan (çentik, ana ekran çubuğu): env() CSS'te; JS'in hesabı için bir kez ölçülür, döndürünce yeniden
+let gaOlcu = null;
+function guvenliAlan() {
+  if (gaOlcu) return gaOlcu;
+  const el = h("div", { style: "position:fixed;visibility:hidden;pointer-events:none;inset:0 auto auto 0;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)" });
+  document.body.append(el);
+  const cs = getComputedStyle(el);
+  gaOlcu = { ust: parseFloat(cs.paddingTop) || 0, sag: parseFloat(cs.paddingRight) || 0, alt: parseFloat(cs.paddingBottom) || 0, sol: parseFloat(cs.paddingLeft) || 0 };
+  el.remove();
+  return gaOlcu;
+}
+addEventListener("resize", () => { gaOlcu = null; }, { passive: true });
 
 // ac(kap, belge, sayfa, mod): sayfa sanal sayfa numarasıdır (kırpıntı, kart ve asistan "s. 4" der); o sayfadaki
 // kırpıntı varsa onun yerine, yoksa sayfanın başladığı paragrafa gidilir. Eski çağrı ac(kap, belge, { sayfa, mod }) de olur.
@@ -477,6 +505,9 @@ export function kapat() {
   const s = S;
   islakAktar();
   izleriSiniflandir();
+  oduncYaz();   // birikmiş okuma süresi (15 sn dolmamış olsa da)
+  s.tepsi?.birak?.();
+  s.geriFis?.remove();
   s.veri.sonOkuma = Date.now();
   if (s.halka) s.halka.classList.remove("gorunur");
   if (s.halkaBizim) s.halkaBizim.remove();
@@ -503,7 +534,7 @@ export function kapat() {
     s.meta.content = (t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches) ? "#221E18" : "#FAF6EE";
   }
   s.kap.replaceChildren();
-  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede", "ceviriyle");
+  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede", "ceviriyle", "parmak-kalem");
   for (const r of VURGULAR) s.kap.style.removeProperty("--v-" + r.id);
   for (const ad of ["--aa-kay", "--sutun-x", "--sutun-g"]) s.kap.style.removeProperty(ad);
   delete s.kap.dataset.sayfa;
@@ -566,6 +597,16 @@ function arayuzKur() {
   el.kAa = h("button", { type: "button", class: "ikon-dugme aa", "aria-label": "Görünüm ve okuma temaları", "aria-haspopup": "dialog", "aria-expanded": "false", onclick: () => aaAc() }, "Aa");
   el.kDisa = ikonDugme("disa-aktar", "Dışa aktar", () => disaAktarAc(el.kDisa), { ek: { "aria-haspopup": "menu", "aria-expanded": "false" } });
   el.kDaha = ikonDugme("daha", "Diğer", () => dahaAc(), { ek: { "aria-haspopup": "menu", "aria-expanded": "false" } });
+  // Telefonda üst çubukta yalnız geri, ad, Aa ve ⋯ kalır; Ara, İçindekiler, İzler ve Kalem alt çubuğun ikinci katına iner
+  // (TASARIM-4 2.6). Üstteki eşleri telefonda CSS ile gizlenir (.tel-gizle), mod anahtarı ⋯ içinde "Masa'da aç" olur.
+  const altDugme = (ik, ad, fn, ek = {}) => h("button", { type: "button", class: "koltuk-alt-dugme", onclick: fn, ...ek }, icon(ik), h("span", {}, ad));
+  el.tIcindekiler = altDugme("icindekiler", "İçindekiler", () => panelAc("sol"));
+  el.tAra = altDugme("ara", "Ara", () => aramaAc());
+  el.tRozet = h("b", { class: "rozet", hidden: true });
+  el.tIzler = altDugme("izler", "İzler",() => panelAc("sag", S.veri.izler.length ? "izler" : "notlar"));
+  el.tIzler.append(el.tRozet);
+  el.tKalem = altDugme("kalem-ucu", "Kalem", () => { S.koltuk?.cubuk(false); kalemTepsisi({ parmak: !S.kalemVar }); }, { "aria-pressed": "false" });
+  for (const b of [el.kAra, el.kIcindekiler, el.kDisa]) b.classList.add("tel-gizle");
 
   // Okuma alanı: kaydırıcı, mürekkep karoları, canlı katman, araç çubuğu, durum satırı
   el.sutun = h("article", { class: "okuma-sutun", lang: KITAP.dil || "tr", "aria-label": belge.ad });
@@ -691,12 +732,15 @@ function metniKur() {
     fleuron(),
     h("p", { class: "son" }, "Son"),
     h("p", { class: "kunye" }, `${KITAP.baslik || S.belge.ad} · ${sayi(TOPLAM)} kelime`),
+    (S.el.odunc = h("div", { class: "odunc-yer" })),   // arka kapağın içi: ödünç kartı (oduncGuncelle)
     h("button", { type: "button", class: "metin-dugme", onclick: () => bus.emit("git", { ekran: "kitaplik" }) }, "Kitaplığa dön")));
   S.el.yerImleri = h("div", { class: "yer-imi-isaretleri", "aria-hidden": "true" });
   S.el.kenarNotlari = h("div", { class: "kenar-notlari" });
   S.el.sutun.append(parca, S.el.yerImleri, S.el.kenarNotlari);
   for (const t of S.veri.tuvaller) tuvalKaydi(t);
   paragraflariCiz();   // tuvaller paragrafCiz'in sonunda yerine takılır; açıklar ilk yerleşimde satır başına oturur
+  exLibrisKur();
+  oduncGuncelle();
 }
 
 // Paragrafı vurgu ve arama eşleşmeleriyle yeniden yazar. Metin değişmez, yalnız işaretler.
@@ -827,7 +871,7 @@ function yerlesimOlc() {
 // kesilen satırı sonraki sayfaya geçer, bütün çeviri değil (yoksa sayfanın altında büyük boşluk kalıyordu).
 function bloklariOlc() {
   const icUst = S.el.ic.getBoundingClientRect().top, b = [];
-  for (const el of S.el.sutun.querySelectorAll(".bolum-acilis, .sahne, .kitap-sonu > *, .tuval:not(.kucuk), .ceviri-satir")) {
+  for (const el of S.el.sutun.querySelectorAll(".bolum-acilis, .sahne, .kitap-sonu > *, .tuval:not(.kucuk), .ceviri-satir, .satir-alti-not")) {
     const acilis = el.classList.contains("bolum-acilis");
     const r = acilis ? el.firstElementChild.getBoundingClientRect() : el.getBoundingClientRect();
     const alt = acilis ? el.lastElementChild.getBoundingClientRect().bottom : r.bottom;
@@ -837,6 +881,13 @@ function bloklariOlc() {
     const ic = el.classList.contains("ceviri-satir")
       ? { ust: r.top - icUst, alt: r.bottom - icUst, lh: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 24 } : null;
     b.push([r.top - icUst - (cs ? parseFloat(cs.marginTop) : 4), alt - icUst + (cs ? parseFloat(cs.marginBottom) : 4), ic]);
+  }
+  // Büyük ilk harf üç satırı birlikte tutar: sayfa sınırı bu üç satırın ortasından geçmez (yatay telefonda harf bölünüyordu).
+  // Satırlar ızgarada kalır (kalem ışığı, cetvel); yalnız sayfa kesimi grubu bütün sayar (kesim()).
+  const lh = parseFloat(getComputedStyle(S.el.sutun).lineHeight) || 30;
+  for (const p of S.el.sutun.querySelectorAll("p.ilk")) {
+    const r = p.getBoundingClientRect(), ust = r.top - icUst, alt = ust + Math.min(r.height, 3 * lh);
+    if (alt - ust > lh * 1.5) b.push([ust, alt, { ust, alt, lh, grup: true }]);
   }
   return b.sort((x, y) => x[0] - y[0]);
 }
@@ -853,7 +904,7 @@ function satirAl(y) {
       if (!ic) return { ust: u, alt: a, blok: true };
       if (y < ic.ust || y >= ic.alt) return { ust: y, alt: y, blok: false };   // çevirinin kenar boşluğu
       const ust = ic.ust + Math.floor((y - ic.ust) / ic.lh + 1e-3) * ic.lh;
-      return { ust, alt: Math.min(ust + ic.lh, ic.alt), blok: false };
+      return { ust, alt: Math.min(ust + ic.lh, ic.alt), blok: false, grup: ic.grup ? [u, a] : null };
     }
     taban = a;
   }
@@ -868,26 +919,31 @@ function satirAl(y) {
 // Sayfa penceresi: üstte sayfa başlığının bandı (KOLTUK_UST), altta sayfa numarasının bandı (KOLTUK_ALT).
 // Pencerenin iki kenarı da satır sınırına oturur: kesilen satır ya da blok bütünüyle gizlenir, yarım satır görünmez.
 // Kenarlar okuma.css'teki maskeye --sayfa-ust ve --sayfa-alt olarak gider; serbest kaydırmada da her karede.
-const KOLTUK_UST = 60;   // okuma.css: bu bantta sütun başlığı ve sayfa numarası (TASARIM-3 6.4.1: üstte yaklaşık 64px)
-const KOLTUK_ALT = 54;   // alt kenar boşluğu (TASARIM-3 6.4.1: altta yaklaşık 72px, satır sınırına oturunca)
+const KOLTUK_UST_T = 60;   // okuma.css: bu bantta sütun başlığı ve sayfa numarası (TASARIM-3 6.4.1: üstte yaklaşık 64px)
+const KOLTUK_ALT_T = 54;   // alt kenar boşluğu (TASARIM-3 6.4.1: altta yaklaşık 72px, satır sınırına oturunca)
+// Bantlar güvenli alanı da içerir (çentik ve ana ekran çubuğu metni örtmesin; okuma.css aynı env değerleriyle)
+const kUst = () => KOLTUK_UST_T + guvenliAlan().ust;
+const kAlt = () => KOLTUK_ALT_T + guvenliAlan().alt;
 const KAYAN_CEVIRME = 300;   // bundan çok paragraflı kitapta sayfa çevirme kaymasız, yalnız solma (koltukCevir)
 // cubuk: çubuklar açıkken pencere opak çubukların altına daralır (yalnız maske; metin kaymaz, çevirme
 // çubuksuz pencereye göre yapılır).
 function koltukSinir(cubuk = false) {
   const kay = S.el.kaydir, st = kay.scrollTop, H = kay.clientHeight, lh = S.yer.lh;
-  let UST_K = KOLTUK_UST, ALT_K = KOLTUK_ALT;
+  let UST_K = kUst(), ALT_K = kAlt();
   if (cubuk) {
     const ust = S.kap.querySelector(".koltuk-ust"), alt = S.kap.querySelector(".koltuk-alt");
-    UST_K = Math.max(KOLTUK_UST, ust?.offsetHeight || 0);
-    ALT_K = Math.max(KOLTUK_ALT, alt?.offsetHeight || 0);
+    UST_K = Math.max(kUst(), ust?.offsetHeight || 0);
+    ALT_K = Math.max(kAlt(), alt?.offsetHeight || 0);
   }
   const ustY = st + UST_K, altY = st + H - ALT_K;
-  const u = satirAl(ustY), a = satirAl(altY);
+  const u = kesim(satirAl(ustY)), a = kesim(satirAl(altY));
   // Kesilen satırın altından başla; pencereden büyük blok (uzun tuval) olduğu gibi kesilir
   let ust = ustY - u.ust > 1 && u.alt - st < H / 2 ? u.alt - st : UST_K;
   let alt = altY - a.ust > 0.5 && a.ust - st > ust + lh ? a.ust - st : H - ALT_K;
   return { ust, alt, H };
 }
+// Sayfa kesimi için satır: bölünmez grubun (büyük ilk harf) içindeyse grubun tamamı tek blok sayılır
+const kesim = (r) => (r.grup ? { ust: r.grup[0], alt: r.grup[1], blok: true } : r);
 function koltukMaske() {
   if (!S?.yer || S.mod !== "koltuk") return;
   const s = koltukSinir(S.kap.classList.contains("cubuk-gorunur")), kay = S.el.kaydir;
@@ -904,7 +960,7 @@ function koltukMaske() {
 // Koltuk'ta sayfanın ilk tam satırı KOLTUK_UST'tedir: konum onun içinden alınır. UST (56) bir önceki sayfanın son
 // satırına düşüyordu ve her yeniden yerleşim (Aa, satır altı çeviri) sayfayı bir satır geri kaydırıyordu.
 function ustPay() {
-  if (S?.mod === "koltuk") return KOLTUK_UST + 1;
+  if (S?.mod === "koltuk") return kUst() + 1;
   if (!S || S.okumaModu || !S.cubukH) return UST;
   return UST + 12 + S.cubukH + 8;
 }
@@ -923,7 +979,7 @@ function konumaGit(k) {
   kay.scrollTop = k ? Math.max(0, konumY(k)) : 0;
   // Konumun satırı tam görünen ilk satır olur: Koltuk'ta sayfa başlığının bandının, Masa'da araç çubuğunun altında
   if (k && S.yer) {
-    const kenar = S.mod === "koltuk" ? KOLTUK_UST : ustPay();
+    const kenar = S.mod === "koltuk" ? kUst() : ustPay();
     const y = kay.scrollTop + ustPay(), s = satirAl(y);
     if (Math.abs(s.ust - kenar - kay.scrollTop) > 0.5 && s.alt > s.ust) kay.scrollTop = Math.max(0, Math.round(s.ust - kenar));
   }
@@ -958,6 +1014,7 @@ function yerlesimDegisti() {
   canliBoyutla();
   kenarNotlariniCiz();
   yerImleriniCiz();
+  if (tercih.cetvel) { if (S.el.cetvel) cetvelIlkSatir(); else cetvelKur(); }
   karolariGuncelle(true);
   S.yer.kayYuk = S.el.kaydir.scrollHeight;   // ölçümden sonra eklenen tuval ve karolar da sayılır
   durumGuncelle();
@@ -971,7 +1028,7 @@ function kaydirildi() {
   if (S.aktif?.bekleyenIslak) islakAktar();
   if (S.menu) { menuKapat(); S.menuGeri = true; }
   if (S.menuGeri) { clearTimeout(S.menuGeriZ); S.menuGeriZ = zamanla(() => { S.menuGeri = false; secimDegisti(); }, 220); }
-  planla("kare", () => { durumGuncelle(); karolariGuncelle(false); });
+  planla("kare", () => { durumGuncelle(); karolariGuncelle(false); if (S.el.cetvel && S.cetvelY != null) cetvelYerlestir(S.cetvelY); });
   if (S.co) planla("ceviri", coGuncelle);   // kapalıyken hiç iş yok
 }
 
@@ -999,6 +1056,12 @@ function durumGuncelle() {
   S.el.sayfaNo.textContent = `${S.belge.sayfa} / ${SAYFA_SAYISI}`;
   S.veri.konum = k;
   if (S.koltuk) {
+    // Ödünç kartı: son sayfaya varınca bitiş günü; kitabın sonu görünürken kart tazelenir (günün damgası bir kez basılır)
+    if (sonda && bolum.i === BOLUMLER.length - 1 && !S.oduncBittiDendi) { S.oduncBittiDendi = true; oduncBitti(); }
+    if (bolum.i === BOLUMLER.length - 1) oduncGuncelle(kay.scrollTop + kay.clientHeight > S.el.odunc.offsetTop + S.el.sutun.offsetTop + 40);
+    if (S.exBekliyor) exLibrisBas();
+    const n = S.veri.vurgular.length + S.veri.izler.length;   // alt çubuktaki İzler rozeti
+    if (S.el.tRozet.textContent !== String(n)) { S.el.tRozet.textContent = String(n); S.el.tRozet.hidden = !n; }
     kalinlikGuncelle(oran);
     S.kKonum = { oran, bolumAd: bolum.ad, kelimeKalanBolum: Math.max(0, kalanKelime), kelimeKalanKitap: Math.max(0, TOPLAM - okunan) };
     hizOlc(okunan);
@@ -1163,7 +1226,9 @@ function kenarNotlariniCiz() {
   const oluk = olukVar();
   S.el.ic.classList.toggle("oluklu", oluk);
   asistanSatirlari(!oluk);
-  if (!oluk) { S.yeniAsistanNotu = null; return; }
+  if (!oluk) { S.yeniAsistanNotu = null; kenarIsaretleri(); return; }
+  kap.classList.remove("isaretli");
+  satirAltiNotlar(false);
   const sR = S.el.sutun.getBoundingClientRect();
   const ogeler = [];
   for (const v of S.veri.vurgular) {
@@ -1334,17 +1399,8 @@ function secimMenusuAc({ tur, aralik, v, rects }) {
     kopyala(vurguMetni(tur === "vurgu" ? v : aralik, "\n\n"));   // aralıktan: dokunmatikte seçim menüye dokununca kaybolabilir
   }) }, "Kopyala"));
   if (tur === "vurgu") {
-    // Silme her yerde iki dokunuşla: ilk dokunuş sorar, 3 sn içinde ikincisi kaldırır
-    const sil = h("button", { type: "button", class: "yazi sil" }, "Vurguyu kaldır");
-    let z = 0;
-    sil.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (sil.dataset.durum === "emin") { clearTimeout(z); kapatVe(() => vurguSil(v))(); return; }
-      sil.dataset.durum = "emin";
-      sil.textContent = "Emin misin?";
-      z = setTimeout(() => { delete sil.dataset.durum; sil.textContent = "Vurguyu kaldır"; }, 3000);
-    });
-    el.append(sil);
+    // Kaldırma anında olur; bildirimdeki "Geri al" geri getirir (TASARIM-4 3.6)
+    el.append(h("button", { type: "button", class: "yazi sil", onclick: (e) => { e.stopPropagation(); kapatVe(() => vurguSil(v))(); } }, "Vurguyu kaldır"));
   }
   S.kap.append(el);
   S.menu = { el, tur, aralik, v };
@@ -1352,10 +1408,20 @@ function secimMenusuAc({ tur, aralik, v, rects }) {
 }
 
 // Seçimin 10px üstünde; yer yoksa altında. Dokunmatikte Android'in kendi menüsü üstte çıktığı için altta.
+// iOS'ta sistemin seçim balonu seçimin üstünde ya da altında açılır ve menünün düğmelerini örtebilir; telefonda menü
+// ekrana sığmaz. Bu ikisinde menü ekranın altında (seçim alttaysa üstünde) kenardan kenara kayan bir şerittir.
 function menuKonumla(el, rects) {
   const kR = S.kap.getBoundingClientRect(), w = el.offsetWidth, hgt = el.offsetHeight;
   const dokunmatik = S.sonIsaretci !== "mouse";
   const ilk = rects[0], son = rects[rects.length - 1];
+  if ((dokunmatik && (IOS || telefon())) || w > kR.width - 16) {
+    const ustte = (ilk.top + son.bottom) / 2 - kR.top > kR.height * 0.55;
+    el.classList.add("serit");
+    el.classList.toggle("serit-ust", ustte);
+    el.style.left = el.style.top = "";
+    if (S.koltuk?.gorunur()) S.koltuk.cubuk(false);   // şerit alt çubuğun yerinde
+    return;
+  }
   const ustSinir = (S.okumaModu || (S.koltuk && !S.koltuk.gorunur()) ? 8 : UST + 8) + kR.top;
   let altta = dokunmatik || ilk.top - hgt - 16 < ustSinir;
   let hedef = altta ? son : ilk;
@@ -1694,8 +1760,8 @@ function asistanNotuSil(id) {
 }
 function asistanNotuEl(n, satirIci) {
   const z = new Date(n.zaman), tarih = `${String(z.getDate()).padStart(2, "0")}.${String(z.getMonth() + 1).padStart(2, "0")}`;
-  const sil = h("button", { type: "button", class: "kenar-asistan__sil", "aria-label": "Asistan notunu kaldır" }, icon("kapat"));
-  ikiDokunus(sil, "Emin misin?", () => asistanNotuSil(n.id));
+  // Silme anında olur, bildirimde "Geri al" var (TASARIM-4 3.6): iki dokunuşla onay yalnız geri alınamayan işlerde
+  const sil = h("button", { type: "button", class: "kenar-asistan__sil", "aria-label": "Asistan notunu kaldır", onclick: (e) => { e.stopPropagation(); asistanNotuSil(n.id); } }, icon("kapat"));
   const kartVar = !!n.kartId && store.kartlar.some((k) => k.id === n.kartId);
   const kart = h("button", { type: "button", class: "kenar-asistan__kart", disabled: kartVar, onclick: () => asistanNotuKarta(n) },
     icon(kartVar ? "tik" : "karta-cevir"), kartVar ? "Tekrar'da" : "Karta çevir");
@@ -1826,12 +1892,13 @@ function cfKonumla(c, rects) {
   const el = c.el, kR = S.kap.getBoundingClientRect(), sR = S.el.sutun.getBoundingClientRect();
   const rs = (rects?.length ? rects : [...aralikRange(c.aralik).getClientRects()]).filter((q) => q.width > 0);
   const son = rs[rs.length - 1] || sR, ilk = rs[0] || sR;
-  const w = Math.min(sR.width + 40, 560, kR.width - 24);
+  const ga = guvenliAlan(), solK = Math.max(12, ga.sol + 8), sagK = Math.max(12, ga.sag + 8);   // yatay telefonda çentik dışı
+  const w = Math.min(sR.width + 40, 560, kR.width - solK - sagK);
   el.style.width = w + "px";
-  el.style.left = sinirla(sR.left - kR.left - 20, 12, kR.width - w - 12) + "px";
+  el.style.left = sinirla(sR.left - kR.left - 20, solK, kR.width - w - sagK) + "px";
   // Çevirinin boyu kaynağınkine yakın: satır sayısı tahmini (16/26 Literata), başlık ve düğmelerle
   const satir = Math.min(12, Math.ceil((c.metin.length * 1.08) / Math.max(20, (w - 40) / (16 * 0.47))));
-  const hg = Math.max(el.offsetHeight, 108 + satir * 26), taban = kR.bottom - (S.mod === "koltuk" ? KOLTUK_ALT : 12);
+  const hg = Math.max(el.offsetHeight, 108 + satir * 26), taban = kR.bottom - (S.mod === "koltuk" ? kAlt() : 12);
   const pAlt = S.pEl[c.aralik.son.p].getBoundingClientRect().bottom;
   const y = [pAlt + 12, son.bottom + 12].find((v) => v + hg < taban);
   el.classList.toggle("ustte", y == null);
@@ -2241,7 +2308,7 @@ function notBalonuAc(v, { kaynak, odakla = false } = {}) {
       balon.style.setProperty("--v", r.renk);
     },
   }, h("i"))));
-  const kaldir = onayliDugme("Vurguyu kaldır", () => { katmanKapat(false); vurguSil(v); });
+  const kaldir = h("button", { type: "button", class: "onayli", onclick: () => { katmanKapat(false); vurguSil(v); } }, "Vurguyu kaldır");   // geri alınabilir: anında
   const balon = h("div", { class: "balon not-balonu", role: "dialog", "aria-label": "Kenar notu", style: `--v:${vurguRengi(v.renk)}` },
     h("div", { class: "balon-baslik" }, h("h3", {}, "Kenar notu"), renkler),
     h("blockquote", { class: "not-alinti" }, alinti),
@@ -2369,6 +2436,12 @@ function aaAc() {
           h("div", { class: "cetvel-satir aa-boyut" }, h("span", { class: "aa-harf kucuk", "aria-hidden": "true" }, "A"), kaydirici, h("span", { class: "aa-harf buyuk", "aria-hidden": "true" }, "A"))),
         h("div", { class: "aa-bolum" }, etiket("Satır aralığı"), cipler(SATIRLAR, tercih.satir, (d) => degistir({ satir: d }), "Satır aralığı")),
         aaCeviriBolumu(),
+        // Okurken: okuma cetveli (TASARIM-4 4.5) ve dar ekranda notların yeri (2.6)
+        h("div", { class: "aa-bolum aa-okurken" }, etiket("Okurken"),
+          anahtarSatir("Okuma cetveli", !!tercih.cetvel, (v) => { cetvelAc(v); ciz(); }, "Okunan satırı bir bantla öne çıkarır"),
+          tercih.cetvel ? anahtarSatir("Kalemi izlesin", tercih.cetvelKalem !== false, (v) => { tercih.cetvelKalem = v; tercihSakla(); }) : null,
+          S.el.ic.classList.contains("oluklu") ? null
+            : anahtarSatir("Notları satır altında göster", !!tercih.satirAltiNot, (v) => { tercih.satirAltiNot = v; tercihSakla(); kenarNotlariniCiz(); })),
         ozel));
     const serit = balon.querySelector(".tema-numuneler");
     if (serit) serit.scrollLeft = kaydirma;
@@ -2383,9 +2456,12 @@ function aaAc() {
     requestAnimationFrame(() => S?.katman?.el === balon && aaKaydir(balon));   // ölçü değişince sütun yeniden yer bulur
   };
   ciz();
-  katmanAc(balon, { tur: "aa", tetik: dugme("aa"), yenile: ciz, kapat: () => aaKaydir(null) });
-  balonYerlestir(balon, dugme("aa"));
+  const tetik = dugme("aa");
+  katmanAc(balon, { tur: "aa", tetik, yenile: ciz, kapat: () => aaKaydir(null) });
+  balonYerlestir(balon, tetik);
   aaKaydir(balon);
+  // Dikeyde Aa alt çekmecedir: Koltuk'un alt çubuğu (cetvel) çekmecenin altında kalmasın, çubuklar çekilir
+  if (matchMedia("(orientation: portrait)").matches && S.koltuk?.gorunur()) S.koltuk.cubuk(false);
 }
 // Yatayda Aa balonu sütunun üstüne düşüyorsa sütun gerektiği kadar sola kayar (yalnız transform; sade harekette geçişsiz).
 // Dikeyde balon alt fiştir, sütun yerinde kalır: üst yarıda sonuç okunur.
@@ -2484,15 +2560,22 @@ function temaSeridi(durum, boyut, ciz) {
       h("button", { type: "button", class: "metin-dugme vurgulu", onclick: kaydet }, "Kaydet")));
     requestAnimationFrame(() => girdi.isConnected && girdi.focus({ preventScroll: true }));
   } else if (d?.tur === "yonet" && hedef) {
-    const sil = h("button", { type: "button", class: "metin-dugme sil" }, "Sil");
-    ikiDokunus(sil, "Emin misin?", () => {
-      kayitli.splice(kayitli.indexOf(hedef), 1);
+    // Tema silme anında, "Geri al" ile döner (TASARIM-4 3.6)
+    const sil = h("button", { type: "button", class: "metin-dugme sil", onclick: () => {
+      const i = kayitli.indexOf(hedef);
+      if (i < 0) return;
+      kayitli.splice(i, 1);
       if (tercih.temaId === hedef.id) tercih.temaId = null;
       temalariSakla();
       durum.duzen = null;
       ciz();
-      toast("Tema silindi");
-    });
+      toast("Tema silindi", { etiket: "Geri al", calistir: () => {
+        if (kayitli.includes(hedef)) return;
+        kayitli.splice(Math.min(i, kayitli.length), 0, hedef);
+        temalariSakla();
+        if (S?.katman?.tur === "aa") katmanYenile();
+      } });
+    } }, "Sil");
     parcalar.push(h("div", { class: "tema-duzen yonet" },
       h("span", { class: "tema-duzen__ad" }, hedef.ad),
       h("button", { type: "button", class: "metin-dugme", onclick: () => { durum.duzen = { tur: "adlandir", id: hedef.id }; ciz(); } }, "Yeniden adlandır"),
@@ -2511,6 +2594,14 @@ function kagitDiskleri() {
   return h("div", { class: "kagit-diskler", role: "group", "aria-label": "Sayfa rengi" },
     disk("oto", "Oto", "--kd:linear-gradient(135deg,#FDFBF6 50%,#1B1A17 50%);--kdy:#8E8576", oto),
     ...SAYFA_RENKLERI.map((r) => disk(r.id, r.ad, `--kd:${r.kd};--kdy:${r.kdy}`, !oto && S.sayfa === r.id)));
+}
+
+// Açılır kapanır satır (Aa ve ⋯): role switch, 44 px
+function anahtarSatir(metin, acik, fn, aciklama) {
+  const b = h("button", { type: "button", class: "anahtar-satir", role: "switch", "aria-checked": String(acik) },
+    aciklama ? h("span", { class: "anahtar-metin" }, metin, h("small", {}, aciklama)) : metin, h("span", { class: "anahtar" }));
+  b.addEventListener("click", () => { const v = b.getAttribute("aria-checked") !== "true"; b.setAttribute("aria-checked", String(v)); fn(v); });
+  return b;
 }
 
 // ---------- ⋯ menüsü ----------
@@ -2538,16 +2629,25 @@ function dahaAc() {
       if (v) document.documentElement.dataset.hareket = "sade"; else delete document.documentElement.dataset.hareket;
     }),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, fleuron("")),
+    // Telefonda mod anahtarı üst çubukta yer kaplamaz: burada (TASARIM-4 2.6)
+    S.mod === "koltuk" && telefon() ? satir("masa", "Masa'da aç", "Vurgu, kalem ve kırpma araçları", () => { katmanKapat(); modSec("masa"); }) : null,
     S.mod === "koltuk" ? satir("notlar", "Notlar ve vurgular", `${S.veri.vurgular.length} vurgu, ${S.veri.yerImleri.length} yer imi`, () => { katmanKapat(); panelAc("sag", "notlar"); }) : null,
     S.mod === "koltuk" ? satir("yer-imi", gorunenYerImleri().length ? "Yer imini kaldır" : "Yer imi ekle", null, () => { katmanKapat(); yerImiDegistir(); }) : null,
+    // Kaldığın yer (OZELLIKLER-7 §7.3): son iz; iz yoksa satır yok
+    sonIz() ? satir("izler", "Son izime git", sonIzMetni(), () => { katmanKapat(); izeGit(sonIz()); }) : null,
     satir("disa-aktar", "Notları dışa aktar", "Vurgular ve kenar notları, Markdown dosyası", () => { katmanKapat(); notlariPaylas(); }),
-    satir("gonder", "Samsung Notes'a gönder", "Paylaş menüsünde Samsung Notes'u seç", () => { katmanKapat(); notlariPaylas(); })].filter(Boolean));
+    // Samsung Notes yalnız Samsung'da; başka yerde sistemin paylaş menüsü
+    SAMSUNG ? satir("gonder", "Samsung Notes'a gönder", "Paylaş menüsünde Samsung Notes'u seç", () => { katmanKapat(); notlariPaylas(); })
+      : navigator.share ? satir("paylas", "Notları paylaş", "Sistemin paylaş menüsü", () => { katmanKapat(); notlariPaylas(); }) : null].filter(Boolean));
   void tema;
   ciz();
   katmanAc(fis, { tur: "daha", tetik: dugme("daha"), yenile: ciz });
   const kR = S.kap.getBoundingClientRect(), dR = dugme("daha").getBoundingClientRect();
   fis.style.right = Math.max(8, kR.right - dR.right) + "px";
   fis.style.top = dR.bottom - kR.top + 6 + "px";
+  // Kısa ekranda (telefon, yatay) menü ekrandan taşmaz, içinde kayar
+  fis.style.maxHeight = `calc(100% - ${Math.round(dR.bottom - kR.top + 6)}px - 12px - env(safe-area-inset-bottom, 0px))`;
+  fis.style.overflowY = "auto";
 }
 // ---------- dışa aktarma (OZELLIKLER-3 §4.4) ----------
 // Koltuk çubuğundaki Dışa aktar: tek satırlık fiş, ⋯ menüsüyle aynı görünüm
@@ -2562,6 +2662,9 @@ function disaAktarAc(tetik) {
   const kR = S.kap.getBoundingClientRect(), dR = tetik.getBoundingClientRect();
   fis.style.right = Math.max(8, kR.right - dR.right) + "px";
   fis.style.top = dR.bottom - kR.top + 6 + "px";
+  // Kısa ekranda (telefon, yatay) menü ekrandan taşmaz, içinde kayar
+  fis.style.maxHeight = `calc(100% - ${Math.round(dR.bottom - kR.top + 6)}px - 12px - env(safe-area-inset-bottom, 0px))`;
+  fis.style.overflowY = "auto";
 }
 
 // disa-aktar.js: epubNotlariDisaAktar + paylas (paylaş menüsü, yoksa indir). Modül yoksa eski yol: Markdown indirilir.
@@ -2639,7 +2742,7 @@ function koltukAc({ ilk = false } = {}) {
     ad: S.belge.ad, tur: "epub",
     bolumler: BOLUMLER.map((b) => ({ ad: b.baslik, oran: b.onceki / TOPLAM })),
     konum: () => S?.kKonum || { oran: S?.belge.ilerleme || 0 },
-    git: (oran) => oranaGit(oran),
+    git: (oran) => { const d = donusHazirla(); oranaGit(oran); d?.(); },
     etiket: (oran) => {
       const hedef = sinirla(oran, 0, 1) * TOPLAM;
       const b = BOLUMLER.find((x) => x.onceki + x.kelime > hedef) || BOLUMLER[BOLUMLER.length - 1];
@@ -2648,14 +2751,22 @@ function koltukAc({ ilk = false } = {}) {
     cevir: (yon) => koltukCevir(yon),
     modDegistir: (m) => modSec(m),
     araclar: [el.kAra, el.kIcindekiler, el.kAa, el.kDisa, el.kDaha],
+    altAraclar: [el.tIcindekiler, el.tAra, el.tIzler, el.tKalem],
+    anahtarDaha: true,   // telefonda mod anahtarı ⋯ içinde
     sahne: el.kaydir,
     izler: () => izOranlari(),
     izeGit: (id) => { const z = S?.veri.izler.find((x) => x.id === id); if (z) izeGit(z); },
     izAtla: (yon) => izAtla(yon),
-    kalemUcu: false,   // EPUB'da kalem gizli: S Pen satır arasına inince Active Canvas açılır, araç seçimi yok
-    mesgul: () => !!(S && (S.katman || S.menu || S.el.aramaSatiri || (S.panel && dar()) || S.aktif)),
-    // Boşluk açan ya da içine yazan kalem sayfa çevirmez; yazarken konan nokta (ünlemin noktası) da çevirmez
-    dokunmaGecerli: (e) => !S || (S.yut !== e.pointerId && !(e.pointerType === "pen" && performance.now() - S.sonCizimZ < IZ_BIRLESME * 2)),
+    // EPUB'da kalem araç seçmeden yazar. S Pen'de yan tuş siler; başka kalemde (Apple Pencil) kalem ucu düğmesi kalem
+    // görülünce belirir ve tepsiyi açar: tek dokunuşla silgi (OZELLIKLER-7 §3).
+    kalemUcu: !SAMSUNG,
+    kalem: (acik) => { if (acik) kalemTepsisi({ parmak: false }); else kalemTepsisiKapat({ sessiz: true }); },
+    sure: (sn) => oduncSay(sn),
+    mesgul: () => !!(S && (S.katman || S.menu || S.el.aramaSatiri || (S.panel && dar()) || S.aktif || S.tepsi)),
+    // Boşluk açan ya da içine yazan kalem sayfa çevirmez; yazarken konan nokta (ünlemin noktası) da çevirmez.
+    // Parmakla yazarken (telefonda Kalem) dokunuş sayfa çevirmez: parmak yazar, çıkış tepsideki "Bitti".
+    dokunmaGecerli: (e) => !S || (S.yut !== e.pointerId && !(S.parmakKalem && e.pointerType === "touch")
+      && !(e.pointerType === "pen" && performance.now() - S.sonCizimZ < IZ_BIRLESME * 2)),
   });
   S.olcum = null;
   if (S.yer) durumGuncelle();
@@ -2663,6 +2774,8 @@ function koltukAc({ ilk = false } = {}) {
   zamanla(() => S?.koltuk?.cubuk(true), ilk ? 360 : 0);
 }
 function koltukKapat() {
+  kalemTepsisiKapat({ sessiz: true, birak: true });
+  oduncYaz();
   S.koltuk?.kapat();
   S.koltuk = null;
   S.kKonum = null;
@@ -2677,22 +2790,23 @@ function koltukCevir(yon) {
   katmanKapat();
   islakAktar();
   const st = kay.scrollTop, H = kay.clientHeight;
-  let hedef = st + yon * (H - KOLTUK_UST - KOLTUK_ALT);
+  let hedef = st + yon * (H - kUst() - kAlt());
   if (S.yer) {
     const s = koltukSinir();
-    if (yon > 0) hedef = st + s.alt - KOLTUK_UST;
+    if (yon > 0) hedef = st + s.alt - kUst();
     else {
       // Önceki sayfa şimdiki ilk satırda biter; üst kenarda kesilen satır aşağı, blok (başlık) yukarı oturur
-      const y = st + s.ust - (H - KOLTUK_ALT - KOLTUK_UST), r = satirAl(y);
-      hedef = (y - r.ust > 0.5 && !r.blok ? r.alt : r.ust) - KOLTUK_UST;
-      if (hedef >= st) hedef = y - KOLTUK_UST;
+      const y = st + s.ust - (H - kAlt() - kUst()), r = kesim(satirAl(y));
+      hedef = (y - r.ust > 0.5 && !r.blok ? r.alt : r.ust) - kUst();
+      if (hedef >= st) hedef = y - kUst();
     }
-    if (yon > 0 && hedef <= st + S.yer.lh) hedef = st + H - KOLTUK_UST - KOLTUK_ALT;
+    if (yon > 0 && hedef <= st + S.yer.lh) hedef = st + H - kUst() - kAlt();
   }
   hedef = sinirla(Math.round(hedef), 0, kay.scrollHeight - H);
   if (hedef === st) return;
   kay.scrollTop = hedef;
   koltukMaske();   // kaydırma olayını beklemeden: yeni sayfa ilk karede doğru kenarlarla
+  cetvelIlkSatir();   // okuma cetveli yeni sayfanın ilk satırına
   if (hareketAz()) return;
   // Kayma Aa'nın sütun kaydırmasının üstüne eklenir (add); opaklık eklenirse 1'i aşıp kırpılır, ayrı ve yerine
   for (const a of S.cevirAnim || []) a.cancel();
@@ -2703,6 +2817,17 @@ function koltukCevir(yon) {
   if (P.length <= KAYAN_CEVIRME) {
     S.cevirAnim.push(S.el.ic.animate([{ transform: `translateX(${yon * 14}px)` }, { transform: "translateX(0)" }], { ...zaman, composite: "add" }));
   }
+}
+// Kaldığın yer (TASARIM-4 3.4): içindekilerden ya da cetvelden uzağa atlayınca altta 4 sn "Kaldığın yer" ve "Dön".
+// Atlamadan önce çağrılır, dönen işlev atlamadan sonra.
+function donusHazirla() {
+  if (!S?.yer || typeof ortak.donusFisi !== "function") return null;
+  const k = konumAl(), y0 = S.el.kaydir.scrollTop;
+  return () => {
+    if (!S?.yer || Math.abs(S.el.kaydir.scrollTop - y0) < S.el.kaydir.clientHeight * 1.5) return;
+    ortak.donusFisi({ metin: `Kaldığın yer: ${folyo(k.p, Math.round(sinirla(k.oran, 0, 1) * P[k.p].metin.length))}`,
+      calistir: () => { if (!S) return; konumaGit(k); S.olcum = null; durumGuncelle(); } });
+  };
 }
 // Cetvelden gidiş: kitabın orana denk gelen kelimesi ekranın başına
 function oranaGit(oran) {
@@ -3076,7 +3201,7 @@ function olaylariBagla() {
   S.bus.push(bus.on("asistan:cevap", (d) => { const a = S?.anlam; if (a && d?.istek === a.istek) anlamParca(a, d); }));
   // Hesap yolunda uygulamadan dönünce "Cevabı getir" bir kez vurgulanır
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) tercihSakla();   // Android arka plandaki PWA'yı kapatırken pagehide gelmeyebilir
+    if (document.hidden) { tercihSakla(); oduncYaz(); }   // Android arka plandaki PWA'yı kapatırken pagehide gelmeyebilir
     const c = S?.cf;
     if (!document.hidden && c?.durum === "donus" && !c.vurgula) { c.vurgula = true; cfCiz(c); }
     const a = S?.anlam;
@@ -3093,6 +3218,24 @@ function olaylariBagla() {
     if (co?.durum === "motor-yok" && !co.iniyor && o?.durum === "yuklu") coMotorBul(co);
   }));
   S.bus.push(bus.on("kirpintilar", (e) => { if (S && e?.tur !== "not" && S.panel === "sag" && S.sekme === "kirpintilar") panelYenile(); }));
+  // Ex libris Ayarlar'da yeniden çizilince iç kapaktaki mühür de yenilenir (yeniden basılmaz)
+  S.bus.push(bus.on("exlibris", () => { if (S) { exLibrisKur(); S.exBekliyor = false; } }));
+  S.bus.push(bus.on("ayarlar", () => { if (S && (!!S.el.exLibris) !== (store.ayarlar.exLibrisGoster !== false)) { exLibrisKur(); S.exBekliyor = false; } }));
+  // Hızlı erişim (Ctrl+K) komutları: kabuğun listesine eklenir, kitap kapanınca çıkar (TASARIM-4 3.2)
+  if (typeof ortak.komutEkle === "function") {
+    const mumGec = () => {
+      if (!S) return;
+      if (S.sayfa === "mum") sayfaSec(S.mumOncesi || "oto");
+      else { S.mumOncesi = sayfaHam() === "koyu" ? "gece" : sayfaHam(); sayfaSec("mum"); }
+    };
+    for (const k of [
+      { id: "koltuk-mum", ad: "Mum ışığı", es: "gece okuması sıcak sayfa rengi", ikon: "tema-koyu", baglam: "epub", calistir: mumGec },
+      { id: "koltuk-cetvel", ad: "Okuma cetveli", es: "satır bandı odak disleksi", ikon: "satir-orta", baglam: "epub", calistir: () => S && cetvelAc(!tercih.cetvel) },
+      { id: "koltuk-son-iz", ad: "Son izime git", es: "kaldığın yer iz", ikon: "izler", baglam: "epub", kosul: () => !!sonIz(), calistir: () => { const z = sonIz(); if (z) izeGit(z); } },
+    ]) {
+      try { S.bus.push(ortak.komutEkle(k)); } catch { /* komut listesi yok */ }
+    }
+  }
 }
 
 function vurguyaDokunuldu(e) {
@@ -3113,7 +3256,9 @@ function kalemAlgilandi() {
 }
 
 // Silgi ucu her zaman siler; yan tuş Ayarlar'daki "Yan tuş silgi" açıksa. Basınç S Pen eğrisinden geçer.
-const silgiTusu = (e) => e.pointerType === "pen" && (!!(e.buttons & 32) || (!!(e.buttons & 2) && store.ayarlar.yanTusSilgi !== false));
+// Koltuk'ta kalem tepsisinden silgi seçildiyse (Apple Pencil) kalem siler; parmakla yazarken tepsinin silgisi parmağı siler.
+const silgiTusu = (e) => (e.pointerType === "pen" && (!!(e.buttons & 32) || (!!(e.buttons & 2) && store.ayarlar.yanTusSilgi !== false)
+  || (S?.mod === "koltuk" && !!S.kalemSilgi))) || (e.pointerType === "touch" && S?.mod === "koltuk" && S.parmakKalem === "silgi");
 const basinc = (q) => (q.pointerType === "pen" ? (ortak.basincUygula ? ortak.basincUygula(q.pressure || 0.5) : q.pressure || 0.5) : 0.5);
 function geciciSilgi(acik) {
   S.el.silgi.classList.toggle("gecici-etkin", acik);
@@ -3124,6 +3269,19 @@ function isaretciBasti(e) {
   S.sonIsaretci = e.pointerType;
   S.yut = null;
   if (e.pointerType === "pen") { kalemAlgilandi(); kalemYakin(); S.sonKalemZ = performance.now(); havaBitti(); }
+  // Telefonda parmakla yazma (kalem tepsisi): ilk parmak yazar. İkinci parmak gelirse az önce başlayan çizgi iptal olur,
+  // iki parmak dokunuşu geri al olarak sayılır.
+  if (S.mod === "koltuk" && e.pointerType === "touch" && S.parmakKalem) {
+    cokParmakBasti(e);
+    const a = S.aktif;
+    if (a) {
+      if (a.parmak && performance.now() - a.t0 < 260) { a.iptal = true; a.karar = "iptal"; clearTimeout(a.kararZ); S.canli.temizle(); }
+      e.preventDefault();
+      return;
+    }
+    if (e.isPrimary) tuvalBasti(e, true);
+    return;
+  }
   // Koltuk avuç içi reddi: kalem yazarken, kalem görüldükten 600 ms içinde (havada da) ya da geniş temasta dokunuş yok sayılır
   if (S.mod === "koltuk" && e.pointerType === "touch"
     && (S.aktif?.tur === "pen" || performance.now() - S.sonKalemZ < KALEM_AVUC || (e.width > 44 && e.height > 44))) return;
@@ -3325,14 +3483,19 @@ function silgiImleci(e) {
 function parmakBasla(e) {
   cancelAnimationFrame(S.raf.atalet);
   islakAktar();
-  const g = S.parmak || (S.parmak = { noktalar: new Map(), enCok: 0, t0: performance.now(), yol: 0, v: 0, iz: [] });
+  const g = S.parmak || (S.parmak = { noktalar: new Map(), ilk: new Map(), enCok: 0, t0: performance.now(), yol: 0, v: 0, iz: [] });
   g.noktalar.set(e.pointerId, e.clientY);
+  g.ilk.set(e.pointerId, [e.clientX, e.clientY]);
+  (g.son || (g.son = new Map())).set(e.pointerId, [e.clientX, e.clientY]);
   g.enCok = Math.max(g.enCok, g.noktalar.size);
   try { S.el.kaydir.setPointerCapture(e.pointerId); } catch { /* işaretçi çoktan bırakıldıysa yakalama gerekmez */ }
 }
 function parmakOynadi(e) {
   const g = S.parmak, once = g.noktalar.get(e.pointerId);
   g.noktalar.set(e.pointerId, e.clientY);
+  // Jest için her parmağın iki eksendeki hareketi: ilk parmak dururken ikincisiyle kıstırma geri al sayılmasın
+  const o = g.son?.get(e.pointerId);
+  if (o) { g.hareket = (g.hareket || 0) + Math.hypot(e.clientX - o[0], e.clientY - o[1]); g.son.set(e.pointerId, [e.clientX, e.clientY]); }
   if (e.pointerId !== g.noktalar.keys().next().value) return;   // ilk parmak kaydırır
   const dy = e.clientY - once;
   g.yol += Math.abs(dy);
@@ -3349,7 +3512,11 @@ function parmakKalkti(e) {
   S.parmak = null;
   if (g.iptal) return;
   const sure = performance.now() - g.t0;
-  if (g.enCok >= 2 && sure < 300 && g.yol < 12) { if (g.enCok === 2) geriAl(); else yinele(); return; }
+  if (g.enCok >= 2 && sure < 300 && (g.hareket ?? g.yol) < 12) {
+    if (S.mod === "koltuk") return;   // Koltuk'ta çok parmak jestini yalnız cokParmakKalkti tanır: iki kez geri alınmasın
+    if (!parmakGeriBildirim([...(g.ilk?.values() || [])], g.enCok > 2)) { if (g.enCok === 2) geriAl(); else yinele(); }
+    return;
+  }
   if (g.iz.length < 2) return;
   const [t0, y0] = g.iz[0], [t1, y1] = g.iz[g.iz.length - 1];
   let v = t1 > t0 ? (y1 - y0) / (t1 - t0) : 0;   // px/ms
@@ -3623,8 +3790,8 @@ function kalemYakin() {
 
 // Koltuk'ta kalem ya da fare: boşluğa yaz, simgeyi aç, satır arasına inince yeni boşluk; kalem metne ya da kenara
 // inince iz başlar (OZELLIKLER-5 §1.1). Olayı yuttuysa true.
-function tuvalBasti(e) {
-  const kalem = e.pointerType === "pen", fare = e.pointerType === "mouse" && e.button === 0;
+function tuvalBasti(e, parmak = false) {
+  const kalem = e.pointerType === "pen" || parmak, fare = e.pointerType === "mouse" && e.button === 0;
   if ((!kalem && !fare) || !S.yer) return false;
   if (S.aktif) { if (kalem) e.preventDefault(); return kalem; }   // yazarken ikinci işaretçi yok
   const tvEl = e.target.closest?.(".tuval");
@@ -3653,7 +3820,7 @@ function tuvalYazBasla(e, r, acilis) {
   const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, basinc(e)];
   const a = S.aktif = {
     id: e.pointerId, tur: e.pointerType, arac: silgiTusu(e) ? "silgi" : "kalem", R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta,
-    tuval: r, acilis, yalnizTuval: S.mod === "koltuk",
+    tuval: r, acilis, yalnizTuval: S.mod === "koltuk", t0: performance.now(), parmak: e.pointerType === "touch",
   };
   if (r) { const q = r.el.getBoundingClientRect(); a.tx = (q.left - R.left) / s; a.ty = (q.top - R.top) / s; }
   S.kap.classList.add("yaziyor");
@@ -3765,9 +3932,10 @@ function izBasla(e, bosluk) {
   menuKapat();
   const R = S.el.okuma.getBoundingClientRect(), s = S.yer.s, k = izKalemi();
   const nokta = [(e.clientX - R.left) / s, (e.clientY - R.top) / s, basinc(e)];
+  const parmak = e.pointerType === "touch";   // telefonda parmakla yazma
   const a = S.aktif = {
-    id: e.pointerId, tur: "pen", arac: "kalem", R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta,
-    iz: true, bosluk, yalnizTuval: true, t0: performance.now(),
+    id: e.pointerId, tur: parmak ? "touch" : "pen", arac: "kalem", R, s, kaydir0: S.el.kaydir.scrollTop, bas: nokta,
+    iz: true, bosluk, yalnizTuval: true, t0: performance.now(), parmak,
   };
   a.cizgi = { id: yeniId("c"), tur: k.tur, renk: k.renk, w: k.mm * 5, p: [nokta] };
   // Satır arasında dokunuş sayfa çevirmez; kelimeye uzun basış anlam kartını açar (iz bırakmaz)
@@ -3786,7 +3954,7 @@ function bosluktaKarar(a, n) {
   else izBosluga(a);
 }
 function izBosluga(a) {
-  if (S?.aktif !== a || a.karar) return;
+  if (S?.aktif !== a || a.karar || a.iptal) return;
   a.karar = "tuval";
   clearTimeout(a.kararZ);
   const r = tuvalAc(a.bosluk), q = r.el.getBoundingClientRect();
@@ -4035,8 +4203,7 @@ function izPlanla() {
   S.izZ = zamanla(() => {
     if (!S) return;
     if (S.aktif) { izPlanla(); return; }
-    const bosta = globalThis.requestIdleCallback || ((f) => setTimeout(f, 0));
-    bosta(() => { if (!S) return; if (S.aktif) izPlanla(); else izleriSiniflandir(); }, { timeout: 500 });
+    bosta(() => { if (!S) return; if (S.aktif) izPlanla(); else izleriSiniflandir(); }, 500);
   }, IZ_BIRLESME);
 }
 function izleriSiniflandir() {
@@ -4258,7 +4425,7 @@ function izParlat(z) {
 function izAtla(yon) {
   if (!S?.yer) return;
   const { pUst, pAlt } = S.yer, kay = S.el.kaydir;
-  const ust = kay.scrollTop + (S.mod === "koltuk" ? KOLTUK_UST : ustPay()), alt = kay.scrollTop + kay.clientHeight - (S.mod === "koltuk" ? KOLTUK_ALT : 0);
+  const ust = kay.scrollTop + (S.mod === "koltuk" ? kUst() : ustPay()), alt = kay.scrollTop + kay.clientHeight - (S.mod === "koltuk" ? kAlt() : 0);
   const y = (z) => pUst[z.bas.p] + izKonumu(z).oran * (pAlt[z.bas.p] - pUst[z.bas.p]);
   const l = S.veri.izler.filter(izGecerli).map((z) => [y(z), z]).sort((a, b) => a[0] - b[0]);
   const hedef = yon > 0 ? l.find(([v]) => v > alt) : l.reverse().find(([v]) => v < ust);
@@ -4269,6 +4436,20 @@ function izAtla(yon) {
 function izOranlari() {
   if (!S) return [];
   return S.veri.izler.filter(izGecerli).map((z) => ({ id: z.id, oran: sinirla(okunanKelime(izKonumu(z)) / TOPLAM, 0, 1) }));
+}
+
+// Son bırakılan iz (⋯ "Son izime git", OZELLIKLER-7 §7.3)
+function sonIz() {
+  if (!S) return null;
+  let son = null;
+  for (const z of S.veri.izler) if (izGecerli(z) && (!son || (z.zaman || 0) >= (son.zaman || 0))) son = z;
+  return son;
+}
+function sonIzMetni() {
+  const z = sonIz();
+  if (!z) return null;
+  const m = (z.metin || "").trim();
+  return m ? `“${m.length > 36 ? m.slice(0, 36) + "…" : m}”` : `Kitapta ${folyo(z.bas.p, z.bas.o || 0)}`;
 }
 
 // ---------- havadaki kalem (TASARIM-3 §8) ----------
@@ -4331,6 +4512,8 @@ function satirIsikGuncelle(e) {
   const { sol, s, lh } = S.yer, sag = sol + s * BIRIM;
   const r = x > sol - lh && x < sag + lh ? satirAl(y) : null;
   if (!r || r.blok || r.alt - r.ust < lh * 0.5) { el.classList.remove("acik"); return; }
+  // Okuma cetveli havadaki kalemin satırını izler (Aa > "Kalemi izlesin")
+  if (S.el.cetvel && tercih.cetvelKalem !== false) cetvelYerlestir((r.ust + r.alt) / 2 - S.el.kaydir.scrollTop, { oturt: false });
   const anahtar = r.ust.toFixed(1);
   if (anahtar !== S.isikAnahtar) {
     S.isikAnahtar = anahtar;
@@ -4375,8 +4558,9 @@ function koseKalkti(e) {
 
 // Koltuk: iki parmakla dokunuş geri alır, üç parmakla yineler (Masa'daki gibi)
 function cokParmakBasti(e) {
-  if (!S.cp || !S.cp.ids.size) S.cp = { ids: new Map(), t0: performance.now(), enCok: 0, yol: 0, iptal: false };
+  if (!S.cp || !S.cp.ids.size) S.cp = { ids: new Map(), ilk: new Map(), t0: performance.now(), enCok: 0, yol: 0, iptal: false };
   S.cp.ids.set(e.pointerId, [e.clientX, e.clientY]);
+  S.cp.ilk.set(e.pointerId, [e.clientX, e.clientY]);
   S.cp.enCok = Math.max(S.cp.enCok, S.cp.ids.size);
 }
 function cokParmakOynadi(e) {
@@ -4391,6 +4575,9 @@ function cokParmakKalkti(e) {
   if (g.ids.size) return;
   S.cp = null;
   if (g.iptal || g.enCok < 2 || g.yol > 16 || performance.now() - g.t0 > 350) return;
+  // Halka ve fiş: ne olduğu görünsün (TASARIM-4 4.6); geri alınacak bir şey yoksa halkalar soluk
+  const bos = parmakGeriBildirim([...g.ilk.values()], g.enCok > 2);
+  if (bos) return;
   if (g.enCok === 2) geriAl(); else yinele();
 }
 
@@ -4407,7 +4594,8 @@ function kurdeleKur() {
     el.addEventListener("click", () => { if (!S?.acilisKonum) return; konumaGit(S.acilisKonum); S.olcum = null; durumGuncelle(); });
     S.el.ic.append(el);
   }
-  el.style.left = Math.min(sol + s * BIRIM + 20, icGen - 24).toFixed(1) + "px";
+  // Telefonda sütunun sağında 20 px var: kurdele metne değmesin, çentiğin içine de girmesin (TASARIM-4 2.6)
+  el.style.left = Math.min(sol + s * BIRIM + 20, icGen - (telefon() ? 12 + guvenliAlan().sag : 24)).toFixed(1) + "px";
   el.style.top = (r.ust - 14).toFixed(1) + "px";
 }
 // 4: uzun aradan dönünce son okunan satırın altında kurşun kalem çizgisi bir an belirir ("buradaydın")
@@ -4612,6 +4800,303 @@ function ilkHarfCiz(g, d, p, rng, kesisir) {
   return 1;
 }
 
+// ---------- kalem tepsisi (OZELLIKLER-7 §3 ve §4, TASARIM-4 2.6) ----------
+// Apple Pencil'da yan tuş yok: silgi buradan tek dokunuşla seçilir, seçim oturum boyunca kalır. Telefonda (kalem yoksa)
+// tepsi parmakla yazmayı açar: o sırada parmak sayfa çevirmez ve kaydırmaz, iki parmak geri alır, çıkış "Bitti".
+const izKalemAdi = () => (S.sonKalem?.startsWith("kalem") ? S.sonKalem : "kalem0");
+function kalemTepsisi({ parmak = false } = {}) {
+  if (S.tepsi && S.tepsi.parmak === parmak && !parmak) return kalemTepsisiKapat();
+  if (S.tepsi?.parmak && !parmak) { S.koltuk?.kalemKapat?.(); return; }   // parmakla yazarken tepsi zaten açık
+  katmanKapat(); menuKapat();
+  S.tepsi?.el.remove();
+  const el = h("div", { class: "kalem-tepsi" + (parmak ? " parmak" : ""), role: "toolbar", "aria-label": parmak ? "Parmakla yaz" : "Kalem ucu" });
+  S.tepsi = { el, parmak };
+  if (parmak) {
+    S.parmakKalem ||= "kalem";
+    S.kap.classList.add("parmak-kalem");
+    S.el.tKalem.setAttribute("aria-pressed", "true");
+  }
+  const sec = (fn) => () => { fn(); kalemUcuGuncelle(); ciz(); if (!parmak) zamanla(() => kalemTepsisiKapat(), 160); };
+  const ciz = () => {
+    const silgi = parmak ? S.parmakKalem === "silgi" : !!S.kalemSilgi, secili = izKalemAdi();
+    el.replaceChildren(
+      ...tercih.kalemler.map((k, i) => {
+        const ad = "kalem" + i;
+        const b = h("button", { type: "button", class: "tepsi-kalem", "aria-pressed": String(!silgi && secili === ad), "aria-label": KALEM_ADI[k.tur] || "Kalem",
+          onclick: sec(() => { S.sonKalem = ad; if (parmak) S.parmakKalem = "kalem"; else S.kalemSilgi = false; }) });
+        b.innerHTML = KALEM_SVG[k.tur] || KALEM_SVG.tukenmez;
+        b.style.setProperty("--tip", k.renk);
+        return b;
+      }),
+      h("span", { class: "ayrac", "aria-hidden": "true" }),
+      h("button", { type: "button", class: "tepsi-silgi", "aria-pressed": String(silgi), "aria-label": "Silgi",
+        onclick: sec(() => { if (parmak) S.parmakKalem = "silgi"; else S.kalemSilgi = true; }) }, icon("silgi")),
+      ...(parmak ? [h("button", { type: "button", class: "metin-dugme tepsi-bitti", onclick: () => kalemTepsisiKapat({ birak: true }) }, "Bitti")] : []));
+  };
+  ciz();
+  S.kap.append(el);
+  if (!parmak) {   // kalem ucu düğmesinin üstünde; dışarı dokununca kapanır, seçim kalır
+    const kapat = (e) => { if (!S?.tepsi || S.tepsi.el !== el) return; if (!el.contains(e.target) && !e.target.closest?.(".kalem-ucu")) kalemTepsisiKapat(); };
+    document.addEventListener("pointerdown", kapat, { capture: true, signal: S.sinyal });
+    S.tepsi.birak = () => document.removeEventListener("pointerdown", kapat, { capture: true });
+  }
+}
+// birak: parmakla yazma da biter. sessiz: koltuk.js'e haber verilmez (kapatan o).
+function kalemTepsisiKapat({ birak = false, sessiz = false } = {}) {
+  if (!S) return;
+  const t = S.tepsi;
+  if (t) { t.birak?.(); t.el.remove(); S.tepsi = null; }
+  if (birak || (t && !t.parmak)) {
+    if (birak && S.parmakKalem) {
+      S.parmakKalem = null;
+      S.kap.classList.remove("parmak-kalem");
+      S.el.tKalem?.setAttribute("aria-pressed", "false");
+    }
+  }
+  if (!sessiz && t && !t.parmak) S.koltuk?.kalemKapat?.();
+}
+// Kalem ucu düğmesi seçili ucu gösterir: silgi seçiliyse silgi simgesi (kalem kâğıda değmeden ne yapacağı bilinsin)
+function kalemUcuGuncelle() {
+  const b = S.koltuk?.el?.kalemUcu;
+  if (!b) return;
+  const silgi = !!S.kalemSilgi;
+  if (b.dataset.uc !== String(silgi)) { b.dataset.uc = String(silgi); b.replaceChildren(icon(silgi ? "silgi" : "kalem-ucu")); }
+  b.classList.toggle("silgide", silgi);
+  b.title = silgi ? "Kalem silgide. Kalem için dokun." : "Kalem ucu";
+}
+
+// ---------- iki ve üç parmak: görsel geri bildirim (TASARIM-4 4.6) ----------
+// Dokunulan yerlerde söner halkalar ve altta kısa fiş. Kabuğun sınıfları (.parmak-halka, .geri-fis); okuma.css'te yedek.
+function parmakGeriBildirim(noktalar, yineleme) {
+  const bos = yineleme ? !S.gecmis.yinelenebilir : !S.gecmis.geriAlinabilir;
+  if (typeof ortak.parmakGeriBildirim === "function") {   // kabuk ortak bir tane verirse o
+    try { ortak.parmakGeriBildirim({ noktalar, yineleme, bos, yinele: () => S && yinele() }); return bos; } catch { /* yerel yedek */ }
+  }
+  for (const [x, y] of noktalar) {
+    const r = h("i", { class: "parmak-halka" + (bos ? " bos" : ""), "aria-hidden": "true", style: `left:${x}px;top:${y}px` });
+    document.body.append(r);
+    setTimeout(() => r.remove(), 400);
+  }
+  S.geriFis?.remove();
+  const metin = bos ? (yineleme ? "Yinelenecek bir şey yok" : "Geri alınacak bir şey yok") : yineleme ? "Yinelendi" : "Geri alındı";
+  const fis = S.geriFis = h("div", { class: "geri-fis", role: "status" }, h("span", {}, metin));
+  if (!bos && !yineleme) fis.append(h("button", { type: "button", class: "metin-dugme", onclick: () => { fis.remove(); if (S) yinele(); } }, "Yinele"));
+  document.body.append(fis);
+  zamanla(() => fis.remove(), bos || yineleme ? 1200 : 2400);
+  return bos;
+}
+
+// ---------- ödünç kartı (OZELLIKLER-7 §6.3, TASARIM-4 4.3) ----------
+// Okuma süresi koltuk.js'in saatinden gelir: sayfa görünür ve son etkileşimden 90 sn geçmemişken. 15 sn'de bir kabuğun
+// sayacına (ortak.okumaSay: belge.odunc, kitaplık kartındaki sayaçla aynı kayıt) yazılır; kabuk yoksa veri.odunc'a.
+// Kitabın sonunda, arka kapağın içinde eski kütüphane kartı: her okuma günü bir damga, toplam süre, bittiyse bordo damga.
+const AYLAR = ["OCA", "ŞUB", "MAR", "NİS", "MAY", "HAZ", "TEM", "AĞU", "EYL", "EKİ", "KAS", "ARA"];
+const gunAnahtari = (t = new Date()) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const GUN_DESEN = /^\d{4}-\d\d-\d\d$/;
+const kabukOdunc = () => typeof ortak.okumaSay === "function";
+// Yedek kayıt (kabuk sayacı yoksa)
+function oduncVeri() {
+  const o = S.veri.odunc;
+  if (o && typeof o === "object" && o.gunler && typeof o.gunler === "object") return o;
+  return (S.veri.odunc = { gunler: {}, bitti: o?.bitti || null });
+}
+// { gunler: [[gün, sn]] eskiden yeniye, bitti: "YYYY-AA-GG" | null }
+function oduncOku() {
+  const o = kabukOdunc() && typeof ortak.oduncOzet === "function" ? ortak.oduncOzet(S.belge) : null;
+  const ham = o ? { gunler: Object.fromEntries(o.gunler), bitti: o.bitti } : S.veri.odunc || {};
+  const gunler = Object.entries(ham.gunler || {}).filter(([k, sn]) => GUN_DESEN.test(k) && sn > 0).sort(([x], [y]) => (x < y ? -1 : 1));
+  const b = ham.bitti;
+  return { gunler, bitti: typeof b === "number" && b > 0 ? gunAnahtari(b) : typeof b === "string" && GUN_DESEN.test(b) ? b : null };
+}
+function oduncSay(sn) {
+  if (!S || store.ayarlar.oduncKarti === false) return;
+  S.oduncBirikim = (S.oduncBirikim || 0) + sn;
+  if (S.oduncBirikim >= 15) oduncYaz();
+}
+function oduncYaz() {
+  if (!S || !(S.oduncBirikim > 0)) return;
+  if (kabukOdunc()) {
+    try { ortak.okumaSay(S.belge.id, S.oduncBirikim * 1000); S.oduncBirikim = 0; return; } catch { /* yedek kayda */ }
+  }
+  const n = Math.floor(S.oduncBirikim);
+  if (n < 1) return;
+  S.oduncBirikim -= n;
+  const g = oduncVeri().gunler, k = gunAnahtari();
+  g[k] = (g[k] || 0) + n;
+}
+function oduncBitti() {
+  if (typeof ortak.okumaBitti === "function") { if (!S.belge.odunc?.bitti) ortak.okumaBitti(S.belge.id); }
+  else oduncVeri().bitti ||= gunAnahtari();
+}
+// Kimlik ve tarihten türeyen sabit küçük sapma: damgalar her açılışta aynı yerde, el basmış gibi
+function sapma(metin, a, b) {
+  let x = 2166136261;
+  for (let i = 0; i < metin.length; i++) x = Math.imul(x ^ metin.charCodeAt(i), 16777619);
+  return a + ((x >>> 0) % 1000) / 1000 * (b - a);
+}
+function sureDamga(sn) {
+  const dk = Math.max(1, Math.round(sn / 60));
+  return dk < 60 ? `${dk} DK` : `${Math.floor(dk / 60)} SA ${dk % 60} DK`;
+}
+function oduncKarti({ gunler: hepsi, bitti }) {
+  const gunler = hepsi.filter(([, sn]) => sn >= 30);
+  const toplam = gunler.reduce((t, [, sn]) => t + sn, 0), bugun = gunAnahtari();
+  const damga = (k, metin) => h("span", { class: "odunc-damga" + (k === bugun && S.oduncBas ? " basiliyor" : ""),
+    style: `--a:${sapma(S.belge.id + k, -1.5, 1.5).toFixed(2)}deg;--x:${sapma(k + S.belge.id, -3, 3).toFixed(1)}px;--o:${sapma(k, 0.7, 0.92).toFixed(2)}` }, metin);
+  const satir = ([k, sn]) => { const [y, a, g] = k.split("-"); return [damga(k, `${g} ${AYLAR[+a - 1]} ${y}`), damga(k, sureDamga(sn))]; };
+  const liste = gunler.length > 12 ? [...gunler.slice(0, 6).map(satir), [h("span", { class: "odunc-ara" }, "· · ·"), h("span")], ...gunler.slice(-5).map(satir)] : gunler.map(satir);
+  return h("div", { class: "odunc-cep", role: "group", "aria-label": `Kitap kartı: ${gunler.length} gün, toplam ${sureDamga(toplam).toLocaleLowerCase("tr")}` },
+    h("div", { class: "odunc-kart" },
+      h("h4", {}, "Kitap kartı"),
+      h("p", { class: "kitap" }, KITAP.baslik || S.belge.ad),
+      gunler.length ? h("div", { class: "odunc-satirlar" }, ...liste.flat())
+        : h("p", { class: "odunc-bos" }, "Okudukça günler buraya damgalanır."),
+      gunler.length ? h("div", { class: "odunc-toplam" }, h("span", {}, "Toplam"), h("span", {}, sureDamga(toplam))) : null,
+      bitti ? h("span", { class: "odunc-bitti" }, `BİTTİ ${bitti.slice(8, 10)}.${bitti.slice(5, 7)}.${bitti.slice(2, 4)}`) : null));
+}
+// Kart yalnız içeriği değişince yeniden kurulur (dakika, gün, bitiş); kitabın sonu görünürken günün damgası bir kez basılır
+function oduncGuncelle(gorunur = false) {
+  const yer = S.el.odunc;
+  if (!yer) return;
+  if (store.ayarlar.oduncKarti === false || S.mod !== "koltuk") { if (yer.firstChild) { yer.replaceChildren(); S.oduncImza = ""; } return; }
+  const o = oduncOku(), bugun = o.gunler.find(([k]) => k === gunAnahtari())?.[1] || 0;
+  if (gorunur && !S.oduncBasildi && bugun >= 30 && !hareketAz()) { S.oduncBasildi = true; S.oduncBas = true; S.oduncImza = ""; }
+  const imza = `${o.gunler.length}|${Math.round(bugun / 60)}|${o.bitti || ""}|${S.oduncBas ? 1 : 0}`;
+  if (imza === S.oduncImza) return;
+  S.oduncImza = imza;
+  yer.replaceChildren(oduncKarti(o));
+  S.oduncBas = false;
+}
+
+// ---------- ex libris: iç kapakta kitap mührü (OZELLIKLER-7 §6.1, TASARIM-4 4.1) ----------
+// Mührü kabuk çizdirir (Ayarlar > Ex libris) ve ortak.exLibrisSvg verir. Kitabın ilk sayfasında, bölüm açılışının
+// boşluğunda durur; kitap ilk açıldığında ve o sayfa göründüğünde bir kez basılır (belge.veri.exLibrisBasildi).
+function exLibrisKur() {
+  S.el.exLibris?.remove();
+  S.el.exLibris = null;
+  const ex = store.ayarlar.exLibris;
+  const var_ = typeof ortak.exLibrisVar === "function" ? ortak.exLibrisVar(ex) : !!ex?.vuruslar?.length;
+  if (!var_ || typeof ortak.exLibrisSvg !== "function" || store.ayarlar.exLibrisGoster === false) return;
+  const aci = typeof ortak.exLibrisAci === "function" ? ortak.exLibrisAci(S.belge.id) : sapma(S.belge.id, -6, -2);
+  let svg = "";
+  try { svg = ortak.exLibrisSvg(72, ex, { aci: 0 }); } catch (e) { console.warn("[kenar-notu] ex libris çizilemedi:", e); return; }
+  const el = h("span", { class: "ex-libris", "aria-hidden": "true" });
+  if (typeof svg === "string" && svg) el.innerHTML = svg; else if (svg instanceof Node) el.append(svg); else return;
+  el.style.setProperty("--aci", aci.toFixed(2) + "deg");   // eğim CSS'te: basılma animasyonu aynı açıyla oturur
+  const acilis = S.el.sutun.querySelector(".bolum-acilis");
+  if (!acilis) return;
+  acilis.append(el);
+  S.el.exLibris = el;
+  S.exBekliyor = !S.veri.exLibrisBasildi;
+}
+function exLibrisBas() {
+  if (!S.exBekliyor || !S.el.exLibris || S.el.kaydir.scrollTop > S.el.kaydir.clientHeight * 0.5) return;
+  S.exBekliyor = false;
+  S.veri.exLibrisBasildi = true;
+  if (hareketAz()) return;
+  S.el.exLibris.classList.add("basiliyor");
+  zamanla(() => S?.el.exLibris?.classList.remove("basiliyor"), 700);
+}
+
+// ---------- okuma cetveli (OZELLIKLER-7 §6.5, TASARIM-4 4.5) ----------
+// Okunan satır bir bantla öne çıkar, üstü ve altı hafifçe solar. Tutamaktan parmak ya da kalemle sürüklenir, bırakınca
+// en yakın satıra oturur; sayfa çevrilince sayfanın ilk satırına döner; havadaki kalem satırların üstünde gezerken onu
+// izler. Kalem temastayken kıpırdamaz, altına yazılabilir (pointer-events yok, yalnız tutamak dokunulur).
+function cetvelAc(acik) {
+  tercih.cetvel = !!acik;
+  tercihSakla();
+  if (acik) cetvelKur(); else { S.el.cetvel?.remove(); S.el.cetvel = null; }
+}
+function cetvelKur() {
+  if (!tercih.cetvel || S.el.cetvel || !S.yer) return;
+  const tut = h("span", { class: "tutamak", role: "slider", tabindex: "0", "aria-label": "Okuma cetveli: yukarı ve aşağı oklarla satır satır", "aria-orientation": "vertical" });
+  const el = S.el.cetvel = h("div", { class: "okuma-cetveli" }, h("i", { class: "bant", "aria-hidden": "true" }), tut);
+  S.el.okuma.append(el);
+  tut.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { tut.setPointerCapture(e.pointerId); } catch { /* bırakılmış işaretçi */ }
+    const R = S.el.okuma.getBoundingClientRect(), id = e.pointerId;
+    el.classList.add("surukleniyor");
+    const oyna = (q) => { if (q.pointerId === id) cetvelYerlestir(q.clientY - R.top, { oturt: false }); };
+    const birak = (q) => {
+      if (q.pointerId !== id) return;
+      el.classList.remove("surukleniyor");
+      cetvelYerlestir(q.clientY - R.top);
+      tut.removeEventListener("pointermove", oyna);
+      tut.removeEventListener("pointerup", birak);
+      tut.removeEventListener("pointercancel", birak);
+    };
+    tut.addEventListener("pointermove", oyna);
+    tut.addEventListener("pointerup", birak);
+    tut.addEventListener("pointercancel", birak);
+  }, { signal: S.sinyal });
+  tut.addEventListener("keydown", (e) => {
+    const yon = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+    if (!yon) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cetvelYerlestir((S.cetvelY ?? 0) + yon * S.yer.lh);
+  }, { signal: S.sinyal });
+  cetvelIlkSatir();
+}
+// y: bandın ortası, .okuma'ya göre. oturt: en yakın satırın ortasına (blok ve paragraf arası olduğu gibi kalır)
+function cetvelYerlestir(y, { oturt = true } = {}) {
+  const el = S.el.cetvel;
+  if (!el || !S.yer) return;
+  const kay = S.el.kaydir, H = kay.clientHeight;
+  let yy = sinirla(y, 0, H);
+  if (oturt) {
+    const r = satirAl(yy + kay.scrollTop);
+    if (!r.blok && r.alt - r.ust > S.yer.lh * 0.5) yy = (r.ust + r.alt) / 2 - kay.scrollTop;
+  }
+  if (S.cetvelY === yy && el.style.getPropertyValue("--satir-yuk")) return;
+  S.cetvelY = yy;
+  el.style.setProperty("--cetvel-y", yy.toFixed(1) + "px");
+  el.style.setProperty("--satir-yuk", S.yer.lh.toFixed(1) + "px");
+}
+function cetvelIlkSatir() {
+  if (!S.el.cetvel || !S.yer) return;
+  const ust = S.mod === "koltuk" ? koltukSinir().ust : ustPay();
+  cetvelYerlestir(ust + S.yer.lh / 2);
+}
+
+// ---------- dar ekranda kenar notları (TASARIM-4 2.6) ----------
+// Kenar yoksa notlu satırın sağında ince bir kenar işareti (dokununca not açılır) ya da Aa'dan seçilirse not
+// paragrafın hemen altında küçük bir kâğıt şerit. Şeritler yalnız değişince yeniden kurulur.
+function kenarIsaretleri() {
+  const kap = S.el.kenarNotlari, altinda = !!tercih.satirAltiNot;
+  kap.classList.toggle("isaretli", !altinda);
+  satirAltiNotlar(altinda);
+  if (altinda) return;
+  const sR = S.el.sutun.getBoundingClientRect();
+  for (const v of S.veri.vurgular) {
+    if (!v.not || !v.not.trim()) continue;
+    const m = S.el.sutun.querySelector(`mark[data-v="${v.id}"]`);
+    const r = m && m.getClientRects()[0];
+    if (!r) continue;
+    const b = h("button", { type: "button", class: "kenar-isaret", "data-dokunma-yok": "", "aria-label": "Not: " + v.not.trim().slice(0, 40),
+      style: `top:${(r.top - sR.top + r.height / 2 - 8).toFixed(1)}px;--v:${vurguRengi(v.renk)}` });
+    b.addEventListener("click", () => notBalonuAc(v, { kaynak: m }));
+    kap.append(b);
+  }
+}
+function satirAltiNotlar(goster) {
+  const notlu = goster ? S.veri.vurgular.filter((v) => v.not && v.not.trim()) : [];
+  const imza = notlu.map((v) => v.id + ":" + v.not.length + v.renk).join(",");
+  if (imza === S.notYer) return;
+  S.notYer = imza;
+  for (const e of S.el.sutun.querySelectorAll(".satir-alti-not")) e.remove();
+  for (const v of [...notlu].reverse()) {
+    const p = S.pEl[v.son.p];
+    if (!p) continue;
+    const el = h("button", { type: "button", class: "satir-alti-not", "data-dokunma-yok": "", style: `--v:${vurguRengi(v.renk)}`, "aria-label": "Kenar notu: " + v.not.trim() }, v.not.trim());
+    el.addEventListener("click", () => notBalonuAc(v, { kaynak: el }));
+    (S.co?.bloklar.get(v.son.p)?.el || p).after(el);
+  }
+}
+
 // ---------- paneller (3.22) ----------
 function panelAc(taraf, sekme, { zorla = false } = {}) {
   const el = taraf === "sol" ? S.el.solPanel : S.el.sagPanel;
@@ -4633,6 +5118,8 @@ function panelKapat() {
   if (!S.panel) return;
   S.el.solPanel.hidden = true;
   S.el.sagPanel.hidden = true;
+  delete S.el.solPanel.dataset.durak;
+  delete S.el.sagPanel.dataset.durak;
   S.el.perde.hidden = true;
   S.panel = null;
   S.el.icindekiler.setAttribute("aria-pressed", "false");
@@ -4644,11 +5131,45 @@ function panelYenile() {
   else if (S.panel === "sag") sagPanelCiz();
 }
 const darsaKapat = () => { if (dar()) panelKapat(); };
+// Telefonda ve dar dikey ekranda paneller alt çekmecedir (okuma.css, TASARIM-4 2.5): tutamaktan sürüklenir; yukarı
+// çekince tam açılır, aşağı çekince ya da hızlı fırlatınca kapanır. Hareket yalnız translate.
+function cekmeceTutamak(panel) {
+  const t = h("div", { class: "cekmece-tutamak", role: "button", tabindex: "0", "aria-label": panel.dataset.durak === "tam" ? "Çekmeceyi küçült" : "Çekmeceyi büyüt" });
+  const durak = (tam) => { if (tam) panel.dataset.durak = "tam"; else delete panel.dataset.durak; t.setAttribute("aria-label", tam ? "Çekmeceyi küçült" : "Çekmeceyi büyüt"); };
+  t.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    try { t.setPointerCapture(e.pointerId); } catch { /* bırakılmış işaretçi */ }
+    const y0 = e.clientY, iz = [[performance.now(), e.clientY]];
+    let dy = 0;
+    panel.classList.add("suruklen");
+    const oyna = (q) => {
+      dy = q.clientY - y0;
+      iz.push([performance.now(), q.clientY]);
+      while (iz.length > 2 && iz[iz.length - 1][0] - iz[0][0] > 80) iz.shift();
+      panel.style.translate = `0 ${dy < 0 ? dy * 0.35 : dy}px`;   // yukarıda direnç
+    };
+    const birak = () => {
+      for (const [ad, f] of [["pointermove", oyna], ["pointerup", birak], ["pointercancel", birak]]) t.removeEventListener(ad, f);
+      panel.classList.remove("suruklen");
+      panel.style.translate = "";
+      const [a, b] = [iz[0], iz[iz.length - 1]], hiz = b[0] > a[0] ? (b[1] - a[1]) / (b[0] - a[0]) : 0;   // px/ms
+      if (dy > 120 || hiz > 0.5) { if (panel.dataset.durak === "tam" && dy < 240 && hiz <= 0.5) durak(false); else panelKapat(); }
+      else if (dy < -24 || hiz < -0.5) durak(true);
+    };
+    t.addEventListener("pointermove", oyna);
+    t.addEventListener("pointerup", birak);
+    t.addEventListener("pointercancel", birak);
+  });
+  t.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); durak(panel.dataset.durak !== "tam"); } });
+  return t;
+}
 
 function icindekilerCiz() {
   const k = S.yer ? konumAl() : { p: 0, oran: 0 };
   const simdi = P[k.p].b, oran = S.belge.ilerleme || 0;
   S.el.solPanel.replaceChildren(
+    cekmeceTutamak(S.el.solPanel),
     h("div", { class: "panel-baslik" }, h("h2", {}, "İçindekiler"),
       h("button", { type: "button", class: "ikon-dugme", "aria-label": "İçindekiler panelini kapat", onclick: () => panelKapat() }, icon("kapat"))),
     h("div", { class: "panel-govde" },
@@ -4658,7 +5179,7 @@ function icindekilerCiz() {
         h("span", { class: "kunye-ilerleme", style: `--p:${oran}`, "aria-label": `Kitabın ${yuzde(oran)} okundu` }, h("i"))),
       h("nav", { "aria-label": "Bölümler" }, ...BOLUMLER.map((b) => h("button", {
         type: "button", class: "dizin-satir bolum-satir", "aria-current": b.i === simdi ? "true" : null, "data-okundu": b.i < simdi ? "" : null,
-        onclick: () => { darsaKapat(); const el = S.el.sutun.querySelector(`[data-b="${b.i}"]`); kaydirGit(el.offsetTop + S.el.sutun.offsetTop - 8); },
+        onclick: () => { const d = donusHazirla(); darsaKapat(); const el = S.el.sutun.querySelector(`[data-b="${b.i}"]`); kaydirGit(el.offsetTop + S.el.sutun.offsetTop - 8, d); },
       }, h("span", { class: "tur-etiket" }, b.ad), h("span", { class: "kilavuz" }, h("span", {}, b.baslik), h("b", {}, yuzde(b.onceki / TOPLAM))))))));
 }
 
@@ -4671,7 +5192,7 @@ function sagPanelCiz() {
     onclick: () => { S.sekme = id; sagPanelCiz(); },
   }, ad)));
   const kaydirma = S.el.sagPanel.querySelector(".panel-govde")?.scrollTop || 0;
-  S.el.sagPanel.replaceChildren(sekmeler, govde);
+  S.el.sagPanel.replaceChildren(cekmeceTutamak(S.el.sagPanel), sekmeler, govde);
   ({ notlar: notlarSekmesi, izler: izlerSekmesi, kirpintilar: kirpintilarSekmesi, yerimleri: yerImleriSekmesi, arama: aramaSekmesi })[S.sekme](govde);
   govde.scrollTop = kaydirma;
 }
@@ -4689,7 +5210,7 @@ const folyo = (gi, o = 0) => yuzde((P[gi].onceki + (o / Math.max(1, P[gi].metin.
 
 function notlarSekmesi(govde) {
   const vs = S.veri.vurgular;
-  if (!vs.length) return govde.append(bos("Henüz vurgu yok.", "Metni seç ve bir renge dokun. Not eklediğin vurgular burada ve sayfanın kenarında görünür."));
+  if (!vs.length) return govde.append(bos("Bu kitapta henüz not yok.", "Bir satırın altını çiz ya da metni seçip bir renge dokun. Not eklediğin vurgular burada ve sayfanın kenarında görünür."));
   const notlu = vs.filter((v) => v.not && v.not.trim()).length;
   govde.append(h("div", { class: "dizin-ozet" }, `${vs.length} vurgu, ${notlu} kenar notu`));
   for (const v of vs) {

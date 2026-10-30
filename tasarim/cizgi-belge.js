@@ -117,6 +117,8 @@ function basOku(dosya, yeter, sinir = 1 << 20) {
 // ---------- ComicInfo.xml ----------
 function comicInfo(metin) {
   const sonuc = { baslik: "", seri: "", sayi: "", yazar: "", yon: "ltr", kapak: -1, cift: new Set(), olcu: new Map() };
+  // Boş ya da XML olmayan metin ayrıştırılmaz (Firefox boş belge için konsola "no root element" yazar)
+  if (typeof metin !== "string" || !metin.trim().startsWith("<")) return sonuc;
   let doc;
   try { doc = new DOMParser().parseFromString(metin, "application/xml"); } catch { return sonuc; }
   if (!doc || doc.getElementsByTagName("parsererror").length) return sonuc;
@@ -273,9 +275,12 @@ const isciBekleyen = new Map();   // no -> { tamam, hata }
 function isciGovdesi() {
   self.onmessage = async (e) => {
     const { no, kaynak, w, h, yon } = e.data;
+    // Safari 16.4 öncesi işçide OffscreenCanvas yok: iş ana iş parçacığına döner
+    if (typeof OffscreenCanvas === "undefined") { self.postMessage({ no, isciYok: true }); return; }
     try {
+      // resize seçeneklerini tanımayan motorda düz çözülür; drawImage zaten ölçekler
       const bmp = kaynak instanceof Blob
-        ? await createImageBitmap(kaynak, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" })
+        ? await createImageBitmap(kaynak, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).catch(() => createImageBitmap(kaynak))
         : kaynak;
       const oc = new OffscreenCanvas(w, h);
       const c = oc.getContext("2d", { willReadFrequently: true });
@@ -302,6 +307,7 @@ function isciAl() {
       const b = isciBekleyen.get(e.data.no);
       if (!b) return;
       isciBekleyen.delete(e.data.no);
+      if (e.data.isciYok) { isci?.terminate?.(); isci = false; b.hata(Object.assign(new Error("işçi yok"), { isciYok: true })); return; }
       e.data.hata ? b.hata(new Error(e.data.hata)) : b.tamam(e.data.paneller);
     };
     isci.onerror = (e) => {
@@ -327,7 +333,7 @@ function isciyeGonder(is) {
 }
 
 async function anaIsParcacigindaBul({ kaynak, w, h, yon }) {
-  const bmp = kaynak instanceof Blob ? await createImageBitmap(kaynak, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }) : kaynak;
+  const bmp = kaynak instanceof Blob ? await createImageBitmap(kaynak, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).catch(() => createImageBitmap(kaynak)) : kaynak;
   await bosta();
   const cv = document.createElement("canvas");
   cv.width = w; cv.height = h;

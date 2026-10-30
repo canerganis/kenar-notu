@@ -146,3 +146,63 @@
 @media (prefers-reduced-motion: reduce) {
   .cizgi-ust, .cizgi-alt, .cizgi-son, .cizgi-panel-perde { transition-duration: 120ms; }
 }
+
+/* ============ 11. tur · Her cihazda (OZELLIKLER-7 §4, TASARIM-4 1.2 ve 2.8) ============ */
+
+/* Güvenli alanlar: üst çubuk çentiğin altından, yanlar yatay telefonda çentiğin dışından */
+.cizgi-ust { height: calc(56px + env(safe-area-inset-top, 0px)); padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+.cizgi-alt { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Dokunma hedefleri 44 px (Masa ile aynı ölçü) */
+.cizgi-dugme { width: 44px; height: 44px; }
+.cizgi-dugme::before { inset: 0; }
+.cizgi-renkler button { width: 36px; height: 44px; }
+.cizgi-anahtar { height: 44px; }
+.cizgi-anahtar button::before { top: 0; bottom: 0; }
+.cizgi-konum { min-height: 44px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: 8px; background: none; cursor: pointer; text-align: left; }
+.cizgi-konum:hover { background: #FFFFFF12; }
+
+/* Panel görünümü: dışarısı derin siyah, kare kenarında ince bir ışık çizgisi (kare yüzmesin, çerçevelensin) */
+.cizgi-panel-perde i { background: #0B0B0CEB; }
+.cizgi-cerceve { position: absolute; z-index: 2; pointer-events: none; opacity: 0; border-radius: 1px; box-shadow: 0 0 0 .5px #FFFFFF38;
+  transition: opacity 200ms var(--egri-kagit, ease-out); }
+.cizgi-cerceve.acik { opacity: 1; }
+
+/* Panel ipucu: ilk açılışta altta cam fiş */
+.cizgi-fis { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 6; translate: -50% 0;
+  width: max-content; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 14px; text-align: center;
+  background: var(--cz-cam); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); box-shadow: 0 0 0 .5px #FFFFFF1F;
+  font: 500 14px/20px var(--f-arayuz, system-ui, sans-serif); color: var(--cz-yazi); animation: cz-fis-gel 240ms var(--egri-kagit, ease-out); }
+.cizgi-fis.gidiyor { opacity: 0; transition: opacity 200ms; }
+@keyframes cz-fis-gel { from { opacity: 0; transform: translateY(8px); } }
+
+/* Telefonda alt çubuk tek satır: konum, görünüm ve yön; küçük resim şeridi konuma dokununca açılır */
+.cizgi-yon-tel { display: none; }
+.cizgi-konum { white-space: nowrap; }
+@media (max-width: 599px) {
+  .cizgi:not(.serit-acik) .cizgi-serit { display: none; }
+  .cizgi-alt .cizgi-yon { display: none; }
+  .cizgi-alt .cizgi-yon-tel { display: inline-grid; }
+  .cizgi-alt { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .cizgi-alt-satir { flex-wrap: nowrap; gap: 8px; }
+  .cizgi-anahtar button { padding: 0 8px; font-size: 12px; }
+  .cizgi-yon button { min-width: 0; }
+  .cizgi-ust .cizgi-ayrac { margin: 0 2px; }
+}
+
+/* Yatay telefon: çubuklar ince */
+@media (max-height: 499px) and (orientation: landscape) {
+  .cizgi-ust { height: calc(48px + env(safe-area-inset-top, 0px)); }
+  .cizgi-alt { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
+  .cizgi-kucuk canvas { height: 48px; width: calc(48px * var(--r, .66)); }
+}
+
+/* İki parmak: halka ve fiş (okuma.css'tekinin yedeği; kabuk verirse onunki geçer) */
+:where(.parmak-halka) { position: fixed; z-index: var(--z-pencere, 70); width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px #E9E5DD; animation: cz-halka 240ms ease-out forwards; }
+:where(.parmak-halka.bos) { opacity: .45; }
+@keyframes cz-halka { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+:where(.cizgi-geri-fis) { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: var(--z-pencere, 70);
+  height: 40px; padding: 0 16px; border-radius: 20px; display: flex; align-items: center; background: rgb(14 14 15 / .82); color: #E9E5DD;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); font: 500 13px/18px var(--f-arayuz, system-ui, sans-serif); }
+@media (prefers-reduced-motion: reduce) { :where(.parmak-halka) { animation-duration: 1ms; } .cizgi-fis { animation: none; } }

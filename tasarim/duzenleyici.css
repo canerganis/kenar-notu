@@ -17,7 +17,7 @@
   transition: translate var(--sure-orta) var(--egri-kagit); }
 .ust-cubuk::after { content: ""; position: absolute; left: 16px; right: 16px; bottom: -4px; height: 1px; background: var(--line); opacity: .6; pointer-events: none; }
 .geri { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; height: 44px; padding: 0 12px 0 8px; border-radius: var(--r-sm); color: var(--ink-2); font: 500 14px var(--f-arayuz); }
-@media (hover: hover) { .geri:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .geri:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink); } }
 .geri:active { background: color-mix(in srgb, var(--ink) 9%, transparent); }
 @media (max-width: 899px) { .geri span { display: none; } }
 .belge-baslik { min-width: 0; text-align: center; }
@@ -69,6 +69,8 @@
    Sayfa duzenleyici.js asistanYeri() ile yeni genişliğe sığar. Çubuk artık kendi kabında ortalanır: --sag-ortu 0. */
 .duzenleyici.asistan-acik > .calisma, .duzenleyici.asistan-acik > .ust-cubuk { right: var(--sag-panel, 0px); }
 .duzenleyici.asistan-acik > .calisma { --sag-ortu: 0px; }
+/* Yan asistan açıkken üst çubuk daralır (iPad Pro 13 dikey): sayfa bilgisi bilgi çipinde zaten var, başlıkla çakışmasın */
+@media (min-width: 1000px) and (max-width: 1279px) { .duzenleyici.asistan-acik .ust-cubuk .belge-baslik > button { display: none; } }
 /* Notlar paneli ile asistan aynı yanda açılmaz: biri açılınca öteki kapanır (duzenleyici.js asistanYeri, panelDegistir) */
 .masa-kap { position: relative; flex: 1; min-width: 0; overflow: hidden; container: masa / inline-size;
   background:
@@ -104,7 +106,7 @@
 /* Glif araçlar */
 .arac { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; color: var(--ink-2);
   transition: background-color var(--sure-kisa); }
-@media (hover: hover) { .arac:not(:disabled):hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .arac:not(:disabled):hover { background: var(--surface-2); } }
 .arac:active { translate: 0 1px; background: var(--surface-3); }
 .arac[aria-pressed="true"] { background: var(--surface-2); box-shadow: var(--golge-oyuk); color: var(--accent); }
 .arac[aria-pressed="true"] .i { stroke-width: 1.8; }
@@ -310,7 +312,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 
 /* Anahtar, iki dokunuşla onay, parçalı seçici, kâğıt diskleri ve hedera ortak denetimlerdir: tasarim.css */
 .fis .anahtar-satir { padding: 0 12px; border-radius: var(--r-md); }
-@media (hover: hover) { .fis .anahtar-satir:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .fis .anahtar-satir:hover { background: var(--surface-2); } }
 
 /* ---------- 3.14 Sayfa ---------- */
 /* --ph: sayfanın kendi yüksekliği (sayfa birimi); gerçek PDF'te 800 × pdfH / pdfW, yoksa A4 */
@@ -385,7 +387,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .sayfa-kap.kenarli .kenar-tutamak { left: calc(1072px * var(--k) - 6px); }
 .sayfa-kap.kenarli .kenar-tutamak .i { rotate: 180deg; }
 .kenar-tutamak.yakin { translate: 4px 0; }   /* S Pen havada sayfanın sağ %12'sindeyken */
-@media (hover: hover) { .kenar-tutamak:hover { translate: 4px 0; } }
+@media (hover: hover) and (pointer: fine) { .kenar-tutamak:hover { translate: 4px 0; } }
 .kenar-tutamak.gizli-not::after { /* kapalı kenarda çizim var */ content: ""; position: absolute; left: 15px; bottom: 8px; width: 5px; height: 5px; border-radius: 50%; background: #E9C46A; }
 .sutun.olcekleniyor .kenar-tutamak { transition: none; }
 
@@ -398,13 +400,13 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .ara-ekle::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; opacity: 0; transition: opacity var(--sure-kisa); pointer-events: none;
   background: repeating-linear-gradient(90deg, var(--line-strong) 0 6px, transparent 6px 11px); }
 .ara-ekle.yakin > button span, .ara-ekle:focus-within > button span, .ara-ekle.yakin::before, .ara-ekle.acik > button span, .ara-ekle.acik::before { opacity: 1; }
-@media (hover: hover) { .ara-ekle:hover > button span, .ara-ekle:hover::before { opacity: 1; } }
+@media (hover: hover) and (pointer: fine) { .ara-ekle:hover > button span, .ara-ekle:hover::before { opacity: 1; } }
 
 /* Kâğıt yelpazesi: düğmenin üstünde açılan küçük fiş, aralığı itmez */
 .fis.yelpaze { display: flex; gap: 10px; min-width: 0; padding: 10px 12px 8px; transform-origin: bottom center; }
 .yelpaze .mini-yaprak { min-width: 52px; padding: 4px 0; }
 .yelpaze .mini-yaprak i { width: 52px; height: 74px; }
-@media (hover: hover) { .yelpaze .mini-yaprak:hover i { translate: 0 -4px; } }
+@media (hover: hover) and (pointer: fine) { .yelpaze .mini-yaprak:hover i { translate: 0 -4px; } }
 .ara-ekle .fis.yelpaze { left: 50%; bottom: calc(100% - 4px); translate: -50% 0; }
 
 /* ---------- 3.17 Yer imi kurdelesi (sayfada) ---------- */
@@ -572,14 +574,14 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .sayfa-ekle { display: grid; place-items: center; align-content: center; gap: 4px; width: 136px; height: 70px; margin: 8px auto 0; border: 1px dashed var(--edge); border-radius: var(--r-sm);
   color: var(--ink-2); font: 500 13px var(--f-arayuz); }
 .sayfa-ekle .i { width: 20px; height: 20px; }
-@media (hover: hover) { .sayfa-ekle:hover { background: var(--surface); } }
+@media (hover: hover) and (pointer: fine) { .sayfa-ekle:hover { background: var(--surface); } }
 
 /* Sekmeler: klasör sekmesi yerine sade yazı; seçili olanın altında mürekkep çizgi (Notion sessizliği) */
 .sekmeler { display: flex; align-items: flex-end; gap: 4px; height: 52px; padding: 0 12px; flex: none; border-bottom: 0; box-shadow: 0 .5px 0 var(--line-strong); }
 .sekme { position: relative; height: 44px; padding: 0 10px; margin-bottom: 0; white-space: nowrap;
   border: 0; border-radius: var(--r-sm) var(--r-sm) 0 0; background: none; color: var(--ink-2); font: 500 13px/1 var(--f-arayuz); }
 .sekme::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 6px; }
-@media (hover: hover) { .sekme:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 4%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .sekme:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 4%, transparent); } }
 .sekme[aria-selected="true"] { height: 44px; background: none; color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--ink); }
 .sekmeler .kapat-dugme { margin-left: auto; align-self: center; }
 .panel-govde { flex: 1; overflow-y: auto; background: var(--surface); overscroll-behavior: contain; }
@@ -588,7 +590,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .dizin-ozet { padding: 12px 20px; font: 400 13px/18px var(--f-arayuz); color: var(--muted); border-bottom: .5px solid var(--line-strong); }
 .dizin-baslik { padding: 16px 20px 6px; }
 .dizin-satir { display: grid; grid-template-columns: 44px 1fr; gap: 8px; width: 100%; min-height: 56px; padding: 14px 20px 14px 12px; border-bottom: .5px solid var(--line-strong); text-align: left; color: var(--ink); }
-@media (hover: hover) { button.dizin-satir:hover, .dizin-satir .satir-dugme:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { button.dizin-satir:hover, .dizin-satir .satir-dugme:hover { background: var(--surface-2); } }
 .dizin-satir .folyo { font: 400 11px/22px var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; padding-right: 4px; }
 .dizin-satir .el { font: 500 19px/1.2 var(--f-el); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .dizin-satir .duz { font: 400 14px/1.45 var(--f-okuma); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -785,7 +787,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
   font-variation-settings: "opsz" 18; color: var(--ink); }
 .defter-sec span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .defter-sec .i { flex: none; width: 18px; height: 18px; color: var(--muted); }
-@media (hover: hover) { .defter-sec:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .defter-sec:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .yan-govde { position: relative; flex: 1; min-height: 0; }
 .yan-cerceve { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
 .defter-fis { width: 300px; }
@@ -850,7 +852,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .damga-karo { height: 44px; border-radius: var(--r-sm, 8px); font: 400 20px/1 var(--f-sembol, var(--f-okuma)); color: var(--ink); }
 .damga-karo[aria-pressed="true"] { background: var(--surface-2); box-shadow: var(--golge-oyuk); }
 .damga-karo:active { background: var(--surface-3); }
-@media (hover: hover) { .damga-karo:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .damga-karo:hover { background: var(--surface-2); } }
 
 /* Ses: oynatılan kaydın o anından sonra eklenenler soluk (şeridin yerleşimi ses.css'te) */
 :is(.not, .metin-kutusu, .damga-nesne, .gorsel-nesne, .asistan-notu).ses-soluk { opacity: .25; transition: opacity var(--sure-kisa, 120ms); }
@@ -1035,5 +1037,131 @@ body.yaziyor .kenar-satir { transition: none; }
 .ceviri-notu__alt button.nota-cevir { font-weight: 600; color: #1C1B19; }
 .ceviri-notu__alt button:active { background: #2A252014; }
 .ceviri-notu__alt button:disabled { opacity: .4; }
-@media (hover: hover) { .ceviri-notu__alt button:not(:disabled):hover, .ceviri-notu .kapat:hover { background: #2A25200F; } }
+@media (hover: hover) and (pointer: fine) { .ceviri-notu__alt button:not(:disabled):hover, .ceviri-notu .kapat:hover { background: #2A25200F; } }
 .sayfa-kap[data-sayfa="koyu"] .ceviri-notu { background: linear-gradient(to bottom, #0000001A 0, transparent 26px), color-mix(in srgb, var(--n) 86%, #000); }
+
+/* ---------- 11. tur: her cihazda (OZELLIKLER-7 §3, §4; TASARIM-4 2.2, 2.7) ---------- */
+/* Güvenli alan: üst çubuk çentiğin altından başlar; yanlarda (yatay telefon) çentik payı */
+.duzenleyici:not(.gomulu) { --ust-cubuk: calc(56px + env(safe-area-inset-top, 0px)); }
+.duzenleyici:not(.gomulu) .ust-cubuk { padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px)); }
+[data-arac-konum="sol"] .arac-cubugu { left: calc(12px + env(safe-area-inset-left, 0px)); }
+[data-arac-konum="sag"] .arac-cubugu { right: calc(12px + var(--sag-ortu) + env(safe-area-inset-right, 0px)); }
+.bilgi-cip { right: calc(20px + env(safe-area-inset-right, 0px)); }
+/* Çip sağ altta sayfaların kenar tutamaklarının üstüne düşebiliyor (matris bulgu 13): dinlenen çip (2 sn hareketsizlik)
+   dokunuşu alttakine bırakır ve daha da solar. Sol alta taşımak Tab S8'de sayfa metninin üstüne düşürüyordu. */
+.bilgi-cip.dinleniyor { pointer-events: none; opacity: .35; }
+/* "s. 47 / 312": dokunma alanı yalnız dikeyde büyür (yatayda taşma sayılıyordu) */
+.belge-baslik button::before { inset: -14px 0; }
+.belge-baslik > button { min-width: 44px; max-width: 100%; white-space: nowrap; }
+/* Uzun basışta büyüteç ve bağlam balonu çıkmasın (iOS); metin seçimi yalnız not ve metin kutularında */
+.masa { overscroll-behavior: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.masa :is(.not-yazi, .metin-ic, .ceviri-notu__metin, textarea, input, [contenteditable="true"]) { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+
+/* Telefonun dışında orta şerit görünmez bir sarmal: çubuk eskisi gibi tek sıra */
+.tel-kaydir { display: contents; }
+/* Masaüstünde çubuğun son kalınlık örneği kesilmesin: bağlam bölgesi içeriği kadar (ayraç, 5 damla, 3 örnek = 377 px) */
+.arac-cubugu { padding-inline-end: 8px; }
+@container masa (min-width: 1101px) { .baglam { width: 380px; } }
+@container masa (max-width: 1100px) {
+  .baglam { width: 44px; }
+  .baglam > :not(.murekkep-dugme) { display: none; }
+  .baglam .murekkep-dugme { display: grid; }
+}
+
+/* Koyu temada koyu mürekkep damlası (Siyah) zeminde kaybolmasın: dışta kıl halka (TASARIM-4 1.1.8) */
+:root[data-theme="dark"] :is(.damla:not([aria-pressed="true"]), .murekkep-dugme) i { box-shadow: inset 0 0 0 1px var(--damla-kontur), 0 0 0 1px #FFFFFF2E; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.damla:not([aria-pressed="true"]), .murekkep-dugme) i { box-shadow: inset 0 0 0 1px var(--damla-kontur), 0 0 0 1px #FFFFFF2E; } }
+
+/* Ex libris: PDF'in ilk sayfasında sağ alt, sayfayla ölçeklenir; kalem dokunuşu geçer */
+.ex-libris-masa { position: absolute; z-index: 2; right: calc(53px * var(--k)); bottom: calc(53px * var(--k)); width: calc(68px * var(--k)); height: calc(68px * var(--k));
+  opacity: .88; mix-blend-mode: multiply; pointer-events: none; }
+.ex-libris-masa svg { display: block; width: 100%; height: 100%; }
+.sayfa-kap[data-sayfa="koyu"] .ex-libris-masa { mix-blend-mode: screen; opacity: .7; filter: invert(1) hue-rotate(180deg); }
+.sayfa-kap.kenarli .ex-libris-masa { right: calc((53px + 272px) * var(--k)); }
+
+/* İki ve üç parmakla dokunuş geri bildirimi (TASARIM-4 4.6): halka ve fiş kabukta (ortak.js parmakGeriBildirim).
+   Masa'da araç çubuğu alttayken fiş çubuğun üstünde durur. */
+body:has(.duzenleyici[data-arac-konum="alt"]) .geri-fis { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 599px) { body:has(.duzenleyici[data-arac-konum="alt"]) .geri-fis { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Alt çekmecedeki Masa içerikleri (cekmece.js): fiş, balon ve panel kendi kabını bırakır */
+.masa-cekmece .fis.cekmecede { position: static; width: auto; min-width: 0; max-height: none; overflow: visible; margin: 0 -12px; padding: 0 0 8px;
+  background: none; box-shadow: none; border-radius: 0; animation: none; transform: none; }
+.masa-cekmece .fis.cekmecede .fis-satir { min-height: 52px; }
+.masa-cekmece .balon.cekmecede { position: static; width: auto; padding: 0 0 8px; background: none; box-shadow: none; border-radius: 0; animation: none; transform: none; }
+.masa-cekmece .balon.cekmecede::before { display: none; }
+.masa-cekmece .balon.cekmecede .balon-baslik h3 { display: none; }
+.masa-cekmece .panel.cekmecede { position: static; display: flex; flex-direction: column; width: auto; max-height: none; min-height: 100%; margin: 0 -20px;
+  border: 0; border-radius: 0; box-shadow: none; animation: none; background: none; }
+.masa-cekmece .panel.cekmecede .panel-baslik { display: none; }   /* başlık çekmecenin başlığında */
+.masa-cekmece .panel.cekmecede .panel-govde { border-radius: 0; }
+
+/* Dar ama yatay pencerede (yatay telefon, 1000 px altı masaüstü) paneller yandadır */
+@media (max-width: 999px) and (orientation: landscape) {
+  .calisma > .panel { position: relative; top: auto; left: auto; right: auto; z-index: auto; margin-top: var(--ust-cubuk); max-height: none;
+    border-radius: 0; box-shadow: none; animation: none; }
+  .calisma > .panel-sol { width: 216px; }
+  .calisma > .panel-sag { width: 300px; }
+  .panel-perde { display: none !important; }
+}
+
+/* ---------- telefon (599 px altı): TASARIM-4 2.7 ---------- */
+@media (max-width: 599px) {
+  /* Üst çubuk: geri, tek satır başlık, ⋯ ve mod anahtarı. Sayfa bilgisi bilgi çipinde; Ara, yer imi, Sayfalar ⋯ içinde */
+  .duzenleyici .ust-cubuk { gap: 4px; }
+  .duzenleyici .ust-cubuk .belge-baslik b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: none; }
+  .duzenleyici .ust-cubuk .belge-baslik > button { display: none; }
+  .duzenleyici .ust-araclar > :not(.ikon-dugme[aria-haspopup="menu"]):not(.mod-anahtari) { display: none; }
+  .duzenleyici.ses-acik .ust-araclar > .ses-kayit-dugme { display: grid; }
+
+  /* Sayfa: yanlarda 8 px; kenar tutamağının dokunma alanı sayfanın sağında */
+  .sutun { padding-left: 14px !important; padding-right: 26px !important; }
+  .duzenleyici .masa { scrollbar-width: none; }
+  .duzenleyici .masa::-webkit-scrollbar { display: none; }
+
+  /* Alt raf: kenardan kenara, cam yok (alttaki tuval her vuruşta boyanır). Solda geri al, ortada kayan şerit, sağda kalem ucu */
+  [data-arac-konum="alt"] .arac-cubugu { left: 0; right: 0; bottom: 0; top: auto; translate: none; max-width: none; width: auto;
+    display: grid; grid-template-columns: 48px minmax(0, 1fr) 52px; align-items: center; gap: 0;
+    height: calc(60px + env(safe-area-inset-bottom, 0px)); padding: 0 max(4px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(4px, env(safe-area-inset-left, 0px));
+    overflow: visible; border-radius: 0; background: var(--surface); box-shadow: 0 -.5px 0 var(--line-strong);
+    -webkit-backdrop-filter: none; backdrop-filter: none; -webkit-mask-image: none; mask-image: none; }
+  [data-arac-konum="alt"] .arac-cubugu > .grup .arac:not(:first-child) { display: none; }   /* yinele: üç parmakla dokun ya da geri al fişinde */
+  [data-arac-konum="alt"] .tel-kaydir { display: flex; align-items: center; gap: 2px; min-width: 0; height: 60px; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x proximity; scrollbar-width: none; overscroll-behavior-x: contain; padding-inline: 4px 16px; touch-action: pan-x; }
+  [data-arac-konum="alt"] .tel-kaydir::-webkit-scrollbar { display: none; }
+  [data-arac-konum="alt"] .tel-kaydir > * { flex: none; scroll-snap-align: start; }
+  [data-arac-konum="alt"] .tel-kaydir > .ayrac:first-child { display: none; }
+  [data-arac-konum="alt"] .tel-kaydir.tasiyor-son { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+  [data-arac-konum="alt"] .tel-kaydir.tasiyor-bas { -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px); mask-image: linear-gradient(90deg, transparent, #000 16px); }
+  [data-arac-konum="alt"] .tel-kaydir.tasiyor-bas.tasiyor-son { -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent); }
+  /* Kalem ucu: seçili renk ve kalınlığın damlası, halkalı */
+  [data-arac-konum="alt"] .baglam { width: 52px; justify-content: center; }
+  [data-arac-konum="alt"] .baglam > :not(.murekkep-dugme) { display: none; }
+  [data-arac-konum="alt"] .baglam .murekkep-dugme { display: grid; place-items: center; width: 48px; height: 48px; }
+  :root:not(.yok) [data-arac-konum="alt"] .baglam .murekkep-dugme i { box-shadow: inset 0 0 0 1px var(--damla-kontur), 0 0 0 3px var(--surface), 0 0 0 4px var(--line-strong); }
+  [data-arac-konum="alt"] .sutun { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px) + 24px); }
+  .duzenleyici.okuma-modu[data-arac-konum="alt"] .arac-cubugu { translate: 0 100%; }
+
+  /* Bilgi çipi üst çubuğun hemen altında ortada; 2 sn sonra söner ve dokunuşu bırakır */
+  .bilgi-cip, [data-arac-konum="alt"] .bilgi-cip { top: calc(var(--ust-cubuk) + var(--ses-serit, 0px) + 8px); bottom: auto; left: 50%; right: auto; translate: -50% 0; }
+  .bilgi-cip.dinleniyor { opacity: 0; pointer-events: none; }
+
+  /* Ses şeridi tek satır: dalga ve not gizli, süre ve durdur kalır (TASARIM-4 2.7) */
+  .ses-serit .ses-iz, .ses-serit .ses-not { display: none; }
+}
+
+/* ---------- yatay telefon: çubuk solda dikey, üst çubuk 48 px ---------- */
+@media (max-height: 499px) and (orientation: landscape) {
+  .duzenleyici:not(.gomulu) { --ust-cubuk: 48px; }
+  .duzenleyici .ust-cubuk .belge-baslik b { white-space: nowrap; -webkit-line-clamp: none; display: block; }
+  .duzenleyici .ust-cubuk .belge-baslik > button { display: none; }
+  :is([data-arac-konum="sol"], [data-arac-konum="sag"]) .arac-cubugu { top: calc(var(--ust-cubuk) + var(--ses-serit, 0px) + 8px); translate: 0 0;
+    max-height: calc(100% - var(--ust-cubuk) - var(--ses-serit, 0px) - 16px - env(safe-area-inset-bottom, 0px)); }
+  [data-arac-konum="sol"] .sutun { padding-left: calc(84px + env(safe-area-inset-left, 0px)) !important; }
+  .bilgi-cip { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Masa'da kalem (ya da çizen parmak) temastayken çekmece ve asistan canlanmaz (TASARIM-4 2.5 madde 6, kabul 5).
+   Kabuğun :root[data-kalem="temas"] kuralının Masa karşılığı: kökte ek öznitelik yazılmaz, mevcut body.yaziyor kullanılır. */
+body.yaziyor :is(.alt-cekmece, .alt-cekmece-perde, .asistan, .geri-fis) { transition: none !important; animation: none !important; }

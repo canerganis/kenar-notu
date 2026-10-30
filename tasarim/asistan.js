@@ -35,7 +35,7 @@ const HATALAR = {
   istek: { lamba: "hata", metin: "Sağlayıcı isteği kabul etmedi. Model adını ve ayarları kontrol et.", eylem: "Ayarları aç" },
   sinir: { lamba: "denenmedi", metin: "Sağlayıcının sınırına ulaşıldı. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
   sunucu: { lamba: "denenmedi", metin: "Sağlayıcı şu an cevap veremiyor. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
-  ag: { lamba: "", metin: "Bağlantı yok. İnternet gelince yeniden dene.", eylem: "Yeniden dene" },
+  ag: { lamba: "", metin: "Şu an bağlantı yok. Bağlantı gelince yeniden dene; okuma, yazma ve arama internetsiz çalışır.", eylem: "Yeniden dene" },
   ret: { lamba: null, metin: "Bu soruya cevap verilemedi.", eylem: "Soruyu değiştir" },
 };
 
@@ -1095,7 +1095,7 @@ function panelKur() {
   P.pulModel = h("span", { class: "model" });
   P.pul = h("span", { class: "cam cam-k as-pul" }, P.pulLamba, P.pulAd, P.pulModel);
   P.kapat = h("button", { type: "button", class: "ikon-dugme", "aria-label": "Asistanı kapat", onclick: () => kapat() }, icon("kapat"));
-  P.tutamak = h("div", { class: "asistan-tutamak", "aria-hidden": "true" });
+  P.tutamak = h("div", { class: "asistan-tutamak", role: "button", tabindex: "0", "aria-label": "Asistanı büyüt" });
   P.iz = izOlustur();
   P.izNot = P.iz.querySelector(".iz-not");
   P.kaynak = h("section", { class: "as-kaynak", "aria-label": "Kaynak" });
@@ -1147,6 +1147,7 @@ function ac() {
   if (S.acik) return;
   S.acik = true;
   S.oncekiOdak = document.activeElement;
+  durakYaz();
   P.el.classList.add("acik");
   sagPanelYaz();
   izCiz();
@@ -1164,11 +1165,18 @@ function kapat() {
   bus.emit("asistan:acik", false);
   beklemeHatirlat();
 }
+// Alt çekmece olduğu yer (TASARIM-4 2.5): telefon ve dikey tablet. 1000 px ve üstü dikey (iPad 13) ve yatayda yan panel.
+const ALT_MEDYA = matchMedia("(max-width: 699px), (max-width: 999px) and (orientation: portrait)");
+// Çekmecenin durağı: telefonda "tam", dikey tablette "yarim" (sayfanın üst yarısı görünür kalır)
+function durakYaz(ad = matchMedia("(max-width: 599px)").matches ? "tam" : "yarim") {
+  if (ALT_MEDYA.matches) P.el.dataset.durak = ad; else delete P.el.dataset.durak;
+  P.tutamak.setAttribute("aria-label", P.el.dataset.durak === "tam" ? "Asistanı küçült" : "Asistanı büyüt");
+}
 // Panel açıkken yan panel olarak ne kadar yer kapladığı kökte --sag-panel'de durur (Masa araç çubuğu ona göre ortalanır).
 // Dikeyde panel alttan çekmecedir, yan yer kaplamaz: 0.
 function sagPanelYaz() {
   const kok = document.documentElement.style;
-  const yan = S.acik && !matchMedia("(orientation: portrait), (max-width: 699px)").matches;
+  const yan = S.acik && !ALT_MEDYA.matches;
   if (yan) kok.setProperty("--sag-panel", `${P.el.offsetWidth || 400}px`);
   else kok.removeProperty("--sag-panel");
 }
@@ -1180,23 +1188,37 @@ function beklemeHatirlat() {
     { etiket: "Cevabı getir", calistir: () => { ac(); cevabiGetir(); } });
 }
 
-// Dikeyde alttan çekmece: tutamağı aşağı sürükleyince kapanır
+// Dikeyde alt çekmece (TASARIM-4 2.5 davranışı): tutamaktan sürüklenir, yarım ve tam durakta durur,
+// aşağı fırlatınca bir alt durağa iner ya da kapanır; dokununca durak değişir. Hareket yalnız transform.
 function tutamakKur() {
+  const durakDegistir = () => { durakYaz(P.el.dataset.durak === "tam" ? "yarim" : "tam"); };
+  P.tutamak.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); durakDegistir(); } });
   P.tutamak.addEventListener("pointerdown", (e) => {
-    if (e.button > 0) return;
+    if (e.button > 0 || !ALT_MEDYA.matches) return;
     const y0 = e.clientY, t0 = performance.now();
-    let dy = 0;
+    const bas = new DOMMatrixReadOnly(getComputedStyle(P.el).transform).m42 || 0;   // durağın şimdiki kayması (px)
+    let dy = 0, son = [[t0, y0]];
     try { P.tutamak.setPointerCapture(e.pointerId); } catch { /* yakalama yoksa da sürer */ }
     P.el.style.transition = "none";
-    const hareket = (ev) => { dy = Math.max(0, ev.clientY - y0); P.el.style.transform = `translateY(${dy}px)`; };
+    const hareket = (ev) => {
+      dy = ev.clientY - y0;
+      const y = bas + dy;
+      P.el.style.transform = `translateY(${y < 0 ? y * 0.35 : y}px)`;   // tam durağın ötesinde direnç
+      son.push([performance.now(), ev.clientY]);
+      if (son.length > 6) son.shift();
+    };
     const birak = () => {
       P.tutamak.removeEventListener("pointermove", hareket);
       P.tutamak.removeEventListener("pointerup", birak);
       P.tutamak.removeEventListener("pointercancel", birak);
       P.el.style.transition = "";
       P.el.style.transform = "";
-      const hiz = dy / Math.max(1, performance.now() - t0);
-      if (dy > P.el.offsetHeight * 0.28 || (dy > 24 && hiz > 0.6)) kapat();
+      const ilk = son.find((x) => performance.now() - x[0] <= 80) || son[0], s1 = son[son.length - 1];
+      const hiz = s1[0] > ilk[0] ? (s1[1] - ilk[1]) / (s1[0] - ilk[0]) : 0;
+      if (Math.abs(dy) < 6 && performance.now() - t0 < 300) { durakDegistir(); return; }
+      const tam = P.el.dataset.durak === "tam";
+      if (hiz > 0.5 || dy > P.el.offsetHeight * 0.22) { if (tam && dy < P.el.offsetHeight * 0.45) durakYaz("yarim"); else kapat(); return; }
+      if (hiz < -0.5 || dy < -40) durakYaz("tam");
     };
     P.tutamak.addEventListener("pointermove", hareket);
     P.tutamak.addEventListener("pointerup", birak);
@@ -1861,7 +1883,7 @@ export function kur() {
   }, true);
 
   // Döndürünce panel yandan alta geçer: --sag-panel tazelenir
-  matchMedia("(orientation: portrait), (max-width: 699px)").addEventListener("change", sagPanelYaz);
+  ALT_MEDYA.addEventListener("change", () => { durakYaz(); sagPanelYaz(); });
 
   document.addEventListener("visibilitychange", () => {
     izCiz();

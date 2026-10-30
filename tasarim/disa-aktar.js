@@ -13,7 +13,8 @@ import { PDFDocument, PDFHexString } from "../lib/pdf-lib.esm.min.js";
 import { genislik } from "./kalem.js";
 import { PW, PH, PDF_PAGES, drawTemplate } from "./sayfalar.js";
 import * as SAYFALAR from "./sayfalar.js";
-import { toast } from "./ortak.js";
+import { toast, store } from "./ortak.js";
+import * as ORTAK from "./ortak.js";   // exLibrisAci kabukla aynı anda geldi: yoksa sabit eğim
 
 const KW = 272, TW = PW + KW;          // kenar alanı (duzenleyici.js ile aynı)
 const A4_W = 595.28;                   // örnek ve defter sayfaları A4 genişliğinde
@@ -603,7 +604,7 @@ const kenardaIcerik = (v) =>
   (v.gorseller || []).some((g) => g.x + g.w > PW + 20);
 
 // Sayfanın notlarını (ve gerekirse arka planını) yazar. arka: async (Y) => {} sayfa zemini.
-async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka }) {
+async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka, exLibris = null }) {
   const kutu = gorunurKutu(page), aci = page.getRotation().angle || 0;
   const M = matris(kutu, aci, s);
   const genis = !!(v.kenar || kenardaIcerik(v));
@@ -630,8 +631,79 @@ async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka }) {
   for (const m of v.metinler || []) await (m.tur === "asistan" ? asistanYaz(Y, m) : metinYaz(Y, m, sinir));
   for (const b of v.bantlar || []) await bantYaz(Y, b);
   for (const n of v.notlar || []) await notYaz(Y, n);
+  if (exLibris) await exLibrisYaz(Y, exLibris, s, hBirim, exLibris.aci);
   Y.push("Q");
   Y.bitir();
+}
+
+// ---------- ex libris (TASARIM-4 4.1) ----------
+// Kabuk mührü store.ayarlar.exLibris'e yazar (ortak.js): { vuruslar: [[[x, y, basınç], ...]] (0..1, 280'lik karede),
+// cerceve: "daire" | "oval" | "yok", renk, yazi }. Geometri ortak.js exLibrisSvg ile aynı (100 birimlik kare);
+// PDF'te vektör çizilir, yalnız halka yazısı (Türkçe harfler standart yazı tipinde yok) görüntüdür.
+const MM = 72 / 25.4;
+export function exLibrisAl(ayarlar = store?.ayarlar) {
+  const a = ayarlar || {}, ex = a.exLibris;
+  if (!ex || typeof ex !== "object" || !Array.isArray(ex.vuruslar)) return null;
+  // Ayarlar > "Dışa aktarırken ex libris ekle" (varsayılan açık) ve sürprizler anahtarı
+  if (ex.pdf === false || ex.disaAktar === false || a.exLibrisPdf === false || a.exLibrisDisa === false) return null;
+  if (a.surprizler === false || a.surprizler?.exLibris === false) return null;
+  const vuruslar = ex.vuruslar.filter(Array.isArray)
+    .map((v) => v.filter((q) => Array.isArray(q) && Number.isFinite(+q[0]) && Number.isFinite(+q[1])).map((q) => [+q[0], +q[1], Number.isFinite(+q[2]) ? +q[2] : 0.5]))
+    .filter((v) => v.length);
+  if (!vuruslar.length) return null;
+  const cerceve = ["daire", "oval", "yok"].includes(ex.cerceve) ? ex.cerceve : "daire";
+  return { vuruslar, cerceve, renk: /^#[0-9a-f]{6}$/i.test(ex.renk || "") ? ex.renk : "#1C1B19",
+    yazi: String(ex.yazi || "").trim().toLocaleUpperCase("tr").slice(0, 18) };
+}
+async function exLibrisYaz(Y, ex, s, hBirim, aci = -4) {
+  const boy = (18 * MM) / s, pay = (14 * MM) / s;            // 18 mm mühür, kenarlardan 14 mm
+  const x0 = PW - pay - boy, y0 = hBirim - pay - boy, b = boy / 100, cx = x0 + 50 * b, cy = y0 + 50 * b;
+  const r = renkCoz(ex.renk), yazi = ex.cerceve !== "yok" ? ex.yazi : "";
+  const ry = ex.cerceve === "oval" ? 37 : 47, disR = 47;
+  const icR = yazi ? disR - 11 : disR - 4.2, icRy = yazi ? ry - 11 : ry - 4.2;
+  const rd = ex.cerceve === "yok" ? 42 : Math.min(icR, icRy) - 3, kare = (2 * rd * 280) / 220, o = 50 - kare / 2;
+  const u = 100 / 72;   // 72 px'lik mühürde bir pikselin birimi (çizgi kalınlıkları ekrandakiyle aynı oranda)
+  await donuk(Y, cx, cy, aci, async () => {
+    Y.push("q", Y.gs(0.85), `${rgb(r)} RG 1 J 1 j`);
+    for (const v of ex.vuruslar) {
+      const P = v.map((q) => [x0 + (o + q[0] * kare) * b, y0 + (o + q[1] * kare) * b]);
+      const ort = v.reduce((t, q) => t + q[2], 0) / v.length;
+      const yol = new Yol();
+      yol.moveTo(P[0][0], P[0][1]);
+      if (P.length === 1) yol.lineTo(P[0][0] + 0.1 * b, P[0][1]);
+      for (let i = 1; i < P.length; i++) yol.lineTo(P[i][0], P[i][1]);
+      Y.push(`${f3(2.2 * u * (0.65 + 0.7 * ort) * b)} w ${yol} S`);
+    }
+    if (ex.cerceve !== "yok") {
+      const dis = new Yol(); dis.elips(cx, cy, disR * b, ry * b);
+      const ic = new Yol(); ic.elips(cx, cy, icR * b, icRy * b);
+      Y.push(`${f3(1.4 * u * b)} w ${dis} S`, `${f3(0.6 * u * b)} w ${ic} S`);
+    }
+    Y.push("Q");
+    // Halka yazısı: iki halkanın ortasında, üstte ortalı (exLibrisSvg textPath startOffset 25%)
+    if (yazi) {
+      const N = 1000, k = N / 100, cv = tuval(N, N), ctx = cv.getContext("2d");
+      const R = ((disR + icR) / 2 - 1.6) * k, RY = ((ry + icRy) / 2 - 1.6) * k;
+      ctx.font = YAZI.olcu(6.5 * u * k);
+      if ("letterSpacing" in ctx) ctx.letterSpacing = `${(6.5 * u * k * 0.22).toFixed(1)}px`;
+      ctx.fillStyle = ex.renk; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      const harfler = [...yazi], gen = harfler.map((h) => ctx.measureText(h).width + 6.5 * u * k * 0.22);
+      const toplam = gen.reduce((t, g) => t + g, 0);
+      let yayda = -toplam / 2;   // tepe noktasından yay boyunca uzaklık
+      harfler.forEach((hf, i) => {
+        const a = -Math.PI / 2 + (yayda + gen[i] / 2) / ((R + RY) / 2);
+        yayda += gen[i];
+        ctx.save();
+        ctx.translate(N / 2 + Math.cos(a) * R, N / 2 + Math.sin(a) * RY);
+        ctx.rotate(a + Math.PI / 2);
+        ctx.fillText(hf, 0, 0);
+        ctx.restore();
+      });
+      Y.push("q", Y.gs(0.85));
+      gorselKoy(Y, { ref: await Y.png(await pngBaytlari(cv)), w: boy, h: boy }, x0, y0);
+      Y.push("Q");
+    }
+  });
 }
 
 // ---------- yazı tipleri ----------
@@ -682,6 +754,13 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
   await yaziTipleriHazir(secim.map((i) => tum[i]));
 
   const ortak = { gs: new Map(), gorsel: new Map(), belgeId: belge?.id };
+  // Ex libris yalnız belgenin ilk sayfası dışa aktarılırken, o sayfada
+  let exLibris = null;
+  try {
+    exLibris = secim[0] === 0 ? exLibrisAl() : null;
+    if (exLibris) exLibris.aci = typeof ORTAK.exLibrisAci === "function" ? ORTAK.exLibrisAci(belge?.id) : -4;
+  } catch (e) { console.warn("[disa-aktar] ex libris:", e); exLibris = null; }
+  const muhur = (j) => (j === 0 ? exLibris : null);
   let doc;
   if (kaynak) {
     const n = kaynak.getPageCount();
@@ -696,23 +775,23 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
       const v = tum[secim[j]];
       if (nolar[j] < 0) {   // PDF'e eklenmiş defter sayfası: komşu sayfanın genişliğinde
         const page = ayni ? null : doc.addPage([sonW, (sonW * PH) / PW]);
-        if (page) await sayfaYaz(doc, page, v, { s: sonW / PW, hBirim: PH, ortak, arka: (Y) => sablonYaz(Y, v.kagit) });
+        if (page) await sayfaYaz(doc, page, v, { s: sonW / PW, hBirim: PH, ortak, arka: (Y) => sablonYaz(Y, v.kagit), exLibris: muhur(j) });
         continue;
       }
       const page = ayni ? kopyalar[j] : doc.addPage(kopyalar[j]);
       const k = gorunurKutu(page), a = ((page.getRotation().angle % 360) + 360) % 360;
       const gw = a === 90 || a === 270 ? k.height : k.width, gh = a === 90 || a === 270 ? k.width : k.height;
       sonW = gw;
-      await sayfaYaz(doc, page, v, { s: gw / PW, hBirim: (gh * PW) / gw, ortak });
+      await sayfaYaz(doc, page, v, { s: gw / PW, hBirim: (gh * PW) / gw, ortak, exLibris: muhur(j) });
     }
   } else {
     doc = await PDFDocument.create();
     const s = A4_W / PW, H = PH * s;
-    for (const i of secim) {
+    for (const [j, i] of secim.entries()) {
       const v = tum[i];
       const page = doc.addPage([A4_W, H]);
       const arka = v.tur === "pdf" ? (Y) => ornekSayfaYaz(Y, v.pdf || 0, belge?.id) : (Y) => sablonYaz(Y, v.kagit || "blank");
-      await sayfaYaz(doc, page, v, { s, hBirim: PH, ortak, arka });
+      await sayfaYaz(doc, page, v, { s, hBirim: PH, ortak, arka, exLibris: muhur(j) });
     }
   }
   if (doc !== kaynak) {
@@ -744,6 +823,23 @@ function indir(blob, ad) {
   return "indirildi";
 }
 
+// Masaüstü Chrome ve Edge: "Farklı kaydet" penceresi (showSaveFilePicker). Safari, Firefox ve telefonlarda yok:
+// indirme bağlantısı. Uzun hazırlıktan sonra dokunuş süresi dolmuşsa (SecurityError) yine indirilir.
+async function kaydetVeyaIndir(dosya, ad) {
+  if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function" || window.top !== window) return indir(dosya, ad);
+  const uzanti = (/\.[^.]+$/.exec(ad) || [".pdf"])[0];
+  try {
+    const tutamac = await window.showSaveFilePicker({ suggestedName: ad, types: [{ description: uzanti === ".pdf" ? "PDF" : "Dosya", accept: { [dosya.type || "application/octet-stream"]: [uzanti] } }] });
+    const yaz = await tutamac.createWritable();
+    await yaz.write(dosya);
+    await yaz.close();
+    return "kaydedildi";
+  } catch (e) {
+    if (e?.name === "AbortError") return "iptal";
+    return indir(dosya, ad);
+  }
+}
+
 // navigator.canShare({ files }) varsa paylaş menüsü (Samsung Notes burada), yoksa indirir.
 // Döner: "paylasildi" | "iptal" | "indirildi" | "bekliyor" (dokunuş süresi doldu, bildirimdeki Paylaş ile sürer)
 export async function paylas(blob, dosyaAdi) {
@@ -752,7 +848,7 @@ export async function paylas(blob, dosyaAdi) {
   const veri = { files: [dosya], title: ad.replace(/\.[^.]+$/, "") };
   let olur = false;
   try { olur = !!navigator.canShare?.({ files: [dosya] }); } catch { olur = false; }
-  if (!olur) return indir(dosya, ad);
+  if (!olur) return kaydetVeyaIndir(dosya, ad);
   try {
     await navigator.share(veri);
     return "paylasildi";

@@ -327,3 +327,216 @@ store.ayarlar.yz = {
 // tekrar.js: export function ac(kap) ve kapat(). asistan.js: export function kur() (bir kez, app.js açılışta çağırır).
 //   export function kapat()          // dinleyicileri ve zamanlayıcıları temizler
 // Kitaplığa dönmek için: bus.emit("git", { ekran: "kitaplik" })
+
+// ---------- 11. tur: platform yardımcıları (OZELLIKLER-7 §3) ----------
+// Kullanıcı ajanından: iPadOS masaüstü Safari gibi görünür (Macintosh), dokunma noktası sayısıyla ayrılır.
+const UA = navigator.userAgent || "";
+export const ipadMi = () => /iPad/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+export const iosMu = () => /iPhone|iPod/.test(UA) || ipadMi();
+export const androidMu = () => /Android/.test(UA);
+export const samsungMu = () => /SM-[A-Z0-9]|Samsung/i.test(UA);
+// "ios" | "android" | "masaustu"
+export const platform = () => (iosMu() ? "ios" : androidMu() ? "android" : "masaustu");
+// Ana ekrandan açılmış uygulama (iOS'ta navigator.standalone, öbürlerinde display-mode)
+export const kuruluMu = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+// Safari ve iOS'taki bütün tarayıcılar (hepsi WebKit, 7 gün kuralı hepsinde)
+export const safariMi = () => iosMu() || (/Safari\//.test(UA) && !/Chrome|Chromium|Edg|OPR|Firefox|Android/.test(UA));
+export const dokunmatikMi = () => matchMedia("(pointer: coarse)").matches;
+export const telefonMu = () => matchMedia("(max-width: 599px), (max-height: 499px) and (orientation: landscape)").matches;
+
+// requestIdleCallback yedeği (Safari'de yok). Dönen işlev bekleyen işi iptal eder.
+export function bosta(fn, { timeout = 1000 } = {}) {
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(fn, { timeout });
+    return () => cancelIdleCallback(id);
+  }
+  const bas = performance.now();
+  const id = setTimeout(() => fn({ didTimeout: performance.now() - bas >= timeout, timeRemaining: () => 8 }), 40);
+  return () => clearTimeout(id);
+}
+
+// Kalem türü ipucu (rehber ve ayar başlıkları): "spen" | "pencil" | "kalem" | "parmak" | "fare".
+// İlk kalem olayında değişebilir; değişince bus "kalem:tur" yayınlanır.
+let kalemGoruldu = false;
+export function kalemTuru() {
+  if (ipadMi()) return "pencil";
+  // Samsung tablet S Pen'le gelir: kalem görülmeden de S Pen metni
+  if (samsungMu() && (kalemGoruldu || !/Mobile/.test(UA))) return "spen";
+  if (kalemGoruldu) return "kalem";
+  return matchMedia("(pointer: fine)").matches && !dokunmatikMi() ? "fare" : "parmak";
+}
+document.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "pen" || kalemGoruldu) return;
+  const once = kalemTuru();
+  kalemGoruldu = true;
+  if (kalemTuru() !== once) bus.emit("kalem:tur", { tur: kalemTuru() });
+}, { capture: true, passive: true });
+export const kalemAdi = () => ({ spen: "S Pen", pencil: "Apple Pencil" })[kalemTuru()] || "Kalem";
+
+// Programla odak (TASARIM-4 1.1.6): dokunarak açılan panelde halka çıkmaz, klavyeyle gelince çıkar.
+// focusVisible desteklenmeyen tarayıcıda .odak-sessiz sınıfı halkayı gizler, ilk tuşta kalkar.
+let sonGirdiKlavye = false;
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Tab" || e.key.startsWith("Arrow") || e.key === "Escape" || e.key === "Enter") {
+    sonGirdiKlavye = true;
+    document.activeElement?.classList?.remove("odak-sessiz");
+  }
+}, { capture: true, passive: true });
+document.addEventListener("pointerdown", () => { sonGirdiKlavye = false; }, { capture: true, passive: true });
+export const klavyeyleMi = () => sonGirdiKlavye;
+export function odakla(el, { klavye = sonGirdiKlavye } = {}) {
+  if (!el?.focus) return;
+  try { el.focus({ preventScroll: true, focusVisible: klavye }); } catch { el.focus(); }
+  if (!klavye) {
+    el.classList.add("odak-sessiz");
+    el.addEventListener("blur", () => el.classList.remove("odak-sessiz"), { once: true });
+  }
+}
+
+// ---------- 11. tur: ödünç kartı (TASARIM-4 4.3) ----------
+// belge.odunc = { gunler: { "2026-10-30": saniye }, bitti: zaman damgası | null }. Kitaplık kaydında durur, yedeğe girer.
+// Koltuk ve Masa sayfa görünürken ve son etkileşimden beri 90 sn geçmemişken okumaSay(belgeId, ms) çağırır
+// (ör. 15 sn'lik dilimlerle). Kitap son sayfaya ulaşınca okumaBitti(belgeId). Kayıt dakikada bir planlanır ("odunc").
+export const gunAnahtari = (t = Date.now()) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const oduncArtik = new Map();
+let oduncYayin = 0;
+const oduncAl = (b) => (b.odunc && typeof b.odunc === "object" && b.odunc.gunler && typeof b.odunc.gunler === "object"
+  ? b.odunc : (b.odunc = { gunler: {}, bitti: null }));
+export function okumaSay(belgeId, ms) {
+  const b = belgeBul(belgeId);
+  // Görünürlüğü çağıran denetler: gizlenirken ve kapanırken yazılan son yarım dilim de sayılır
+  if (!b || !(ms > 0)) return;
+  // Tek çağrıda en çok 2 dk: uykudan dönen sekme saatlerce okumuş sayılmasın
+  const top = (oduncArtik.get(belgeId) || 0) + Math.min(ms, 120000);
+  const sn = Math.floor(top / 1000);
+  oduncArtik.set(belgeId, top - sn * 1000);
+  if (!sn) return;
+  const o = oduncAl(b), k = gunAnahtari();
+  o.gunler[k] = (o.gunler[k] || 0) + sn;
+  // Kayıt dakikada bir planlanır; sayfa gizleniyorsa hemen (sekme kapanabilir)
+  if (document.hidden || Date.now() - oduncYayin > 60000) { oduncYayin = Date.now(); bus.emit("odunc", { belgeId }); }
+}
+export function okumaBitti(belgeId, t = Date.now()) {
+  const b = belgeBul(belgeId);
+  if (!b) return;
+  const o = oduncAl(b);
+  if (o.bitti) return;
+  o.bitti = t;
+  bus.emit("odunc", { belgeId, bitti: true });
+}
+// { gun, saniye, bitti, gunler: [["2026-10-30", 1260], ...] (eskiden yeniye) }
+export function oduncOzet(b) {
+  const g = b?.odunc?.gunler && typeof b.odunc.gunler === "object" ? b.odunc.gunler : {};
+  const gunler = Object.entries(g).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v > 0).sort((a, c) => (a[0] < c[0] ? -1 : 1));
+  return { gun: gunler.length, saniye: gunler.reduce((t, [, v]) => t + v, 0), bitti: b?.odunc?.bitti || null, gunler };
+}
+// 45 sn -> "1 dk", 1260 -> "21 dk", 11520 -> "3 sa 12 dk"
+export function sureMetni(sn) {
+  const dk = Math.max(1, Math.round(sn / 60));
+  if (dk < 60) return `${dk} dk`;
+  const sa = Math.floor(dk / 60), kalan = dk % 60;
+  return kalan ? `${sa} sa ${kalan} dk` : `${sa} sa`;
+}
+
+// ---------- 11. tur: ex libris (TASARIM-4 4.1) ----------
+// store.ayarlar.exLibris = { vuruslar: [[[x, y, basınç], ...], ...] (0..1, 280'lik karede), cerceve: "daire" | "oval" | "yok",
+//   renk, yazi (en çok 18 harf), surum }. Ayarlar > Ex libris'te çizilir; kaydedilince ayarla() ve bus "exlibris" yayınlanır.
+// Koltuk iç kapakta, Masa ilk sayfada, disa-aktar.js notlu PDF'de exLibrisSvg(boyut, ex, { aci }) kullanır.
+// Kitapta basıldı bilgisi belge.veri.exLibrisBasildi (Koltuk yazar).
+export const EXLIBRIS_RENKLERI = [["Mürekkep siyahı", "#1C1B19"], ["Bordo", "#8C2B38"], ["Lacivert", "#2B4A7E"]];
+export const exLibrisVar = (ex = store.ayarlar.exLibris) => !!ex && Array.isArray(ex.vuruslar) && ex.vuruslar.some((v) => Array.isArray(v) && v.length);
+// Kitaba göre sabit eğim: kimlikten türetilen -6 ile -2 derece arası
+export function exLibrisAci(belgeId = "") {
+  let t = 7;
+  for (const c of String(belgeId)) t = (t * 31 + c.charCodeAt(0)) >>> 0;
+  return -6 + (t % 400) / 100;
+}
+let exSayac = 0;
+const xmlKac = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+// SVG metni döner (innerHTML ya da data URI ile kullanılır). boyut CSS px; içte 100x100 birim.
+export function exLibrisSvg(boyut = 72, ex = store.ayarlar.exLibris, { aci = -4, damga = true } = {}) {
+  if (!exLibrisVar(ex)) return "";
+  const id = "exl" + (++exSayac).toString(36);
+  const renk = /^#[0-9a-f]{6}$/i.test(ex.renk || "") ? ex.renk : EXLIBRIS_RENKLERI[0][1];
+  const cerceve = ["daire", "oval", "yok"].includes(ex.cerceve) ? ex.cerceve : "daire";
+  const yazi = String(ex.yazi || "").trim().toLocaleUpperCase("tr").slice(0, 18);
+  const u = 100 / boyut;   // bir CSS pikseli kaç birim
+  const ry = cerceve === "oval" ? 37 : 47;
+  const disR = 47, icR = yazi ? disR - 11 : disR - 4.2, icRy = yazi ? ry - 11 : ry - 4.2;
+  const harf = `font-family="'IBM Plex Mono', monospace" font-weight="500" font-size="${(6.5 * u).toFixed(2)}" letter-spacing="${(6.5 * u * 0.22).toFixed(2)}"`;
+  let p = "";
+  if (cerceve !== "yok") {
+    p += `<ellipse cx="50" cy="50" rx="${disR}" ry="${ry}" fill="none" stroke-width="${(1.4 * u).toFixed(2)}"/>`;
+    p += `<ellipse cx="50" cy="50" rx="${icR}" ry="${icRy}" fill="none" stroke-width="${(0.6 * u).toFixed(2)}"/>`;
+    if (yazi) {
+      const r = (disR + icR) / 2 - 1.6, rY = (ry + icRy) / 2 - 1.6;
+      p += `<path id="${id}y" d="M${50 - r} 50a${r} ${rY} 0 1 1 ${2 * r} 0a${r} ${rY} 0 1 1 ${-2 * r} 0" fill="none" stroke="none"/>`;
+      p += `<text fill="currentColor" stroke="none" ${harf}><textPath href="#${id}y" startOffset="25%" text-anchor="middle">${xmlKac(yazi)}</textPath></text>`;
+    }
+  } else if (yazi) {
+    p += `<text x="50" y="97" fill="currentColor" stroke="none" text-anchor="middle" ${harf}>${xmlKac(yazi)}</text>`;
+  }
+  // Çizim karesi: Ayarlar'daki 220'lik kılavuz dairesi iç halkanın içine oturur
+  const rd = cerceve === "yok" ? 42 : Math.min(icR, icRy) - 3;
+  const s = (2 * rd * 280) / 220, o = 50 - s / 2;
+  for (const v of ex.vuruslar) {
+    if (!Array.isArray(v) || !v.length) continue;
+    const ort = v.reduce((t, q) => t + (Number.isFinite(q?.[2]) ? q[2] : 0.5), 0) / v.length;
+    const d = v.map((q, i) => `${i ? "L" : "M"}${(o + q[0] * s).toFixed(1)} ${(o + q[1] * s).toFixed(1)}`).join("") + (v.length === 1 ? "l.1 0" : "");
+    p += `<path d="${d}" fill="none" stroke-width="${(2.2 * u * (0.65 + 0.7 * ort)).toFixed(2)}"/>`;
+  }
+  // Damga: kenarları hafif benekli, yer yer mürekkep eksik
+  const filtre = damga ? `<filter id="${id}f" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="5" result="g"/><feDisplacementMap in="SourceGraphic" in2="g" scale=".8"/><feComponentTransfer><feFuncA type="discrete" tableValues="0 1 1 1 1 1 .85 1"/></feComponentTransfer></filter>` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${boyut}" height="${boyut}" aria-hidden="true">${filtre}<g transform="rotate(${Number(aci) || 0} 50 50)" stroke="${renk}" color="${renk}" stroke-linecap="round" stroke-linejoin="round"${damga ? ` filter="url(#${id}f)"` : ""}>${p}</g></svg>`;
+}
+
+// ---------- 11. tur: iki parmakla geri al, görsel geri bildirim (TASARIM-4 4.6) ----------
+// parmakGeriBildirim({ noktalar: [[x, y]] | [{ x, y }], geri | yineleme, vardi | bos, yinele? })
+// Dokunulan yerlerde sönen halkalar; altta 1,2 sn'lik cam fiş "Geri alındı" ya da "Yinelendi" (ve "Yinele").
+// Masa, Koltuk ve çizgi roman aynı çağrıyı yapar; davranışın kendisi (geri alma) çağıranda.
+export function parmakGeriBildirim({ noktalar = [], geri, yineleme, vardi, bos, yinele } = {}) {
+  const geriMi = geri ?? !yineleme;
+  const oldu = vardi ?? !bos;
+  for (const n of noktalar || []) {
+    const x = Array.isArray(n) ? n[0] : n?.x ?? n?.clientX, y = Array.isArray(n) ? n[1] : n?.y ?? n?.clientY;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const r = h("i", { class: "parmak-halka" + (oldu ? "" : " bos"), "aria-hidden": "true", style: `left:${x}px;top:${y}px` });
+    document.body.append(r);
+    setTimeout(() => r.remove(), hareketAz() ? 60 : 320);
+  }
+  document.querySelector(".geri-fis")?.remove();
+  const fis = h("div", { class: "geri-fis", role: "status" },
+    h("span", {}, !oldu ? (geriMi ? "Geri alınacak bir şey yok" : "Yinelenecek bir şey yok") : geriMi ? "Geri alındı" : "Yinelendi"));
+  if (oldu && geriMi && typeof yinele === "function") fis.append(h("button", { type: "button", onclick: () => { fis.remove(); yinele(); } }, "Yinele"));
+  document.body.append(fis);
+  setTimeout(() => fis.remove(), oldu && geriMi && yinele ? 2000 : 1200);
+}
+
+// ---------- 11. tur: dönüş fişi (TASARIM-4 3.4) ----------
+// donusFisi({ metin: "Kaldığın yer: s. 47", etiket: "Dön", calistir }): altta 4 sn'lik cam fiş; Koltuk ve Masa kullanır
+export function donusFisi({ metin, etiket = "Dön", calistir, sure = 4000 } = {}) {
+  document.querySelector(".donus-fis")?.remove();
+  const fis = h("div", { class: "donus-fis", role: "status" }, h("span", {}, metin),
+    calistir ? h("button", { type: "button", onclick: () => { fis.remove(); calistir(); } }, etiket) : null);
+  document.body.append(fis);
+  setTimeout(() => fis.remove(), sure);
+  return fis;
+}
+
+// ---------- 11. tur: hızlı erişim komutları (TASARIM-4 3.2) ----------
+// Komut: { id, ad, es ("eş sözcükler"), ikon, baglam: "her" | "belge" | "koltuk" | "masa" | "epub" | "pdf",
+//          kosul?(ctx) -> bool, alt?(ctx, sorgu) -> küçük metin, calistir(ctx, sorgu) }.
+// ctx: { ekran, belge, mod } (belge açık değilse belge null). arama.js boş sorguda ve yazınca listeler.
+// Koltuk ve Masa kendi komutlarını (ör. "Mum ışığı", "Okuma cetveli") komutEkle ile ekler; dönen işlev çıkarır.
+const KOMUTLAR = new Map();
+export function komutEkle(k) {
+  if (!k?.id || typeof k.calistir !== "function") return () => {};
+  KOMUTLAR.set(k.id, k);
+  return () => { if (KOMUTLAR.get(k.id) === k) KOMUTLAR.delete(k.id); };
+}
+export const komutlar = () => [...KOMUTLAR.values()];
+// Açık ekran: app.js günceller ({ ekran: "kitaplik" | "belge" | "tekrar" | "arama" | "izler", belgeId, mod })
+export const acikEkran = { ekran: "kitaplik", belgeId: null, mod: null };

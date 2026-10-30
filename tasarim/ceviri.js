@@ -251,13 +251,17 @@ async function cihazDurumu(k, h) {
   if (!cihazVar() || cihazBozuk.has(ciftId(k, h))) return "yok";
   if (cihazInis.has(ciftId(k, h))) return "iniyor";
   try {
-    const a = await self.Translator.availability({ sourceLanguage: k, targetLanguage: h });
+    // Bazı Chromium yapılarında (başsız, kurumsal kilitli) availability() hiç dönmez: 2,5 sn sonra "yok" sayılır,
+    // yön bu oturumda bir daha sorulmaz; çeviri sıradaki motora geçer
+    const zaman = new Promise((coz) => setTimeout(() => coz("__asili"), 2500));
+    const a = await Promise.race([self.Translator.availability({ sourceLanguage: k, targetLanguage: h }), zaman]);
+    if (a === "__asili") { cihazBozuk.add(ciftId(k, h)); console.warn("[kenar-notu] çeviri: Translator.availability yanıt vermedi, cihaz motoru atlandı"); return "yok"; }
     return { available: "hazir", downloadable: "indirilebilir", downloading: "iniyor" }[a] || "yok";
   } catch { return "yok"; }
 }
 // "İndir" düğmesinin tıklamasında çağrılır: create ilk satırda, kullanıcı hareketi düşmeden
 export function cihazIndir(kaynak, hedef = varsayilanHedef(), { ilerleme, signal } = {}) {
-  if (!cihazVar()) return Promise.reject(new CeviriHatasi("motor-yok", "Bu Chrome'da cihaz çevirisi yok"));
+  if (!cihazVar()) return Promise.reject(new CeviriHatasi("motor-yok", "Bu tarayıcıda cihaz çevirisi yok"));
   const k = kisaDil(kaynak), h = kisaDil(hedef), id = ciftId(k, h);
   if (cihazCevirmen.has(id)) return cihazCevirmen.get(id);
   cihazInis.set(id, 0);
@@ -780,7 +784,8 @@ async function paketIndirAsil(k, h, signal, bildir) {
     if (signal.aborted) throw iptalHatasi();
     const anahtar = `${id}/${d.tur}`;
     const mevcut = await al("dosyalar", anahtar).catch(() => null);
-    if (mevcut && mevcut.size === d.boyut) { biten += d.gz || d.boyut; bildir(biten / toplam); continue; }
+    // İşçi Blob yazamadıysa kayıt ArrayBuffer'dır: boyu byteLength
+    if (mevcut && (mevcut.size ?? mevcut.byteLength) === d.boyut) { biten += d.gz || d.boyut; bildir(biten / toplam); continue; }
     await dosyaIndir(id, d, signal, (n) => bildir(Math.min(0.999, (biten + n) / toplam)));
     biten += d.gz || d.boyut;
     bildir(Math.min(0.999, biten / toplam));

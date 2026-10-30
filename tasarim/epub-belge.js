@@ -171,7 +171,13 @@ async function kapakUret(pk, genislik = 360) {
     const dosya = o && zipDosya(pk.zip, o.yol);
     if (!dosya) return null;
     const blob = new Blob([await dosya.async("arraybuffer")], { type: o.tur || "image/jpeg" });
-    const bmp = await createImageBitmap(blob);
+    // Safari SVG kapağı createImageBitmap ile çözemez: <img> yedeği (OZELLIKLER-7 §3)
+    const bmp = await createImageBitmap(blob).catch(() => new Promise((tamam, hata) => {
+      const img = new Image(), url = URL.createObjectURL(blob);
+      img.onload = () => { URL.revokeObjectURL(url); tamam(img); };
+      img.onerror = (e) => { URL.revokeObjectURL(url); hata(e); };
+      img.src = url;
+    }));
     const olcek = Math.min(1, genislik / bmp.width);
     const cv = document.createElement("canvas");
     cv.width = Math.max(1, Math.round(bmp.width * olcek));

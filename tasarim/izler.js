@@ -13,7 +13,8 @@
 // "iz:goster" yayınlar, ekranı açan modül izi bir an parlatır (TASARIM-3 7.8).
 // Veriyi yalnız okur; yazdığı tek şey izin ve vurgunun yanındaki kısa not (iz.not, vurgu.not) ve store.derlemeler.
 
-import { $, $$, h, icon, bus, store, belgeBul, yeniId, toast, kartEkle, hareketAz, cizgiMi, EPUB_VURGULARI, vurguRengi } from "./ortak.js";
+import { $, $$, h, icon, bus, store, belgeBul, yeniId, toast, kartEkle, hareketAz, cizgiMi, EPUB_VURGULARI, vurguRengi,
+  exLibrisSvg, exLibrisVar, odakla } from "./ortak.js";
 
 /* ================= Yardımcılar ================= */
 const SUZGECLER = [["tumu", "Tümü"], ["alt", "Altı çizili"], ["daire", "Yuvarlak"], ["kenar", "Kenar"], ["isaret", "İşaret"], ["vurgu", "Vurgu"], ["not", "Not"]];
@@ -315,7 +316,9 @@ function eylemler(x) {
   kart.addEventListener("click", (e) => { e.stopPropagation(); kartaCevir(x); });
   const defter = h("button", { class: "simge-dugme deftere-ekle", type: "button", "aria-label": "Deftere ekle", title: "Deftere ekle" }, icon("arti", "i-20"));
   defter.addEventListener("click", (e) => { e.stopPropagation(); derlemeyeEkleFisi(defter, x); });
-  return h("span", { class: "iz-eylemler" }, kart, defter);
+  const alinti = x.metin ? h("button", { class: "simge-dugme alinti-karti", type: "button", "aria-label": "Alıntı kartı", title: "Alıntı kartı" }, icon("paylas", "i-20")) : null;
+  alinti?.addEventListener("click", (e) => { e.stopPropagation(); alintiKartiAc(x); });
+  return h("span", { class: "iz-eylemler" }, alinti, kart, defter);
 }
 function izSatiri(x, { kapat } = {}) {
   const meta = [x.yer, neZaman(x.zaman), x.kursun ? "kurşun" : ""].filter(Boolean).join(" · ");
@@ -378,9 +381,14 @@ export function izlerPaneli(kap, belge) {
 }
 const bosAciklama = (b) => (b?.tur === "epub" ? "Koltuk’ta bir satırın altını kalemle çiz; burada belirir."
   : cizgiMi(b) ? "Sayfanın üstüne kalemle işaret koy; burada belirir." : "Sayfada bir satırın altını kalemle çiz ya da yuvarlak içine al; burada belirir.");
-function bosDurum(baslik, aciklama) {
-  return h("div", { class: "izler-bos" }, h("p", { class: "izler-bos__baslik" }, baslik), h("p", { class: "izler-bos__aciklama" }, aciklama));
+// Boş durum ne yapılacağını söyler; eylem verilirse tek düğme (TASARIM-4 3.5)
+function bosDurum(baslik, aciklama, eylem = null) {
+  return h("div", { class: "izler-bos" }, h("p", { class: "izler-bos__baslik" }, baslik), h("p", { class: "izler-bos__aciklama" }, aciklama),
+    eylem ? h("button", { class: "birincil izler-bos__dugme", type: "button", onclick: eylem.calistir }, eylem.etiket) : null);
 }
+// Okumaya dönmek için son açılan kitap (yoksa son belge)
+const sonKitap = () => [...store.belgeler].filter((b) => b.tur === "epub").sort((a, b) => (b.acilis || 0) - (a.acilis || 0))[0]
+  || [...store.belgeler].sort((a, b) => (b.acilis || 0) - (a.acilis || 0))[0] || null;
 
 // "izler:ac": kap verilirse içine çizilir; yoksa açık ekranın sağında kendi paneli
 let yanPanel = null;
@@ -439,7 +447,11 @@ export async function defterAc(belge) {
   const perde = h("div", { class: "cep-defter", role: "dialog", "aria-modal": "true", "aria-labelledby": "cepDefterBaslik", tabindex: "-1" }, kapak);
 
   const ciz = () => {
-    if (!liste.length) { sayfa.replaceChildren(bosDurum("Defter boş.", bosAciklama(belge))); return; }
+    if (!liste.length) {
+      sayfa.replaceChildren(bosDurum("Cep defteri boş.", "Altını çizdiğin alıntılar buraya iner. " + bosAciklama(belge),
+        { etiket: "Okumaya dön", calistir: () => { kapat(); bus.emit("git", { ekran: "belge", belgeId: belge.id }); } }));
+      return;
+    }
     sayfa.replaceChildren(...liste.map((x) => alintiEl(x, { kapat: () => kapat() })));
   };
   const kapat = (hemen = false) => {
@@ -475,6 +487,7 @@ function alintiEl(x, { kapat, kaynakAdi } = {}) {
   requestAnimationFrame(boyutla);
   const git = h("button", { class: "alinti__git", type: "button", "aria-label": `${x.yer || "Yerine"} git` }, metin, h("span", { class: "alinti__meta" }, meta));
   git.addEventListener("click", () => gitIz(x, { kapat }));
+  if (x.metin) uzunBas(git, () => alintiKartiAc(x));
   return h("article", { class: "alinti", role: "listitem" },
     h("div", { class: "alinti__kenar" }, onizlemeEl(x, "alinti__iz")),
     h("div", { class: "alinti__govde" }, git, notAlani),
@@ -677,8 +690,10 @@ function govdeCiz() {
   birlestirD.addEventListener("click", () => birlestirBasla());
   const parcalar = [ustCiz("İzlerim", `${hepsi.length} iz · ${E.veri.length} kitap`, E.veri.length > 1 ? birlestirD : null)];
   if (!hepsi.length) {
+    const b = sonKitap();
     parcalar.push(h("div", { class: "izlerim-bos" }, h("p", { class: "izlerim-bos__baslik" }, "Henüz bir iz yok."),
-      h("p", { class: "izlerim-bos__aciklama" }, "Koltuk’ta bir satırın altını kalemle çiz; burada belirir.")));
+      h("p", { class: "izlerim-bos__aciklama" }, "Okurken bir satırın altını çiz ya da kenara yaz; hepsi burada toplanır."),
+      b ? h("button", { class: "birincil izler-bos__dugme", type: "button", onclick: () => bus.emit("git", { ekran: "belge", belgeId: b.id }) }, "Okumaya başla") : null));
     E.govde.replaceChildren(...parcalar);
     return;
   }
@@ -695,7 +710,8 @@ function govdeCiz() {
         h("span", { class: "izlerim-sayac" }, `${gorunen.length} iz`), h("span", { class: "izlerim-ust__bosluk" }), defterD),
       h("div", { role: "list" }, gorunen.map((x) => izlerimSatiri(x)))));
   }
-  if (parcalar.length === 1 + (kitapSecili ? 0 : 1) + (E.birlestir ? 1 : 0)) parcalar.push(bosDurum("Bu süzgeçte iz yok.", "Başka bir süzgeç seç."));
+  if (parcalar.length === 1 + (kitapSecili ? 0 : 1) + (E.birlestir ? 1 : 0)) parcalar.push(bosDurum("Bu süzgeçte iz yok.", "Başka bir süzgeç seç.",
+    { etiket: "Tümünü göster", calistir: () => { E.secim = "hepsi"; E.suzgec = "tumu"; ciz(); } }));
   E.govde.replaceChildren(...parcalar);
 }
 
@@ -711,6 +727,7 @@ function izlerimSatiri(x, { kaynakAdi, ekEylem } = {}) {
     h("div", { class: "izlerim-satir__eylem" }, ekEylem || null, eylemler(x)));
   el.addEventListener("click", (e) => { if (!e.target.closest("button")) gitIz(x); });
   el.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === el) gitIz(x); });
+  if (x.metin) uzunBas(el, () => alintiKartiAc(x));
   return el;
 }
 
@@ -794,11 +811,9 @@ function derlemeCiz(id) {
   md.addEventListener("click", () => paylas(new Blob([markdownMetni(d.ad, ogeler.map((o) => o.x), { kaynakAdi })], { type: "text/markdown" }), dosyaAdi({ ad: d.ad }, "md")));
   const pdf = h("button", { class: "hayalet", type: "button" }, "PDF");
   pdf.addEventListener("click", () => pdfPaylas({ ad: d.ad }, ogeler.map((o) => o.x), { kaynakAdi }).catch(() => toast("Derleme PDF olarak hazırlanamadı.")));
+  // Silme anında yapılır ve geri alınabilir: iki dokunuşla onay gerekmez (TASARIM-4 3.6)
   const sil = h("button", { class: "hayalet tehlike", type: "button" }, "Derlemeyi sil");
-  let onay = 0;
   sil.addEventListener("click", () => {
-    if (!sil.dataset.durum) { sil.dataset.durum = "emin"; sil.textContent = "Emin misin? Tekrar dokun"; onay = setTimeout(() => { delete sil.dataset.durum; sil.textContent = "Derlemeyi sil"; }, 3000); return; }
-    clearTimeout(onay);
     const i = store.derlemeler.indexOf(d);
     if (i >= 0) store.derlemeler.splice(i, 1);
     E.secim = "hepsi";
@@ -870,4 +885,265 @@ function surukle(tutamak, satir, liste, d) {
   tutamak.addEventListener("pointerup", birak);
   tutamak.addEventListener("pointercancel", birak);
   tutamak.addEventListener("click", (e) => e.stopPropagation());
+}
+
+// Uzun basma (500 ms): dokunmatikte alıntı kartı; sonraki tıklama yutulur, kaydırınca iptal
+function uzunBas(el, ac) {
+  let zaman = 0, x0 = 0, y0 = 0, tetik = false;
+  el.addEventListener("pointerdown", (e) => {
+    tetik = false;
+    if (e.pointerType === "mouse" || e.button !== 0) return;
+    x0 = e.clientX; y0 = e.clientY;
+    clearTimeout(zaman);
+    zaman = setTimeout(() => { tetik = true; ac(); }, 500);
+  });
+  el.addEventListener("pointermove", (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 8) clearTimeout(zaman); });
+  for (const t of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(t, () => clearTimeout(zaman));
+  el.addEventListener("click", (e) => { if (tetik) { tetik = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  el.addEventListener("contextmenu", (e) => { if (tetik) e.preventDefault(); });
+}
+
+/* ================= Alıntı kartı (OZELLIKLER-7 §6.2, TASARIM-4 4.2) ================= */
+// Alıntı, mürekkep izi ve kitap adı kâğıt bir kartta görüntü olur. Kare 1080x1080 ya da hikâye 1080x1920; açık ya da koyu kâğıt.
+// Paylaş (navigator.share dosyayla) ya da indir. Değerler tuvale yazılır, CSS değil; önizleme aynı tuvali gösterir.
+const ALINTI_KAGIT = {
+  acik: { zemin: "#F6F1E7", yazi: "#1C1B19", ikincil: "#6C655C", gren: 0.05, kurdele: "#8C2B38" },
+  koyu: { zemin: "#1B1A17", yazi: "#ECE6DA", ikincil: "#9C958A", gren: 0.03, kurdele: "#A8424F" },
+};
+const ALINTI_BOYUT = { kare: [1080, 1080], hikaye: [1080, 1920] };
+let grenDeseni = null;
+function grenTuvali() {
+  if (grenDeseni) return grenDeseni;
+  const c = document.createElement("canvas");
+  c.width = c.height = 160;
+  const g = c.getContext("2d"), v = g.createImageData(160, 160);
+  let t = 2463534242;
+  for (let i = 0; i < v.data.length; i += 4) {
+    t ^= t << 13; t ^= t >>> 17; t ^= t << 5;   // sabit tohumlu gürültü: her kart aynı doku
+    const n = (t >>> 0) % 255;
+    v.data[i] = v.data[i + 1] = v.data[i + 2] = n; v.data[i + 3] = 255;
+  }
+  g.putImageData(v, 0, 0);
+  return (grenDeseni = c);
+}
+// Metni genişliğe göre satırlara böler; en çok n satır, taşarsa son satır "…" ile biter
+function satirlaKes(g, metin, maxW, n) {
+  const kelimeler = sade(metin).split(" ");
+  const satirlar = [];
+  let s = "";
+  for (let i = 0; i < kelimeler.length; i++) {
+    const k = kelimeler[i];
+    const dene = s ? s + " " + k : k;
+    if (g.measureText(dene).width <= maxW || !s) { s = dene; continue; }
+    satirlar.push(s);
+    s = k;
+    if (satirlar.length === n) return { satirlar: kesik(g, satirlar, maxW), tasti: true };
+  }
+  if (s) satirlar.push(s);
+  if (satirlar.length > n) return { satirlar: kesik(g, satirlar.slice(0, n), maxW), tasti: true };
+  return { satirlar, tasti: false };
+}
+function kesik(g, satirlar, maxW) {
+  let son = satirlar[satirlar.length - 1];
+  while (son.length > 1 && g.measureText(son + "…").width > maxW) son = son.slice(0, -1).trimEnd();
+  satirlar[satirlar.length - 1] = son.replace(/[\s,.;:]+$/, "") + "…";
+  return satirlar;
+}
+// Rengi beyaza doğru açar (t: 0..1)
+function acikTon(hex, t) {
+  const m = /^#?([0-9a-f]{6})/i.exec(hex || "");
+  if (!m) return hex;
+  const n = parseInt(m[1], 16), k = (v) => Math.round(v + (255 - v) * t).toString(16).padStart(2, "0");
+  return `#${k(n >> 16)}${k((n >> 8) & 255)}${k(n & 255)}`;
+}
+function svgGorsel(svg) {
+  return new Promise((coz) => {
+    if (!svg) return coz(null);
+    const img = new Image();
+    img.onload = () => coz(img);
+    img.onerror = () => coz(null);
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  });
+}
+
+async function alintiKartiCiz(x, { bicim = "kare", kagit = "acik", iz = true } = {}) {
+  const [W, H] = ALINTI_BOYUT[bicim] || ALINTI_BOYUT.kare;
+  const K = ALINTI_KAGIT[kagit] || ALINTI_KAGIT.acik;
+  const hikaye = bicim === "hikaye";
+  try { await Promise.all(["400 52px Literata", "italic 400 30px Literata", "500 22px Inter", "400 24px Inter", "400 22px \"IBM Plex Mono\""].map((f) => document.fonts.load(f))); } catch { /* yedek yazı tipi */ }
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  // Zemin: düz renk, ince gren ve kenarlara doğru hafif kararma
+  g.fillStyle = K.zemin; g.fillRect(0, 0, W, H);
+  g.save(); g.globalAlpha = K.gren; g.globalCompositeOperation = kagit === "koyu" ? "screen" : "multiply";
+  g.fillStyle = g.createPattern(grenTuvali(), "repeat"); g.fillRect(0, 0, W, H); g.restore();
+  const kararma = g.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  kararma.addColorStop(0, "#00000000"); kararma.addColorStop(1, "#00000014");
+  g.fillStyle = kararma; g.fillRect(0, 0, W, H);
+  // Kurdele: sol üstte kartın kenarından sarkar, ucu çentikli
+  const kw = hikaye ? 32 : 28, kh = hikaye ? 120 : 96, kx = 96;
+  g.fillStyle = K.kurdele;
+  g.beginPath(); g.moveTo(kx, 0); g.lineTo(kx + kw, 0); g.lineTo(kx + kw, kh); g.lineTo(kx + kw / 2, kh - kw * 0.45); g.lineTo(kx, kh); g.closePath(); g.fill();
+
+  const KENAR = 96, ALT = hikaye ? 200 : 96, maxW = W - 2 * KENAR;
+  const b = belgeBul(x.belgeId);
+  // Alt satırlar: kitap adı, yazar, sayfa
+  const alt = [];
+  if (b?.ad) alt.push(["italic 400 30px Literata, Georgia, serif", K.yazi, b.ad, 40]);
+  if (b?.yazar) alt.push(["400 24px Inter, system-ui, sans-serif", K.ikincil, b.yazar, 34]);
+  const yer = [x.yer, x.bolum].filter(Boolean).join(" · ");
+  if (yer) alt.push(["400 22px \"IBM Plex Mono\", monospace", K.ikincil, yer, 30]);
+  const altYuk = alt.reduce((t, a) => t + a[3], 0);
+  const altBas = H - ALT - altYuk + 30;
+  // Alıntı: sığmazsa yazı küçülür, en sonda "…"
+  const ust = (hikaye ? 220 : kh + 72);
+  const alanAlt = altBas - 30 - 56;
+  let boy = hikaye ? 60 : 52, satirlar, araliklar;
+  for (const deneme of (hikaye ? [60, 52, 44] : [52, 44, 38])) {
+    boy = deneme;
+    g.font = `400 ${boy}px Literata, Georgia, serif`;
+    const n = hikaye ? 12 : 8;
+    araliklar = Math.round(boy * (hikaye ? 1.34 : 1.32));
+    const s = satirlaKes(g, x.metin, maxW, n);
+    satirlar = s.satirlar;
+    if (!s.tasti && satirlar.length * araliklar <= alanAlt - ust) break;
+  }
+  const blokYuk = satirlar.length * araliklar;
+  const y0 = Math.max(ust, ust + (alanAlt - ust - blokYuk) / 2);
+  // Koyu kâğıtta mürekkep açılır: lacivert iz siyah zeminde kaybolmasın
+  const ham = x.tur === "vurgu" ? vurguHex(x.renk) : (x.renk || "#24407A");
+  const renk = kagit === "koyu" && x.tur !== "vurgu" ? acikTon(ham, 0.5) : ham;
+  const satirGen = satirlar.map((s) => g.measureText(s).width);
+  // Vurgu: satırların arkasında fosfor şerit
+  if (iz && x.tur === "vurgu") {
+    g.save(); g.globalAlpha = kagit === "koyu" ? 0.38 : 0.55; g.fillStyle = renk;
+    satirlar.forEach((s, i) => g.fillRect(KENAR - 6, y0 + i * araliklar + boy * 0.2, satirGen[i] + 12, boy * 0.72));
+    g.restore();
+  }
+  g.fillStyle = K.yazi; g.textBaseline = "alphabetic";
+  g.font = `400 ${boy}px Literata, Georgia, serif`;
+  satirlar.forEach((s, i) => g.fillText(s, KENAR, y0 + i * araliklar + boy));
+  // Mürekkep izi: kullanıcının kendi vuruşu (önizleme yolu), alıntının üstünde aynı bağıl yerde, kalınlık 2,2 kat
+  if (iz && x.onizleme && x.tur !== "vurgu") {
+    let r;
+    const sonY = y0 + (satirlar.length - 1) * araliklar + boy;
+    if (x.tur === "alt") r = [KENAR - 8, sonY + boy * 0.02, satirGen[satirGen.length - 1] + 16, boy * 0.42];
+    else if (x.tur === "kenar") r = [KENAR - 64, y0 + boy * 0.1, 36, blokYuk];
+    else if (x.tur === "daire") r = [KENAR - 40, y0 - boy * 0.25, Math.max(...satirGen) + 80, blokYuk + boy * 0.6];
+    else r = [KENAR - 72, y0, 56, Math.min(blokYuk, boy * 1.6)];
+    try {
+      // Yol 48x32'lik kutuda; noktalar hedef dikdörtgene taşınır, çizgi kalınlığı ölçekten bağımsız kalır
+      // yolKur izi kutunun PAY'lı iç alanına sığdırır: o iç alan hedefe eşlenir
+      const sx = r[2] / (KUTU_W - 2 * PAY), sy = r[3] / (KUTU_H - 2 * PAY);
+      const yol = new Path2D();
+      yol.addPath(new Path2D(x.onizleme), new DOMMatrix([sx, 0, 0, sy, r[0] - PAY * sx, r[1] - PAY * sy]));
+      g.save();
+      g.lineWidth = 7; g.strokeStyle = renk; g.lineCap = "round"; g.lineJoin = "round"; g.globalAlpha = 0.9;
+      g.stroke(yol);
+      g.restore();
+    } catch { /* yol çizilemedi: iz olmadan */ }
+  }
+  // Alt satırlar
+  let ay = altBas;
+  for (const [font, rk, metin, adim] of alt) {
+    g.font = font; g.fillStyle = rk;
+    let m = metin;
+    while (m.length > 4 && g.measureText(m).width > maxW - 200) m = m.slice(0, -2).trimEnd() + "…";
+    g.fillText(m, KENAR, ay);
+    ay += adim;
+  }
+  // İmza: sağ altta ∫ ve "Kenar Notu"; ex libris varsa onun yerine mühür
+  const exKayit = store.ayarlar.exLibris;
+  const ex = exLibrisVar() ? await svgGorsel(exLibrisSvg(96, kagit === "koyu" ? { ...exKayit, renk: "#ECE6DA" } : exKayit, { aci: -4 })) : null;
+  if (ex) { g.save(); g.globalAlpha = kagit === "koyu" ? 0.7 : 0.9; g.drawImage(ex, W - KENAR - 96, H - ALT - 96 + 8, 96, 96); g.restore(); }
+  else {
+    g.save(); g.globalAlpha = 0.55; g.fillStyle = K.yazi; g.textAlign = "right";
+    g.font = "500 22px Inter, system-ui, sans-serif"; g.fillText("Kenar Notu", W - KENAR, H - ALT);
+    g.font = "italic 400 40px Literata, Georgia, serif"; g.fillText("∫", W - KENAR - g.measureText("Kenar Notu").width - 132, H - ALT + 4);
+    g.restore();
+  }
+  return c;
+}
+
+let alintiPenceresi = null;
+// Koltuk ve Masa da çağırabilir (ör. seçim menüsünden): x = { metin, belgeId, tur, onizleme?, renk?, yer?, bolum? }
+export async function alintiKartiAc(x) {
+  if (!x?.metin) return;
+  alintiPenceresi?.close();
+  const secim = { bicim: "kare", kagit: document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches) ? "koyu" : "acik", iz: true };
+  const onizleme = h("div", { class: "alinti-onizleme yer-tutucu", role: "img", "aria-label": "Alıntı kartı önizlemesi" });
+  const parcaliKur = (etiket, secenekler, alan) => {
+    const el = h("div", { class: "parcali", role: "group", "aria-label": etiket });
+    const tazele = () => { for (const b of el.children) b.setAttribute("aria-pressed", String(b.dataset.v === secim[alan])); };
+    for (const [v, ad] of secenekler) {
+      const b = h("button", { type: "button", dataset: { v } }, ad);
+      b.addEventListener("click", () => { secim[alan] = v; tazele(); ciz(); });
+      el.append(b);
+    }
+    tazele();
+    return el;
+  };
+  const izAnahtar = h("button", { class: "anahtar-satir", type: "button", role: "switch", "aria-checked": "true" },
+    h("span", {}, "Mürekkep izimi göster", h("small", {}, "Alt çizgi, daire ya da vurgu kartta da görünür")), h("span", { class: "anahtar", "aria-hidden": "true" }));
+  izAnahtar.addEventListener("click", () => { secim.iz = !secim.iz; izAnahtar.setAttribute("aria-checked", String(secim.iz)); ciz(); });
+  const paylasD = h("button", { class: "birincil", type: "button", hidden: true }, icon("paylas", "i-20"), "Paylaş");
+  const indirD = h("button", { class: "ikincil", type: "button" }, icon("indir", "i-20"), "İndir");
+  const dlg = h("dialog", { class: "pencere alinti-pencere", "aria-labelledby": "alintiBaslik" },
+    h("header", { class: "alinti-pencere__ust" }, h("h2", { id: "alintiBaslik", tabindex: "-1" }, "Alıntı kartı"),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => dlg.close() }, icon("kapat"))),
+    h("div", { class: "alinti-pencere__govde" }, onizleme,
+      h("div", { class: "alinti-pencere__secenek" },
+        h("span", { class: "t-etiket" }, "Biçim"), parcaliKur("Biçim", [["kare", "Kare"], ["hikaye", "Hikâye"]], "bicim"),
+        h("span", { class: "t-etiket" }, "Kâğıt"), parcaliKur("Kâğıt", [["acik", "Açık"], ["koyu", "Koyu"]], "kagit"),
+        x.onizleme || x.tur === "vurgu" ? izAnahtar : null,
+        h("div", { class: "pencere-alt" }, indirD, paylasD))));
+  let blob = null, sira = 0;
+  const dosyaAdi = () => {
+    const b = belgeBul(x.belgeId), t = new Date();
+    const ad = String(b?.ad || "Kenar Notu").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, "-").slice(0, 40);
+    return `Alinti-${ad}-${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, "0")}${String(t.getDate()).padStart(2, "0")}.png`;
+  };
+  async function ciz() {
+    const benim = ++sira;
+    blob = null;
+    paylasD.disabled = indirD.disabled = true;
+    const gecikme = setTimeout(() => onizleme.classList.add("yer-tutucu"), 300);
+    const c = await alintiKartiCiz(x, secim);
+    clearTimeout(gecikme);
+    if (benim !== sira || !dlg.isConnected) return;
+    onizleme.classList.remove("yer-tutucu");
+    onizleme.dataset.bicim = secim.bicim;
+    c.className = "alinti-tuval";
+    onizleme.replaceChildren(c);
+    blob = await new Promise((r) => c.toBlob(r, "image/png"));
+    if (benim !== sira) return;
+    const dosya = blob && new File([blob], dosyaAdi(), { type: "image/png" });
+    paylasD.hidden = !(dosya && navigator.canShare?.({ files: [dosya] }));
+    paylasD.disabled = indirD.disabled = !blob;
+  }
+  paylasD.addEventListener("click", async () => {
+    if (!blob) return;
+    try { await navigator.share({ files: [new File([blob], dosyaAdi(), { type: "image/png" })], title: belgeBul(x.belgeId)?.ad || "Alıntı" }); }
+    catch (hata) { if (hata?.name !== "AbortError") toast("Paylaşılamadı; İndir ile kaydedebilirsin."); }
+  });
+  indirD.addEventListener("click", () => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = h("a", { href: url, download: dosyaAdi(), hidden: true });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  });
+  dlg.addEventListener("close", () => { if (alintiPenceresi === dlg) alintiPenceresi = null; dlg.remove(); });
+  dlg.addEventListener("click", (e) => {
+    if (e.target !== dlg) return;
+    const r = dlg.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+  });
+  document.body.append(dlg);
+  fisKapat();
+  dlg.showModal();
+  alintiPenceresi = dlg;
+  odakla($("#alintiBaslik", dlg));
+  ciz();
 }

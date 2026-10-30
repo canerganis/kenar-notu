@@ -83,7 +83,7 @@
   pointer-events: none; background: linear-gradient(var(--zemin) calc(100% - 3px), transparent); }
 :root[data-hareket="sade"] .okuma-ic { transition: none; }
 @media (prefers-reduced-motion: reduce) { .okuma-ic { transition: none; } }
-@media (max-width: 599px) { .okuma-ic { padding-left: 22px; padding-right: 22px; } }
+@media (max-width: 599px) { .okuma-ic { padding-left: max(22px, calc(env(safe-area-inset-left, 0px) + 12px)); padding-right: max(22px, calc(env(safe-area-inset-right, 0px) + 12px)); } }
 
 .okuma-sutun { grid-column: 2; position: relative; color: var(--metin); font-family: var(--okuma-aile, var(--f-okuma));
   font-optical-sizing: auto; hyphens: auto; -webkit-hyphens: auto; text-wrap: pretty; }
@@ -162,7 +162,7 @@
 .okuma-sutun .tuval-dugme { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 6px; padding: 0;
   background: transparent; color: var(--ikincil); cursor: pointer; }
 .okuma-sutun .tuval-dugme .i { width: 18px; height: 18px; }
-@media (hover: hover) { .okuma-sutun .tuval-dugme:hover { background: color-mix(in srgb, var(--metin) 8%, transparent); color: var(--metin); } }
+@media (hover: hover) and (pointer: fine) { .okuma-sutun .tuval-dugme:hover { background: color-mix(in srgb, var(--metin) 8%, transparent); color: var(--metin); } }
 .okuma-sutun .tuval.aciliyor { animation: tuval-ac 240ms var(--egri-kagit) both; }
 @keyframes tuval-ac { from { opacity: .25; } to { opacity: 1; } }   /* yalnız saydamlık: isabet alanı hemen tam boy */
 /* Küçük: satır içinde simge; dokununca açılır. Görünür boyu küçük, dokunma alanı 44px */
@@ -182,7 +182,7 @@
 .okuma-ekrani .kenar-notu { position: absolute; left: calc(100% + 32px); width: 200px; padding: 0 0 0 12px; text-align: left;
   border-left: 1.5px solid color-mix(in srgb, var(--ilk-harf) 60%, transparent); font: 500 var(--fs-18, 18px)/1.2 var(--f-el); color: var(--metin);
   white-space: pre-line; overflow-wrap: anywhere; hyphens: none; text-indent: 0; cursor: pointer; animation: perde-ac 240ms both; }
-@media (hover: hover) { .okuma-ekrani .kenar-notu:hover { border-left-color: var(--ilk-harf); } }
+@media (hover: hover) and (pointer: fine) { .okuma-ekrani .kenar-notu:hover { border-left-color: var(--ilk-harf); } }
 .okuma-ekrani .kenar-notu:focus-visible { outline-offset: 4px; border-radius: 2px; }
 
 /* Yer imi: paragrafın solunda sarkan küçük bordo kurdele */
@@ -284,7 +284,7 @@
 .aa-ozel > summary .i { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform var(--sure-kisa, 160ms) var(--egri-kagit); }
 .aa-ozel[open] > summary .i { transform: rotate(180deg); }
 .aa-ozel > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
-@media (hover: hover) { .aa-ozel > summary:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .aa-ozel > summary:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
 .aa-ozel > .aa-bolum:first-of-type { margin-top: 8px; }
 :root[data-hareket="sade"] .aa-ozel > summary .i { transition: none; }
 
@@ -370,13 +370,14 @@
 .okuma-ekrani[data-mod="koltuk"] .okuma-durum :is(.kalan, .yuzde) { display: none; }
 /* TASARIM-3 6.4.2: sütun başlığı (bölüm adı, solda) ve sayfa numarası (sağda) aynı sesle, sütuna hizalı, sütunun 28px üstünde.
    Kitabın kenarındaki çalışma başlığı gibi. --sutun-x ve --sutun-g okuma.js yerleşiminden gelir. */
-.okuma-ekrani[data-mod="koltuk"] .okuma-durum :is(.bolum, .sayfa-no) { position: absolute; top: 22px; display: block; height: 14px;
+/* TASARIM-4 1.2: koşu başlığı bilgi, süs değil: --ikincil (açık sayfada 4,9:1). Çentiğin altında başlar. */
+.okuma-ekrani[data-mod="koltuk"] .okuma-durum :is(.bolum, .sayfa-no) { position: absolute; top: calc(22px + env(safe-area-inset-top, 0px)); display: block; height: 14px;
   font: 400 var(--fs-11, 11px)/14px var(--f-olcu); letter-spacing: .06em; text-transform: uppercase; font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--metin) 45%, transparent); white-space: nowrap; }
+  color: var(--ikincil); white-space: nowrap; }
 .okuma-ekrani[data-mod="koltuk"] .okuma-durum .bolum { left: var(--sutun-x, 50%); max-width: calc(var(--sutun-g, 520px) - 8em); overflow: hidden; text-overflow: ellipsis; }
 .okuma-ekrani[data-mod="koltuk"] .okuma-durum .sayfa-no { left: calc(var(--sutun-x, 50%) + var(--sutun-g, 0px)); translate: -100% 0; }
 /* TASARIM-3 6.4.3: çubuklar kapalıyken tek ölçü: sayfa numarasının altında 64px'lik çizgi (koltuk.js .koltuk-cizgi) */
-.okuma-ekrani[data-mod="koltuk"] .koltuk-cizgi { inset: 42px auto auto calc(var(--sutun-x, 50%) + var(--sutun-g, 0px) - 64px); width: 64px; margin: 0; }
+.okuma-ekrani[data-mod="koltuk"] .koltuk-cizgi { inset: calc(42px + env(safe-area-inset-top, 0px)) auto auto calc(var(--sutun-x, 50%) + var(--sutun-g, 0px) - 64px); width: 64px; margin: 0; }
 .okuma-ekrani:not([data-mod="koltuk"]) .okuma-durum .sayfa-no { display: none; }
 .okuma-ekrani[data-mod="koltuk"].cubuk-gorunur .okuma-durum { opacity: 0; }
 /* Pencere kenarları yalnız kaydırıcının kendi maskesinde kullanılır: kalıtılmaz. Kalıtılınca her sayfa çevirmede
@@ -517,7 +518,7 @@
   border-radius: var(--r-sm); color: var(--ikincil); font: 500 var(--fs-12, 12px)/1 var(--f-arayuz); }
 .okuma-ekrani .kenar-asistan__kart .i { width: 16px; height: 16px; }
 .okuma-ekrani .kenar-asistan__kart:disabled { opacity: .7; cursor: default; }
-@media (hover: hover) { .okuma-ekrani .kenar-asistan__kart:not(:disabled):hover { color: var(--metin); background: color-mix(in srgb, var(--metin) 7%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .okuma-ekrani .kenar-asistan__kart:not(:disabled):hover { color: var(--metin); background: color-mix(in srgb, var(--metin) 7%, transparent); } }
 
 /* ============ 9. tur · Koltuk: kalem izleri, köşe, havadaki kalem, nüanslar (OZELLIKLER-5 §1, TASARIM-3 §7, 8, 12, 13) ============ */
 
@@ -683,3 +684,213 @@
 .aa-ceviri-durum .ikincil { justify-self: start; }
 .aa-ceviri-durum .ikincil .i { width: 18px; height: 18px; }
 .aa-ceviri-oran { font-variant-numeric: tabular-nums; }
+
+/* ============ 11. tur · Her cihazda Koltuk (OZELLIKLER-7, TASARIM-4) ============ */
+
+/* iOS çift dokunuşla yakınlaştırmasın; sayfa dokunuşları hemen gelsin (TASARIM-4 2.2). Kaydırma ve iki parmak yakınlaştırma kalır. */
+.okuma-ekrani { touch-action: manipulation; }
+
+/* ---------- Mum ışığı (TASARIM-4 4.4): sıcak, düşük mavi ışık, kenarlara doğru hafifçe kararan kâğıt ---------- */
+.okuma-ekrani[data-sayfa="mum"] {
+  --zemin: #1E1710; --metin: #E6CFA5; --ikincil: #A88F6A;   /* metin 11,7:1, ikincil 5,7:1 */
+  --ilk-harf: #D9875E; --altin: #C99A55; --ilerleme: #C98B4E;
+  --vurgu-oran: 30%; --sm-zemin: #E9DCC2; --sm-yazi: #221A12; --sm-sil: #A8341B; --sayfa-isaret: #D9875E;
+}
+/* Kararma .okuma'nın kendi zemininde: metnin altında, kaydırmayla oynamaz, dokunuşu kesmez */
+.okuma-ekrani[data-sayfa="mum"] .okuma { background: radial-gradient(120% 90% at 50% 42%, transparent 58%, #0000004D 100%), var(--zemin); }
+.okuma-ekrani[data-sayfa="mum"] .okuma-sutun :is(img, svg:not(.fleuron):not(.sahne)) { filter: sepia(.35) saturate(.75) brightness(.82); }
+.okuma-ekrani[data-sayfa="mum"] :is(.murekkep-katman, .okuma-canli.carp) { mix-blend-mode: screen; }
+.okuma-ekrani[data-sayfa="mum"] .okuma-sutun ::selection { background: #C98B4E59; color: inherit; }
+.okuma-ekrani[data-sayfa="mum"] .okuma-sutun mark.eslesme { background: linear-gradient(transparent 52%, #E0A1484D 52%); }
+.okuma-ekrani[data-sayfa="mum"] .okuma-sutun mark.eslesme.etkin { background: #E0A14859; box-shadow: 0 0 0 2px #E0A14859; }
+.okuma-ekrani[data-sayfa="mum"] .silgi-imlec { border-color: #E6CFA5; box-shadow: 0 0 0 1px #0000008C; }
+.okuma-ekrani[data-sayfa="mum"] .okuma-ic .kurdele { filter: saturate(.8) brightness(.9); }
+.okuma-ekrani[data-sayfa="mum"] .secim-menusu { --sor-iz: #1A6B48; }
+.okuma-ekrani[data-sayfa="mum"] .kenar-asistan { border-left-color: color-mix(in srgb, var(--metin) 32%, transparent); }
+.okuma-ekrani[data-sayfa="mum"] :is(.koltuk-ust, .koltuk-alt) { background: rgb(30 23 16 / .82); }
+
+/* ---------- Aa (TASARIM-4 1.1.8, 2.6) ---------- */
+/* Parçalı seçimler 44 px: başparmak için */
+.aa-balonu .cip-dizi .cip { height: 44px; }
+/* Koyu çekmecede açık numuneler ışık kutusu olmasın; seçili numunenin halkası koyuda da görünsün */
+.okuma-ekrani.tema-koyu .tema-numune:not([aria-pressed="true"]) .tema-numune__sayfa { filter: brightness(.9); }
+.okuma-ekrani.tema-koyu .tema-numune[aria-pressed="true"] .tema-numune__sayfa { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--ink-2), var(--golge-1); }
+.okuma-ekrani.tema-koyu .tema-numune[aria-pressed="true"] .tema-numune__sayfa::after { background: var(--ink-2); }
+/* Okurken: açılır kapanır satırlar */
+.aa-okurken .anahtar-satir { width: 100%; min-height: 48px; }
+.anahtar-metin { display: grid; gap: 2px; text-align: left; }
+.anahtar-metin small { font: 400 var(--fs-12, 12px)/16px var(--f-arayuz); color: var(--muted); }
+/* Telefonda çekmece biraz daha uzun, numune şeridi başparmakla kayar */
+@media (max-width: 599px) {
+  .okuma-ekrani .aa-balonu { height: min(56dvh, 520px); max-height: min(56dvh, 520px); }
+  .tema-numuneler { scroll-snap-type: x mandatory; }
+}
+
+/* ---------- Telefonda Koltuk (TASARIM-4 2.6) ---------- */
+/* Üst çubukta yalnız geri, ad, Aa ve ⋯: öbürleri alt çubuğun ikinci katında (koltuk.css .koltuk-alt-araclar) */
+@media (max-width: 599px), (max-height: 499px) and (orientation: landscape) {
+  .okuma-ekrani .koltuk-ust .tel-gizle { display: none; }
+}
+/* Yatay telefon: tek sütun, kısa satır (34em), iki yanda çentik payıyla geniş kenar */
+@media (max-height: 499px) and (orientation: landscape) {
+  .okuma-ekrani .okuma-ic { grid-template-columns: 1fr minmax(0, min(var(--olcu, 34em), 34em)) 1fr;
+    padding-left: max(48px, calc(env(safe-area-inset-left, 0px) + 24px)); padding-right: max(48px, calc(env(safe-area-inset-right, 0px) + 24px)); }
+  .bolum-acilis { padding-top: 10vh; margin-bottom: 32px; }
+  .bolum-acilis h2 { font-size: var(--fs-30, 30px); }
+}
+
+/* ---------- Seçim menüsü şeridi (iOS ve telefon) ---------- */
+/* iOS'ta sistemin balonu seçimin yanında açılır; menü ekranın altında (seçim alttaysa üstünde) kenardan kenara kayan şerit */
+.okuma-ekrani .secim-menusu.serit { left: max(8px, env(safe-area-inset-left, 0px)) !important; right: max(8px, env(safe-area-inset-right, 0px));
+  top: auto !important; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); height: 52px; overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: none; justify-content: flex-start; touch-action: pan-x; animation: aa-fis-ac 200ms var(--egri-kagit);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.okuma-ekrani .secim-menusu.serit::-webkit-scrollbar { display: none; }
+.okuma-ekrani .secim-menusu.serit.serit-ust { top: calc(12px + env(safe-area-inset-top, 0px)) !important; bottom: auto; }
+.okuma-ekrani .secim-menusu.serit::after { display: none; }
+.okuma-ekrani .secim-menusu.serit > * { flex: none; }
+
+/* ---------- Kalem tepsisi (OZELLIKLER-7 §3, TASARIM-4 2.6) ---------- */
+.kalem-tepsi { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: var(--z-balon);
+  display: flex; align-items: center; gap: 2px; height: 56px; padding: 0 6px; border-radius: 28px; color: var(--ink);
+  background: var(--surface); box-shadow: var(--golge-3); animation: aa-fis-ac 200ms var(--egri-kagit); }
+.kalem-tepsi.parmak { left: 50%; right: auto; translate: -50% 0; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+.kalem-tepsi .ayrac { width: 1px; height: 24px; margin: 0 4px; background: var(--line-strong); }
+.kalem-tepsi :is(.tepsi-kalem, .tepsi-silgi) { position: relative; display: grid; place-items: center; width: 44px; height: 48px; padding: 0; border: 0; border-radius: 12px;
+  background: none; color: var(--ink-2); overflow: hidden; }
+.kalem-tepsi .tepsi-kalem .kalem-svg { width: 14px; height: 40px; translate: 0 8px; transition: translate var(--sure-kisa) var(--egri-kagit); }
+.kalem-tepsi .tepsi-kalem[aria-pressed="true"] .kalem-svg { translate: 0 0; }
+.kalem-tepsi .tepsi-silgi .i { width: 22px; height: 22px; }
+.kalem-tepsi :is(.tepsi-kalem, .tepsi-silgi)[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.kalem-tepsi .tepsi-bitti { height: 44px; padding: 0 14px; font-weight: 600; }
+/* Parmakla yazarken kaydırma yok, metin seçilmez, büyüteç açılmaz (iOS uzun basış) */
+.okuma-ekrani.parmak-kalem .okuma-kaydir { touch-action: none; }
+.okuma-ekrani.parmak-kalem .okuma-sutun { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+:root[data-hareket="sade"] .kalem-tepsi { animation: perde-ac 120ms; }
+
+/* ---------- Paneller telefonda ve dar dikeyde alt çekmece (TASARIM-4 2.5) ---------- */
+.cekmece-tutamak { display: none; }
+@media (max-width: 599px), (max-width: 999px) and (orientation: portrait) {
+  .okuma-ekrani .calisma > .panel { position: absolute; top: auto; bottom: 0; left: 0; right: 0; z-index: var(--z-panel); width: auto; max-width: 640px;
+    margin: 0 auto; height: min(62dvh, calc(100% - 24px - env(safe-area-inset-top, 0px))); max-height: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px); border-radius: 20px 20px 0 0; box-shadow: var(--golge-4);
+    animation: cekmece-gel 280ms var(--egri-kagit); transition: height var(--sure-orta) var(--egri-kagit); }
+  .okuma-ekrani .calisma > .panel[data-durak="tam"] { height: calc(100% - 8px - env(safe-area-inset-top, 0px)); }
+  .okuma-ekrani .calisma > .panel.suruklen { transition: none; animation: none; }
+  .okuma-ekrani .calisma > .panel .panel-govde { border-radius: 0; }
+  .okuma-ekrani .panel-perde { inset: 0; }
+  .okuma-ekrani .cekmece-tutamak { position: relative; display: grid; place-items: center; height: 22px; flex: none; touch-action: none; cursor: grab; }
+  .okuma-ekrani .cekmece-tutamak::before { content: ""; width: 36px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 22%, transparent); }
+  .okuma-ekrani .cekmece-tutamak::after { content: ""; position: absolute; left: 50%; top: 0; width: 120px; height: 44px; translate: -50% 0; }
+  .okuma-ekrani .cekmece-tutamak:focus-visible { outline: none; }
+  .okuma-ekrani .cekmece-tutamak:focus-visible::before { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus); }
+}
+@keyframes cekmece-gel { from { transform: translateY(100%); } }
+:root[data-hareket="sade"] .okuma-ekrani .calisma > .panel { animation: perde-ac 120ms; transition: none; }
+@media (prefers-reduced-motion: reduce) { .okuma-ekrani .calisma > .panel { animation: perde-ac 120ms; transition: none; } }
+
+/* ---------- Dar ekranda kenar notu: kenar işareti ve satır altı not (TASARIM-4 2.6) ---------- */
+.okuma-ekrani .okuma-ic:not(.oluklu) .kenar-notlari.isaretli { display: block; }
+.okuma-ekrani .kenar-isaret { position: absolute; right: -14px; width: 3px; height: 16px; padding: 0; border: 0; border-radius: 2px;
+  background: var(--v, var(--ilk-harf)); cursor: pointer; }
+.okuma-ekrani .kenar-isaret::after { content: ""; position: absolute; inset: -14px -20px -14px -21px; }   /* 44x44 */
+.okuma-ekrani .kenar-isaret:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.okuma-sutun .satir-alti-not { display: block; width: 100%; margin: 6px 0 14px; padding: 8px 12px; border: 0; border-radius: 3px; text-align: left; text-indent: 0;
+  background: color-mix(in srgb, var(--v, #F4D63E) 14%, var(--zemin)); box-shadow: inset 2px 0 0 var(--v, #F4D63E);
+  font: 500 18px/22px var(--f-el); color: var(--metin); white-space: pre-line; overflow-wrap: anywhere; hyphens: none; cursor: pointer;
+  -webkit-user-select: none; user-select: none; }
+
+/* ---------- Okuma cetveli (TASARIM-4 4.5) ---------- */
+.okuma-cetveli { position: absolute; left: 0; right: 0; top: var(--cetvel-y, 40%); z-index: 2; height: calc(var(--satir-yuk, 30px) + 10px);
+  transform: translateY(-50%); pointer-events: none; transition: top var(--sure-kisa, 160ms) var(--egri-kagit); }
+.okuma-cetveli::before, .okuma-cetveli::after { content: ""; position: absolute; left: 0; right: 0; height: 100vh; pointer-events: none;
+  background: color-mix(in srgb, var(--zemin) 45%, transparent); }
+.okuma-cetveli::before { bottom: 100%; }
+.okuma-cetveli::after { top: 100%; }
+.okuma-cetveli .bant { position: absolute; inset: 0; border-radius: 3px;
+  box-shadow: inset 0 .5px 0 color-mix(in srgb, var(--metin) 18%, transparent), inset 0 -.5px 0 color-mix(in srgb, var(--metin) 18%, transparent); }
+.okuma-cetveli .tutamak { position: absolute; right: max(2px, env(safe-area-inset-right, 0px)); top: 50%; width: 14px; height: 28px; translate: 0 -50%;
+  pointer-events: auto; border-radius: 3px; background: linear-gradient(90deg, #B8944F, #A88443); box-shadow: 0 1px 2px #1C1B1940;
+  touch-action: none; cursor: ns-resize; outline: none; }
+.okuma-cetveli .tutamak::before { content: ""; position: absolute; inset: -8px -15px; }   /* 44x44 */
+.okuma-cetveli .tutamak::after { content: ""; position: absolute; left: 4px; right: 4px; top: 9px; bottom: 9px;
+  background: repeating-linear-gradient(to bottom, #1C1B1966 0 1px, transparent 1px 4px); }
+.okuma-cetveli .tutamak:focus-visible { box-shadow: 0 0 0 2px var(--zemin), 0 0 0 4px var(--focus); }
+.okuma-cetveli.surukleniyor { transition: none; }
+.okuma-ekrani.yaziyor .okuma-cetveli { transition: none; }
+:root[data-hareket="sade"] .okuma-cetveli { transition: none; }
+@media (prefers-reduced-motion: reduce) { .okuma-cetveli { transition: none; } }
+
+/* ---------- Ödünç kartı: arka kapağın içi (TASARIM-4 4.3) ---------- */
+.kitap-sonu .odunc-yer:empty { display: none; }
+.odunc-cep { position: relative; width: min(360px, 86vw); margin: 48px auto 24px; padding: 96px 0 18px; border-radius: 0 0 6px 6px; text-align: left;
+  background: linear-gradient(#D9C9A4, #D2C095); box-shadow: inset 0 1px 0 #FFFFFF59, 0 1px 2px #1C1B191F; }
+.odunc-kart { position: relative; margin: -86px 18px 0; padding: 16px 16px 20px; transform: rotate(-1.2deg);
+  background: #F3EAD3 repeating-linear-gradient(to bottom, transparent 0 25px, #B9A57A55 25px 26px);
+  box-shadow: 0 1px 2px #1C1B1926, 0 6px 14px -6px #1C1B1940; font: 400 12px/26px var(--f-olcu); color: #3B3326; }
+.odunc-kart h4 { margin: 0 0 4px; font: 500 11px/16px var(--f-olcu); letter-spacing: .18em; text-transform: uppercase; text-align: center; }
+.odunc-kart .kitap { margin: 0; font: italic 400 15px/26px var(--f-okuma); text-align: center; text-indent: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.odunc-satirlar { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; }
+.odunc-damga { display: inline-block; font: 500 12px/26px var(--f-olcu); font-variant-numeric: tabular-nums; text-transform: uppercase; letter-spacing: .06em;
+  color: #4F3F86; opacity: var(--o, .85); transform: rotate(var(--a, 0deg)) translateX(var(--x, 0px));
+  -webkit-mask-image: var(--maske-damga, none); mask-image: var(--maske-damga, none); }
+.odunc-damga.basiliyor { animation: muhur-bas 360ms var(--egri-kalk, cubic-bezier(.3, 1.4, .5, 1)) both; }
+.odunc-ara { color: #3B332699; letter-spacing: .3em; }
+.odunc-bos { margin: 0; text-indent: 0; font: italic 400 14px/26px var(--f-okuma); color: #6C5F4A; }
+.odunc-toplam { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; box-shadow: 0 -1px 0 #3B332633; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
+.odunc-kart:has(.odunc-bitti) { padding-bottom: 52px; }
+.odunc-bitti { position: absolute; right: 18px; bottom: 14px; padding: 2px 8px; border: 1.5px solid #8C2B38; border-radius: 3px; color: #8C2B38;
+  font: 600 12px/18px var(--f-olcu); letter-spacing: .16em; transform: rotate(-8deg); opacity: .8;
+  -webkit-mask-image: var(--maske-damga, none); mask-image: var(--maske-damga, none); }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) .odunc-cep { background: linear-gradient(#3A3226, #342C21); box-shadow: inset 0 1px 0 #FFFFFF14, 0 1px 2px #0000004D; }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) .odunc-kart { background-color: #2B261D; color: #DCCFB4;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 25px, #DCCFB41F 25px 26px); }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) .odunc-damga { color: #B6A6E6; }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) :is(.odunc-bos, .odunc-ara) { color: #A99C83; }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) .odunc-bitti { color: #E59A92; border-color: #E59A92; }
+
+/* ---------- Ex libris: iç kapakta kitap mührü (TASARIM-4 4.1) ---------- */
+.bolum-acilis { position: relative; }
+.bolum-acilis > .ex-libris { position: absolute; right: 0; top: 8px; width: 72px; height: 72px; opacity: .88; mix-blend-mode: multiply; pointer-events: none;
+  transform: rotate(var(--aci, -4deg)); }
+.bolum-acilis > .ex-libris svg { display: block; width: 100%; height: 100%; }
+.okuma-ekrani:is([data-sayfa="gece"], [data-sayfa="tahta"], [data-sayfa="mum"]) .bolum-acilis > .ex-libris { mix-blend-mode: screen; opacity: .7; }
+.bolum-acilis > .ex-libris.basiliyor { animation: muhur-bas 520ms var(--egri-kalk, cubic-bezier(.3, 1.4, .5, 1)) both; }
+@media (max-height: 499px) and (orientation: landscape) { .bolum-acilis > .ex-libris { width: 56px; height: 56px; top: 0; } }
+@keyframes muhur-bas {
+  0%   { opacity: 0; transform: scale(1.18) rotate(var(--aci, var(--a, -4deg))); filter: blur(1.2px); }
+  55%  { opacity: .95; transform: scale(.97) rotate(var(--aci, var(--a, -4deg))); filter: blur(0); }
+  100% { opacity: .88; transform: scale(1) rotate(var(--aci, var(--a, -4deg))); }
+}
+@media (prefers-reduced-motion: reduce) { :is(.bolum-acilis > .ex-libris, .odunc-damga).basiliyor { animation: perde-ac 120ms; } }
+:root[data-hareket="sade"] :is(.bolum-acilis > .ex-libris, .odunc-damga).basiliyor { animation: perde-ac 120ms; }
+
+/* ---------- İki ve üç parmak: halka ve fiş (TASARIM-4 4.6). Kabuk tasarim.css'te verirse onunki geçer (:where, sıfır özgüllük). ---------- */
+:where(.parmak-halka) { position: fixed; z-index: var(--z-pencere, 70); width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px var(--ink-2); animation: halka-son 240ms var(--egri-kagit) forwards; }
+:where(.parmak-halka.bos) { opacity: .45; }
+@keyframes halka-son { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+:where(.geri-fis) { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: var(--z-pencere, 70);
+  display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 16px; border-radius: 20px; color: var(--ink);
+  background: var(--cam-yuzey, var(--surface)); -webkit-backdrop-filter: var(--cam-bulanik, blur(20px)); backdrop-filter: var(--cam-bulanik, blur(20px)); box-shadow: var(--golge-3);
+  font: 500 var(--fs-13, 13px)/18px var(--f-arayuz); animation: aa-fis-ac 200ms var(--egri-kagit); }
+:where(.geri-fis) .metin-dugme { height: 40px; margin-right: -10px; padding: 0 10px; }
+@media (prefers-reduced-motion: reduce) { :where(.parmak-halka) { animation-duration: 1ms; } }
+
+/* ================= 12. tur cila ================= */
+/* Çeviri beklerken fiş boş görünüyordu (1 px'lik izler seçilmiyordu): satır yerinde soluk kalem izi, 1,2 sn'lik nefes */
+.ceviri-fis .cf-metin.bekliyor { gap: 0; padding: 4px 0; }
+.ceviri-fis .cf-metin.bekliyor i { height: 26px; background: linear-gradient(transparent 10px, color-mix(in srgb, var(--fis-yazi, #22201D) 9%, transparent) 10px 17px, transparent 17px);
+  border-radius: 4px; animation: yer-nefes 1.2s var(--egri-kagit) infinite alternate; }
+.ceviri-fis .cf-metin.bekliyor i:nth-child(2) { animation-delay: .15s; }
+.ceviri-fis .cf-metin.bekliyor i:nth-child(3) { animation-delay: .3s; }
+@media (prefers-reduced-motion: reduce) { .ceviri-fis .cf-metin.bekliyor i { animation: none; } }
+:root[data-hareket="sade"] .ceviri-fis .cf-metin.bekliyor i { animation: none; }
+/* Koşu başlığının altındaki ilerleme çizgisi sayfa numarasının hemen altında ve izi seçilir: kopuk bir çentik gibi durmasın */
+.okuma-ekrani[data-mod="koltuk"] .koltuk-cizgi { top: calc(40px + env(safe-area-inset-top, 0px)); background: color-mix(in srgb, var(--metin, var(--ink)) 20%, transparent); }
+/* Gece sayfasında çeviri ve anlam fişi krem kalıp ekranın en parlak yeri oluyordu: Tekrar kartının koyu kâğıdı */
+.okuma-ekrani.tema-koyu { --fis-kagit: #24221E; --fis-yazi: #EEEAE2; --fis-baslik: #E08D97; }
+/* Okuma kromu gece sayfasında da açık tokenları taşıyor: fişin içi koyu kâğıda göre kendi tokenlarını alır */
+.okuma-ekrani.tema-koyu :is(.ceviri-fis, .anlam-fis) { --ink: #EEEAE2; --ink-2: #CFC9BF; --muted: #A29D95; --line: #FFFFFF14; --line-strong: #FFFFFF24;
+  --focus: #9DB4E0; --accent-dolgu: #EEEAE2; --accent-dolgu-ink: #1C1B19; --accent-dolgu-kenar: #EEEAE2; --accent-dolgu-hover: #FFFFFF;
+  --golge-3: 0 0 0 .5px #FFFFFF14, 0 2px 4px #0000004D, 0 12px 32px -8px #000000A6; }

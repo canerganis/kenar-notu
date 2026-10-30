@@ -17,6 +17,7 @@
 //   belge.yon: "ltr" | "rtl", belge.sayfa (1'den), belge.ilerleme, belge.sayfaSayisi
 
 import { h, icon, bus, hareketAz, yeniId, yanTusSilgiMi, basincUygula } from "./ortak.js";
+import * as ortak from "./ortak.js";   // bosta ve parmakGeriBildirim: kabukta yoksa yerel yedek
 import { cizgiAc } from "./cizgi-belge.js";
 import { hepsiniCiz, cizgiCiz, CanliKatman, islakBitir, islakAktar, silgi as silgiUygula, cizgilerKutusu } from "./kalem.js";
 
@@ -33,13 +34,18 @@ const RENKLER = [["Mürekkep mavisi", "#24407A"], ["Siyah", "#1C1B19"], ["Bordo"
 const GORUNUMLER = [["sayfa", "Sayfa"], ["genislik", "Genişlik"], ["panel", "Panel"]];
 const YONLER = [["ltr", "Soldan sağa"], ["rtl", "Manga"]];
 const IPUCU_ANAHTAR = "kn:cizgi-ipucu";
+const PANEL_IPUCU = "kn:cizgi-panel-ipucu";
+// Dikey telefon (TASARIM-4 2.8): kullanıcı görünüm seçmemişse Panel; yatay telefonda ve genişte Sayfa
+const dikeyTelefon = () => matchMedia("(max-width: 599px)").matches;
 
 let S = null;
 let acilisNo = 0;
 
 const sinirla = (v, a, b) => (v < a ? a : v > b ? b : v);
 const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
-const bosta = (fn, ms = 400) => (typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 40));
+// Boşta çalıştır: kabuğun ortak.bosta'sı (Safari'de requestIdleCallback yok), yoksa yerel yedek
+const bosta = (fn, ms = 400) => (typeof ortak.bosta === "function" ? ortak.bosta(fn, { timeout: ms })
+  : typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 40));
 
 // ---------- dışa açık ----------
 
@@ -100,6 +106,7 @@ export function kapat() {
   for (const t of s.kucukler) { t.cv.width = t.cv.height = 0; }
   delete document.documentElement.dataset.kalem;
   document.body.classList.remove("yaziyor");
+  s.geriFis?.remove();
   s.kap.replaceChildren();
   S = null;
   try { s.motor.kapat(); } catch { /* boş */ }
@@ -158,7 +165,8 @@ function kur(kap, kok, belge, motor, sayfaArg, ek) {
   belge.sayfaSayisi = n;
   S = {
     kap, kok, belge, motor, n, veri, yon,
-    gorunum: GORUNUMLER.some(([g]) => g === veri.cizgi.gorunum) ? veri.cizgi.gorunum : "sayfa",
+    gorunum: GORUNUMLER.some(([g]) => g === veri.cizgi.gorunum) ? veri.cizgi.gorunum : dikeyTelefon() ? "panel" : "sayfa",
+    gorunumKayitli: GORUNUMLER.some(([g]) => g === veri.cizgi.gorunum),   // kayıt yoksa varsayılan saklanmaz
     vw: 0, vh: 0, dpr: Math.min(3, devicePixelRatio || 1), yatay: true,
     yay: [], yi: 0, yuvalar: new Map(),
     panel: null, panelSonu: false,
@@ -187,8 +195,9 @@ function kur(kap, kok, belge, motor, sayfaArg, ek) {
   yayilimaGec(yayBul(ilk), { anim: false, panel: Number.isInteger(panelK) ? panelK : "bas", ilk: true });
   // Ölçüler arkada tamamlanınca çift sayfalar değişmiş olabilir: yayılımlar yeniden kurulur
   Promise.resolve(motor.boyutlarHazir).then(() => { if (S?.motor === motor) duzeniYenile(); }).catch(() => {});
-  cubukGoster(true);
-  ipucuGoster();
+  // Açılışta çubuklar kapalı, sayfa bütün ekranda; ilk dokunuşta gelir (TASARIM-4 2.8)
+  cubukGizle();
+  if (S.gorunum === "panel") panelIpucu(); else ipucuGoster();
   kok.focus({ preventScroll: true });
 }
 
@@ -218,6 +227,7 @@ function arayuzKur(kok) {
   el.perde = h("div", { class: "cizgi-panel-perde", "aria-hidden": "true" },
     ...["ust", "alt", "sol", "sag"].map((k) => h("i", { class: "pp-" + k })));
   el.kare = h("div", { class: "cizgi-kare", "aria-hidden": "true" });
+  el.cerceve = h("div", { class: "cizgi-cerceve", "aria-hidden": "true" });   // Panel'de karenin kenarında ince ışık
   el.son = h("div", { class: "cizgi-son", "aria-hidden": "true" }, "Son.");
   el.halka = h("div", { class: "kalem-halka cizgi-halka", "aria-hidden": "true" });
   el.ipucu = h("div", { class: "cizgi-ipucu", "aria-hidden": "true" }, h("i", { class: "ip-sol" }), h("i", { class: "ip-sag" }));
@@ -241,16 +251,21 @@ function arayuzKur(kok) {
 
   // alt çubuk
   el.serit = h("div", { class: "cizgi-serit", role: "list", "aria-label": "Sayfalar", dir: S.yon === "rtl" ? "rtl" : "ltr" });
-  el.konum = h("span", { class: "cizgi-konum" });
+  // Konum: telefonda dokununca küçük resim şeridi açılır (şerit kendiliğinden yer kaplamaz)
+  el.konum = h("button", { type: "button", class: "cizgi-konum", "aria-label": "Sayfalar", "aria-expanded": "false",
+    onclick: () => { const a = S.kok.classList.toggle("serit-acik"); el.konum.setAttribute("aria-expanded", String(a)); if (a) { seritGuncelle(true); kucukleriIste(); } } });
   el.yon = anahtar("cizgi-yon", YONLER, S.yon, yonSec);
   el.gorunum = anahtar("cizgi-gorunum", GORUNUMLER, S.gorunum, gorunumSec);
+  // Telefonda yön anahtarı yer kaplamaz: tek düğme iki yön arasında geçer (yalnız dar ekranda görünür)
+  el.yonTel = dugme(S.yon === "rtl" ? "sol" : "sag", "", () => yonSec(S.yon === "rtl" ? "ltr" : "rtl"), { class: "cizgi-dugme cizgi-yon-tel" });
+  yonTelGuncelle();
   el.alt = h("footer", { class: "cizgi-alt" },
     el.serit,
-    h("div", { class: "cizgi-alt-satir" }, el.konum, h("span", { class: "cizgi-bosluk" }), el.yon, el.gorunum));
+    h("div", { class: "cizgi-alt-satir" }, el.konum, h("span", { class: "cizgi-bosluk" }), el.yon, el.yonTel, el.gorunum));
 
   kok.dataset.gorunum = S.gorunum;
   kok.dataset.yon = S.yon;
-  kok.append(el.sahne, el.perde, el.kare, el.son, el.ipucu, el.halka, el.ust, el.alt, el.duyuru);
+  kok.append(el.sahne, el.perde, el.cerceve, el.kare, el.son, el.ipucu, el.halka, el.ust, el.alt, el.duyuru);
   kucukResimleriKur();
 }
 
@@ -356,7 +371,7 @@ function perdeAc(k, ms) {
   perdeYerlestir(k, acikti ? ms : 0);
   S.el.perde.classList.add("acik");
 }
-function perdeKapat() { S.el.perde.classList.remove("acik"); }
+function perdeKapat() { S.el.perde.classList.remove("acik"); S.el.cerceve?.classList.remove("acik"); }
 
 // Nüans 9: yeni kareye varınca kenarında bir an mürekkep çizgisi
 function kareCizgisi(k) {
@@ -596,7 +611,9 @@ async function sekme(adim) {
 
 // ---------- panel görünümü ----------
 
+// Kapak bütün sayfa: kapakta kare yok, algılama kapağın şeridini kare sanıyordu (ilk kare yarım ve karanlık)
 function panelleriAl(i) {
+  if (i === 0) return Promise.resolve([{ x: 0, y: 0, w: 1, h: 1 }]);
   return S.motor.paneller(i, { yon: S.yon }).then((l) => (l && l.length ? l : [{ x: 0, y: 0, w: 1, h: 1 }]));
 }
 
@@ -606,10 +623,17 @@ async function panelaGit(y, liste, k, ms = PANEL_MS) {
   S.panel = { i: y.sayfalar[0].i, liste, k };
   S.panelSonu = false;
   konumYaz(true);
+  S.el.cerceve.classList.remove("acik");
   perdeAc(ekranKutusu(y, r, cam), ms);
   if (ms) await kameraAnim(y, cam, ms); else kameraUygula(y, cam);
   if (!S || aktifYuva() !== y || S.panel?.k !== k) return;
-  kareCizgisi(ekranKutusu(y, r, cam));
+  const kutu = ekranKutusu(y, r, cam);
+  kareCizgisi(kutu);
+  // Kare yüzmesin, çerçevelensin: kenarında 0,5 px ışık (tam sayfa karede yok)
+  if (liste.length > 1 || liste[k].w < 0.98 || liste[k].h < 0.98) {
+    Object.assign(S.el.cerceve.style, { left: kutu.x + "px", top: kutu.y + "px", width: kutu.w + "px", height: kutu.h + "px" });
+    S.el.cerceve.classList.add("acik");
+  }
   duyur(`Sayfa ${y.sayfalar[0].i + 1}, kare ${k + 1} / ${liste.length}`);
   // Çözünürlük yetmiyorsa (yuva panellerden önce hazırlandıysa) yükseltilir
   if (cam.s > y.f * 1.15 && y.f < EN_F) { y.f = Math.min(EN_F, cam.s); bosta(() => y.olu || y.sayfalar.forEach((p) => sayfaCiz(y, p, y.f))); }
@@ -629,6 +653,8 @@ async function panelAdim(adim) {
     if (S.yi === 0) return tumSayfa(y);
     return yayilimaGec(S.yi - 1, { panel: "son" });
   }
+  // Tek karelik sayfa (kapak) zaten bütün görünüyor: bekleme yok, doğrudan sonraki sayfa
+  if (liste.length === 1 && liste[0].w >= 0.98 && liste[0].h >= 0.98 && S.yi < S.yay.length - 1) return yayilimaGec(S.yi + 1, { panel: "bas" });
   // Sayfa sonu: bütün sayfa bir an görünür, sonra çevrilir
   await tumSayfa(y);
   if (!S || no !== S.akis) return;
@@ -740,6 +766,15 @@ function isaretciBasti(e) {
   if (e.pointerType === "pen") { S.kalemZ = simdi; S.kalemVar = true; }
   if (e.pointerType === "touch" && (simdi - S.kalemZ < AVUC_MS || S.aktif?.tur === "pen")) return;   // avuç içi
   if (e.pointerType === "mouse" && e.button !== 0) return;
+  // Parmakla yazarken ikinci parmak hemen gelirse az önce başlayan çizgi iptal: iki parmak jestine (geri al, kıstır) döner
+  const a = S.aktif;
+  if (a && e.pointerType === "touch" && a.tur === "touch" && simdi - a.t0 < 260 && !a.silinen.length) {
+    S.canli.temizle();
+    S.aktif = null;
+    S.kok.classList.remove("yaziyor");
+    delete document.documentElement.dataset.kalem;
+    S.noktalar.set(a.id, { x: a.x0, y: a.y0 });
+  }
   if (S.aktif) return;   // çizim sırasında yalnız ilk işaretçi
   // Kalem her zaman yazar; parmak ve fare yalnız kalem ya da silgi seçiliyse (kalem algılanmadıysa parmak da)
   const yazar = e.pointerType === "pen" || (S.arac !== "oku" && S.noktalar.size === 0 && !(e.pointerType === "touch" && S.kalemVar));
@@ -760,7 +795,8 @@ function isaretciBasti(e) {
     if (S.jest?.tur === "cevir") suruklemeBirak(S.jest, false);
     jestBasladi();
     const [a, b] = [...S.noktalar.values()];
-    S.jest = { tur: "kistir", d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam0: { ...y.cam } };
+    S.jest = { tur: "kistir", d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam0: { ...y.cam },
+      t0: simdi, ilk: [[a.x + S.ox, a.y + S.oy], [b.x + S.ox, b.y + S.oy]] };
     sonDokunusIptal();
     perdeKapat();
     S.el.kare.classList.remove("parla");
@@ -898,7 +934,8 @@ function isaretciKalkti(e) {
     if (S.noktalar.size >= 1) {
       // Bir parmak kaldı: dokunuş sayılmaz, kaydırma olarak sürer
       const [id, kalan] = [...S.noktalar.entries()][0];
-      S.jest = { tur: "kaydir", id, x0: kalan.x, y0: kalan.y, t0: performance.now(), cam0: { ...y.cam }, son: [] };
+      S.jest = { tur: "kaydir", id, x0: kalan.x, y0: kalan.y, t0: performance.now(), cam0: { ...y.cam }, son: [],
+        iki: { t0: j.t0, cam0: j.cam0, ilk: j.ilk }, iptal: j.iptal || e.type === "pointercancel" };   // hızlı iki parmak dokunuşu mu, son parmak kalkınca bakılır
       return;
     }
     S.jest = null;
@@ -916,7 +953,32 @@ function isaretciKalkti(e) {
     suruklemeBirak(j, e.type === "pointerup" && (Math.abs(j.dx) > S.vw * 0.16 || (Math.abs(hiz) > 0.45 && Math.sign(hiz) === Math.sign(j.dx))));
     return;
   }
+  // İki parmakla kısa dokunuş (yakınlaşmadan, kaymadan): geri al (OZELLIKLER-7 §3, her platformda)
+  if (j.tur === "kaydir" && j.iki && !j.iptal && e.type === "pointerup" && performance.now() - j.iki.t0 < 320
+    && Math.abs(y.cam.s / j.iki.cam0.s - 1) < 0.04 && Math.hypot(nk.x - j.x0, nk.y - j.y0) < 14) {
+    kameraUygula(y, j.iki.cam0);
+    parmakGeriAl(j.iki.ilk);
+    return;
+  }
   if (j.tur === "kaydir") yakinlikBitti(y);
+}
+
+// Halka ve fiş: ne olduğu görünsün (TASARIM-4 4.6). Kabuğun ortak bir yardımcısı varsa o.
+function parmakGeriAl(noktalar) {
+  const bos = !S.gecmis.length;
+  if (!bos) geriAl();
+  if (typeof ortak.parmakGeriBildirim === "function") {
+    try { ortak.parmakGeriBildirim({ noktalar, yineleme: false, bos }); return; } catch { /* yerel */ }
+  }
+  for (const [x, y] of noktalar || []) {
+    const r = h("i", { class: "parmak-halka" + (bos ? " bos" : ""), "aria-hidden": "true", style: `left:${x}px;top:${y}px` });
+    document.body.append(r);
+    setTimeout(() => r.remove(), 400);
+  }
+  S.geriFis?.remove();
+  const f = S.geriFis = h("div", { class: "geri-fis cizgi-geri-fis", role: "status" }, bos ? "Geri alınacak bir şey yok" : "Geri alındı");
+  document.body.append(f);
+  zamanla(() => f.remove(), 1200);
 }
 
 // Kıstırma ya da kaydırma bitti: sığdırmanın altına inildiyse geri döner; büyüdüyse çözünürlük artar
@@ -1046,7 +1108,8 @@ function kalemBasla(e, { y, p, r }) {
   S.canli.boyutla(S.vw, S.vh, k * S.dpr, { dpr: S.dpr });
   const ox = (r.left - S.ox) / k, oy = (r.top - S.oy) / k;   // kök biriminde sayfanın sol üstü
   const silgi = !!silgiTusu(e) || S.arac === "silgi";
-  S.aktif = { id: e.pointerId, tur: e.pointerType, y, p, k, ox, oy, silgi, silinen: [], onceki: null, cizgi: null };
+  S.aktif = { id: e.pointerId, tur: e.pointerType, y, p, k, ox, oy, silgi, silinen: [], onceki: null, cizgi: null,
+    t0: performance.now(), x0: kokX(e), y0: kokY(e) };
   try { S.kok.setPointerCapture(e.pointerId); } catch { /* boş */ }
   S.kok.classList.add("yaziyor");
   document.documentElement.dataset.kalem = "temas";
@@ -1274,6 +1337,7 @@ function yonSec(yon) {
   S.yon = S.belge.yon = S.motor.bilgi.yon = yon;
   S.kok.dataset.yon = yon;
   anahtarGuncelle(S.el.yon, yon);
+  yonTelGuncelle();
   S.el.serit.dir = yon === "rtl" ? "rtl" : "ltr";
   S.panel = null;
   // Aynı yerleşimde de sayfa sırası tersine döner: yuvalar baştan kurulur
@@ -1282,9 +1346,16 @@ function yonSec(yon) {
   bus.emit("belgeler", { tur: "guncelle", id: S.belge.id });
   degisti();
 }
+function yonTelGuncelle() {
+  const b = S.el.yonTel, ad = S.yon === "rtl" ? "Manga: sağdan sola" : "Soldan sağa";
+  b.setAttribute("aria-label", "Okuma yönü: " + ad);
+  b.title = "Okuma yönü: " + ad;
+  b.replaceChildren(icon(S.yon === "rtl" ? "sol" : "sag"));
+}
 function gorunumSec(g) {
   if (g === S.gorunum) return;
   S.gorunum = g;
+  S.gorunumKayitli = true;
   S.veri.cizgi.gorunum = g;
   S.kok.dataset.gorunum = g;
   anahtarGuncelle(S.el.gorunum, g);
@@ -1306,6 +1377,15 @@ function zorlaYenile(panel = "bas") {
   yayilimaGec(yayBul(i), { anim: false, panel, ilk: true });
 }
 
+// Telefonda Panel ilk kez: altta cam fiş, 3 sn ya da dokununca kaybolur (TASARIM-4 2.8)
+function panelIpucu() {
+  try { if (localStorage.getItem(PANEL_IPUCU) === "1") return; localStorage.setItem(PANEL_IPUCU, "1"); } catch { return; }
+  const f = h("div", { class: "cizgi-fis", role: "status" }, "Kareden kareye geçmek için sağa dokun. Bütün sayfa için iki kez dokun.");
+  S.kok.append(f);
+  const git = () => { f.classList.add("gidiyor"); setTimeout(() => f.remove(), 220); };
+  f.addEventListener("pointerdown", git, { once: true });
+  zamanla(git, 3000);
+}
 function ipucuGoster(zorla = false) {
   let gosterildi = false;
   try { gosterildi = localStorage.getItem(IPUCU_ANAHTAR) === "1"; } catch { /* boş */ }
@@ -1408,7 +1488,7 @@ function konumYaz(hemen = false) {
   b.ilerleme = (son + 1) / S.n;
   b.yon = S.yon;
   S.veri.cizgi.konum = { sayfa: ilk, panel: S.panel && S.panel.k >= 0 && S.panel.k < S.panel.liste.length ? S.panel.k : null };
-  S.veri.cizgi.gorunum = S.gorunum;
+  if (S.gorunumKayitli) S.veri.cizgi.gorunum = S.gorunum;   // telefon varsayılanı (Panel) kayda geçmez
   if (hemen) return;
   if (S.sonYer === ilk) return;
   S.sonYer = ilk;

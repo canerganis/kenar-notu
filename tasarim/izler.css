@@ -32,7 +32,7 @@
 @keyframes izler-gel { from { opacity: 0; transform: translateY(-4px); } }
 
 .izler :is(.hayalet, .simge-dugme), .izler-yan :is(.hayalet, .simge-dugme), .cep-defter :is(.hayalet, .simge-dugme), .izlerim :is(.hayalet, .simge-dugme), .izler-fis .hayalet {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; height: 40px; padding: 0 10px; border: 0; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; height: 44px; padding: 0 10px; border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--ink-2); font: 500 14px/1 var(--f-arayuz); cursor: pointer; }
 :is(.izler-yan, .cep-defter, .izlerim, .izler-fis) :is(.hayalet, .simge-dugme):hover { background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink); }
 :is(.izler-yan, .cep-defter, .izlerim, .izler-fis) :is(.hayalet, .simge-dugme):active { background: color-mix(in srgb, var(--ink) 9%, transparent); }
@@ -240,3 +240,79 @@
 }
 @media (prefers-reduced-motion: reduce) { .izler-yan, .cep-defter, .cep-defter__kapak, .izler-fis { animation-duration: 1ms !important; } }
 .izler-sekme { padding-top: 12px; }   /* Notlar panelinin İzler sekmesi: süzgeç sekmelerin hemen altında */
+
+/* ================= 11. tur (OZELLIKLER-7, TASARIM-4) ================= */
+/* Boş durumun tek düğmesi */
+.izler-bos__dugme { margin-top: 16px; height: 44px; }
+.izlerim-bos { padding: 64px 0; text-align: left; }
+.izlerim-bos__aciklama { max-width: 46ch; }
+.alinti .iz-eylemler { flex-wrap: wrap; }
+/* Dar ekranda kitaplığa dönüş sekme çubuğunda ya da rayda: geri düğmesi yok */
+@media (max-width: 999px), (max-height: 499px) and (orientation: landscape) {
+  .izlerim-geri { display: none !important; }
+  .izlerim-yan { padding-top: calc(12px + var(--ga-ust)); padding-inline: max(var(--kenar-bosluk), var(--ga-sol)) max(var(--kenar-bosluk), var(--ga-sag)); }
+  .izlerim-govde { padding: 24px max(var(--kenar-bosluk), var(--ga-sag)) 48px max(var(--kenar-bosluk), var(--ga-sol)); }
+}
+@media (max-width: 599px) {
+  .izlerim { height: 100%; }
+  .izlerim-ust { margin-bottom: 20px; }
+  .izlerim-ust h1 { font-size: var(--fs-30, 30px); line-height: 36px; }
+  .izlerim-kitap h2 { font-size: 19px; line-height: 24px; }
+  .izlerim-satir { grid-template-columns: 56px 1fr; }
+  .kenar-iz, .kenar-iz svg { width: 52px; height: 36px; }
+  .cep-defter { padding: max(8px, var(--ga-ust)) 0 0; place-items: end stretch; }
+  .cep-defter__kapak { width: 100%; height: calc(100dvh - max(8px, var(--ga-ust))); border-radius: 10px 10px 0 0; padding-bottom: var(--ga-alt); }
+}
+
+/* Alıntı kartı penceresi: solda önizleme, sağda seçenekler; telefonda üst üste */
+.pencere.alinti-pencere { width: min(860px, calc(100vw - 48px)); padding: 0; overflow: hidden; display: none; flex-direction: column; }
+.pencere.alinti-pencere[open] { display: flex; }
+.alinti-pencere__ust { display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 8px 12px 4px 24px; flex: none; }
+.alinti-pencere__ust h2 { flex: 1; margin: 0; }
+.alinti-pencere__ust h2:focus { outline: none; }
+.alinti-pencere__govde { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; min-height: 0; overflow-y: auto; padding: 8px 24px 24px; }
+.alinti-onizleme { display: grid; place-items: center; min-height: 320px; padding: 16px; border-radius: var(--r-lg);
+  background: radial-gradient(120% 80% at 50% 0%, var(--desk-glow), var(--desk) 70%); }
+.alinti-tuval { display: block; width: 100%; height: auto; max-height: min(60dvh, 560px); object-fit: contain; box-shadow: var(--golge-kapak); }
+.alinti-onizleme[data-bicim="hikaye"] .alinti-tuval { width: auto; max-width: 100%; }
+.alinti-pencere__secenek { display: grid; align-content: start; gap: 4px; }
+.alinti-pencere__secenek .t-etiket { margin: 8px 0 6px; }
+.alinti-pencere__secenek .pencere-alt { margin-top: 20px; justify-content: stretch; }
+.alinti-pencere__secenek .pencere-alt > * { flex: 1; height: 44px; }
+@media (max-width: 699px) {
+  .alinti-pencere__govde { grid-template-columns: 1fr; gap: 12px; padding-inline: max(16px, var(--ga-sol)) max(16px, var(--ga-sag)); }
+  .alinti-onizleme { min-height: 0; padding: 12px; }
+  .alinti-tuval { max-height: 44dvh; }
+  .alinti-pencere .alinti-pencere__secenek .pencere-alt { position: static; margin: 12px 0 0; padding: 0 0 var(--ga-alt); box-shadow: none; }
+}
+@media (max-height: 499px) and (orientation: landscape) {
+  .alinti-pencere__govde { grid-template-columns: minmax(0, 1fr) 260px; }
+  .alinti-tuval { max-height: calc(100dvh - 120px); }
+}
+
+/* ================= 12. tur cila ================= */
+/* İzlerim boşken süzgeç şeridi ve sütunu yok: tek "Tümü 0" çipi boş bir bant bırakıyordu (TASARIM-4 1.2) */
+@media (max-width: 999px), (max-height: 499px) and (orientation: landscape) {
+  /* geniş ekranda sütunda Kitaplık'a dönüş de var, orada kalır */
+  .izlerim:has(.izlerim-bos) { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .izlerim:has(.izlerim-bos) .izlerim-yan { display: none; }
+}
+.izlerim-bos { padding-top: 48px; }
+.izlerim-bos__baslik { font-size: 26px; line-height: 32px; letter-spacing: -.01em; font-variation-settings: "opsz" 36; }
+.izlerim-bos__aciklama { font-size: 14px; line-height: 21px; }
+/* Cep defteri boşken metin defterin çizgilerine oturur, kırmızı kenar çizgisinin sağında: kâğıda yazılmış bir not gibi */
+.cep-defter .izler-bos { padding: 69px 0 0 80px; text-align: left; }
+.cep-defter .izler-bos__baslik { margin: 0; font: 400 22px/32px var(--f-okuma); }
+.cep-defter .izler-bos__aciklama { margin: 0; max-width: 36ch; font: 400 14px/32px var(--f-arayuz); color: #5A544C; }
+.cep-defter .izler-bos__dugme { margin-top: 26px; }
+@media (max-width: 599px) {
+  .cep-defter .izler-bos { padding-left: 76px; padding-right: 8px; }
+  /* Başlık tek satırda kısalır, eylemler bandın solunda sıkışmaz */
+  .cep-defter__ust { padding-left: 16px; gap: 4px; }
+  .cep-defter__ust h2 { font-size: 19px; line-height: 24px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .cep-defter__ust p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cep-defter__eylem { gap: 0; margin-right: 28px; }
+  .cep-defter__eylem .hayalet { padding-inline: 10px; }
+}
+/* Cep defterinin kâğıdı her temada açık: boş durumun düğmesi de mürekkep siyahı kalır */
+.cep-defter .izler-bos__dugme { background: #1C1B19; color: #FDFCF9; box-shadow: none; }

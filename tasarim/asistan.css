@@ -12,13 +12,21 @@
 .klavye-acik .asistan { top: var(--vv-ust, 0px); bottom: var(--klavye, 0px); }
 
 .asistan-tutamak { display: none; position: relative; place-items: center; height: 20px; flex: none; touch-action: none; cursor: grab; }
-@media (orientation: portrait), (max-width: 699px) {
-  .asistan { top: auto; left: 0; width: auto; height: 70dvh; border-left: 0; box-shadow: var(--golge-4);
+/* Alt çekmece (TASARIM-4 2.5): telefon ve dikey tablet. Çekmece hep tam boyda, durak translateY ile: "tam" üstte 8 px
+   (çentiğin altında) kalır, "yarim" ekranın %60'ı. iPad dikeyde 640 px, ortada. */
+@media (max-width: 699px), (max-width: 999px) and (orientation: portrait) {
+  .asistan { --tam: calc(100dvh - env(safe-area-inset-top, 0px) - 8px); --durak: 60dvh;
+    top: auto; left: 0; right: 0; width: auto; max-width: 640px; margin-inline: auto; height: var(--tam); border-left: 0; box-shadow: var(--golge-4);
     border-radius: var(--r-xl) var(--r-xl) 0 0; transform: translateY(100%); padding-bottom: env(safe-area-inset-bottom); }
-  .klavye-acik .asistan { top: auto; height: min(70dvh, calc(var(--vv-yuk, 100dvh) - 24px)); padding-bottom: 0; }
+  .asistan.acik { transform: translateY(calc(var(--tam) - var(--durak)));
+    padding-bottom: calc(var(--tam) - var(--durak) + env(safe-area-inset-bottom, 0px)); }   /* yarımda soru kutusu görünür alanın dibinde */
+  .asistan.acik[data-durak="tam"] { --durak: var(--tam); }
+  .klavye-acik .asistan { top: auto; height: min(var(--tam), calc(var(--vv-yuk, 100dvh) - 24px)); padding-bottom: 0; }
+  .klavye-acik .asistan.acik { transform: none; padding-bottom: 0; }
   .asistan-tutamak { display: grid; }
+  :root[data-kalem="temas"] .asistan { transition: none; }
 }
-.asistan-tutamak::before { content: ""; width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.asistan-tutamak::before { content: ""; width: 36px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 22%, transparent); }   /* alt çekmece tutamağıyla aynı */
 .asistan-tutamak::after { content: ""; position: absolute; left: 50%; top: 0; width: 88px; height: 44px; translate: -50% 0; }  /* dokunma alanı */
 
 /* Panel başlığı (TASARIM-3 4.6, 6.7): Inter 600 15, italik değil; DENEME pulu yerine küçük sessiz çip */
