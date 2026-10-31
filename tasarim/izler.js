@@ -15,7 +15,7 @@
 
 import { $, $$, h, icon, bus, store, belgeBul, yeniId, toast, kartEkle, hareketAz, cizgiMi, EPUB_VURGULARI, vurguRengi,
   exLibrisSvg, exLibrisVar, odakla } from "./ortak.js";
-import { matematikCiz, matematikVarMi } from "./matematik.js";
+import { matematikCiz, matematikVarMi, mathmlCiz } from "./matematik.js";
 
 /* ================= Yardımcılar ================= */
 const SUZGECLER = [["tumu", "Tümü"], ["alt", "Altı çizili"], ["daire", "Yuvarlak"], ["kenar", "Kenar"], ["isaret", "İşaret"], ["vurgu", "Vurgu"], ["not", "Not"]];
@@ -114,6 +114,43 @@ function sayfaCizgileri(v, iz) {
 }
 const sayfaNo = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
+// EPUB vurgusunun formülleri (okuma.js vurgu.formuller: { p, a, b, ml }): alıntı metin ve formül parçalarıyla
+// kurulur, satırda formül MathML olarak çizilir. Boşluklar ve uzunluk sınırı kirp ile aynı. Formülsüzse null.
+// Paragraf metni arama dizininden; dizin yoksa tek paragraflık vurguda kaydın kendi metninden (bas.o kaydırmasıyla).
+function formulluParcalar(vg, kaynak) {
+  const fs = Array.isArray(vg.formuller) ? vg.formuller : null;
+  if (!fs?.length) return null;
+  const ham = [];
+  for (let p = vg.bas.p; p <= vg.son.p; p++) {
+    let pm = kaynak?.metin(p) ?? null, kay = 0;
+    if (pm == null && vg.bas.p === vg.son.p && typeof vg.metin === "string") { pm = vg.metin; kay = vg.bas.o || 0; }
+    if (pm == null) return null;
+    const dilim = (a, b) => pm.slice(Math.max(0, a - kay), Math.max(0, b - kay));
+    const a0 = p === vg.bas.p ? vg.bas.o || 0 : 0, b0 = p === vg.son.p ? vg.son.o : pm.length + kay;
+    if (ham.length) ham.push(" ");
+    let k = a0;
+    for (const f of fs) {
+      if (f.p !== p || f.b <= a0 || f.a >= b0 || f.b <= k) continue;
+      if (f.a > k) ham.push(dilim(k, f.a));
+      ham.push({ ml: f.ml, duz: dilim(f.a, f.b) });
+      k = f.b;
+    }
+    if (k < b0) ham.push(dilim(k, b0));
+  }
+  const out = [];
+  let n = 0;
+  for (const [i, x] of ham.entries()) {
+    if (typeof x !== "string") { out.push(x); n += x.duz.length; continue; }
+    let t = x.replace(/\s+/g, " ");
+    if (!out.length) t = t.trimStart();
+    if (i === ham.length - 1) t = t.trimEnd();
+    if (n + t.length > MAKS_METIN) { out.push(t.slice(0, Math.max(0, MAKS_METIN - 1 - n)).trimEnd() + "…"); break; }
+    if (t) out.push(t);
+    n += t.length;
+  }
+  return out.some((x) => typeof x !== "string") ? out : null;
+}
+
 export function izleriTopla(belge, kaynak = null) {
   const v = belge?.veri;
   if (!v || typeof v !== "object") return [];
@@ -153,6 +190,7 @@ export function izleriTopla(belge, kaynak = null) {
     liste.push({
       ...ortak, id: vg.id || `v-${vg.bas.p}-${vg.bas.o}`, kaynak: "vurgu", tur: "vurgu", metin: kirp(vg.metin) || metinAl(vg.bas, vg.son),
       not: vg.not || "", zaman: vg.zaman || 0, renk: vurguHex(vg.renk), konum: epubKonum(vg.bas.p, vg.bas.o), onizleme: null, kayit: vg,
+      parcalar: formulluParcalar(vg, kaynak),
     });
   }
   // 3) Active Canvas: satır arasına açılan el yazısı boşlukları
@@ -312,6 +350,12 @@ function formullu(el) {
   if (el && matematikVarMi(el.textContent)) matematikCiz(el).catch(() => {});
   return el;
 }
+// Alıntının metni: EPUB vurgusunda kaydedilmiş formüller MathML (x.parcalar), yoksa düz metin ve $...$
+function alintiMetni(el, x, bos) {
+  if (x.parcalar) el.append(...x.parcalar.map((p) => (typeof p === "string" ? p : mathmlCiz(p.ml, p.duz))));
+  else el.append(x.metin || bos);
+  return formullu(el);
+}
 function onizlemeEl(x, sinif = "iz-onizleme") {
   const kap = h("span", { class: sinif + (x.kursun ? " kursun" : ""), "aria-hidden": "true" });
   if (x.tur === "vurgu") kap.append(h("i", { class: "iz-vurgu-serit", style: `--iz-renk:${x.renk}` }));
@@ -333,7 +377,7 @@ function izSatiri(x, { kapat } = {}) {
   const el = h("div", { class: "iz-satir", role: "listitem", tabindex: "0", "aria-label": `${TUR_ADI[x.tur] || "İz"}, ${x.metin || "metinsiz"}, ${x.yer || ""}` },
     onizlemeEl(x),
     h("span", { class: "iz-govde" },
-      formullu(h("span", { class: "iz-metin" + (x.kaynak === "not" || x.kaynak === "metin" ? " el" : "") }, x.metin)),
+      alintiMetni(h("span", { class: "iz-metin" + (x.kaynak === "not" || x.kaynak === "metin" ? " el" : "") }), x, ""),
       x.not && x.kaynak !== "not" ? formullu(h("span", { class: "iz-satir__not" }, x.not)) : null,
       h("span", { class: "iz-meta" }, meta)),
     eylemler(x));
@@ -450,7 +494,7 @@ export async function defterAc(belge) {
   const kapak = h("div", { class: "cep-defter__kapak", style: `--c:${belge.kapak || "#24324F"}` },
     h("div", { class: "cep-defter__ust" },
       h("div", {}, h("h2", { id: "cepDefterBaslik" }, belge.ad), h("p", {}, "Cep defteri · ", sayac)),
-      h("div", { class: "cep-defter__eylem" }, md, pdf, kopruDugmesi(() => [{ belge, izler: liste }], belge.ad, [md, pdf]), kapatD)),
+      h("div", { class: "cep-defter__eylem" }, md, pdf, kopruDugmesi(() => [{ belge, izler: liste, kirpinti: "kitap" }], belge.ad, [md, pdf]), kapatD)),
     sayfa, h("i", { class: "cep-defter__bant", "aria-hidden": "true" }));
   const perde = h("div", { class: "cep-defter", role: "dialog", "aria-modal": "true", "aria-labelledby": "cepDefterBaslik", tabindex: "-1" }, kapak);
 
@@ -487,7 +531,7 @@ export async function defterAc(belge) {
 
 function alintiEl(x, { kapat, kaynakAdi } = {}) {
   const meta = [kaynakAdi, [x.yer, x.bolum].filter(Boolean).join(", "), tarih(x.zaman)].filter(Boolean).join(" · ");
-  const metin = formullu(h("blockquote", { class: "alinti__metin" }, x.metin || h("span", { class: "metinsiz" }, "Metinsiz iz")));
+  const metin = alintiMetni(h("blockquote", { class: "alinti__metin" }), x, h("span", { class: "metinsiz" }, "Metinsiz iz"));
   const notAlani = h("textarea", { class: "alinti__not", rows: "1", placeholder: "Not ekle", "aria-label": "Alıntının yanına not", maxlength: "600" });
   notAlani.value = x.not || "";
   const boyutla = () => { notAlani.style.height = "auto"; notAlani.style.height = `${notAlani.scrollHeight}px`; };
@@ -539,16 +583,17 @@ function markdownPaylas(belge, liste, opt) {
   paylas(new Blob([markdownMetni(belge.ad, liste, opt)], { type: "text/markdown" }), dosyaAdi(belge, "md"));
 }
 
-// Köprüler (OZELLIKLER-8 §4.2): Readwise CSV ve Obsidian zip. kitaplar: [{ belge, izler }]
+// Köprüler (OZELLIKLER-8 §4.2): Readwise CSV ve Obsidian zip. kitaplar: [{ belge, izler, kirpinti }]
+// kirpinti "kitap": bütün kitap aktarılıyor, kitabın bütün kırpıntıları; "ilgili": seçili izlerin yanındakiler (disa-kopru.js)
 const kopruAdi = (ad, ek, uz) => `${String(ad || "Kenar Notu").replace(/[\\/:*?"<>|]+/g, " ").trim()} (${ek}).${uz}`;
 async function kopruAktar(tur, kitaplar, ad) {
   fisKapat();
-  if (!kitaplar.some((k) => k.izler.length) && !(tur === "obsidian" && kitaplar.some((k) => store.kirpintilar.some((c) => c.belgeId === k.belge.id)))) {
-    toast("Aktarılacak alıntı yok.");
-    return;
-  }
   try {
     const m = await import("./disa-kopru.js");
+    if (!kitaplar.some((k) => k.izler.length) && !(tur === "obsidian" && kitaplar.some((k) => m.kirpintilariSec(k).length))) {
+      toast("Aktarılacak alıntı yok.");
+      return;
+    }
     if (tur === "readwise") await paylas(m.readwiseCsv(kitaplar), kopruAdi(ad, "Readwise", "csv"));
     else await paylas(await m.obsidianZip(kitaplar), kopruAdi(ad, "Obsidian", "zip"));
   } catch (hata) {
@@ -768,7 +813,10 @@ function govdeCiz() {
   const birlestirD = h("button", { class: "ikincil", type: "button" }, icon("izler", "i-20"), "Birleştir");
   birlestirD.addEventListener("click", () => birlestirBasla());
   const aktarAd = kitapSecili ? kitaplar[0]?.belge.ad : "İzlerim";
-  const parcalar = [ustCiz("İzlerim", `${hepsi.length} iz · ${E.veri.length} kitap`, E.veri.length > 1 ? birlestirD : null, hepsi.length ? kopruDugmesi(() => kitaplar, aktarAd) : null)];
+  // Aktar görüneni alır: süzgeçsiz bütün kitap ve kırpıntıları, süzgeçliyken yalnız görünen izler ve yanlarındaki kırpıntılar
+  const aktarilan = () => kitaplar.map(({ belge, izler }) => (E.suzgec === "tumu" ? { belge, izler, kirpinti: "kitap" }
+    : { belge, izler: izler.filter((x) => suzgecUyar(x, E.suzgec)), kirpinti: "ilgili" }));
+  const parcalar = [ustCiz("İzlerim", `${hepsi.length} iz · ${E.veri.length} kitap`, E.veri.length > 1 ? birlestirD : null, hepsi.length ? kopruDugmesi(aktarilan, aktarAd) : null)];
   if (!hepsi.length) {
     const b = sonKitap();
     parcalar.push(h("div", { class: "izlerim-bos" }, h("p", { class: "izlerim-bos__baslik" }, "Henüz bir iz yok."),
@@ -802,7 +850,7 @@ function izlerimSatiri(x, { kaynakAdi, ekEylem } = {}) {
   const el = h("div", { class: "izlerim-satir", role: "listitem", tabindex: "0" },
     h("div", { class: "izlerim-kenar" }, onizlemeEl(x, "kenar-iz"), h("span", { class: "konum" }, x.yer || TUR_ADI[x.tur])),
     h("div", { class: "izlerim-satir__govde" },
-      formullu(h("blockquote", { class: x.kaynak === "not" || x.kaynak === "metin" ? "el" : "" }, x.metin || h("span", { class: "metinsiz" }, TUR_ADI[x.tur] || "Metinsiz iz"))),
+      alintiMetni(h("blockquote", { class: x.kaynak === "not" || x.kaynak === "metin" ? "el" : "" }), x, h("span", { class: "metinsiz" }, TUR_ADI[x.tur] || "Metinsiz iz")),
       x.not && x.kaynak !== "not" ? formullu(h("p", { class: "izlerim-satir__not" }, x.not)) : null,
       h("p", { class: "izlerim-satir__meta" }, meta)),
     h("div", { class: "izlerim-satir__eylem" }, ekEylem || null, eylemler(x)));
@@ -927,7 +975,7 @@ function derlemeCiz(id) {
     ustCiz(d.ad, `${ogeler.length} alıntı · ${new Set(ogeler.map((o) => o.x.belgeId)).size} kitap`, adlandir, md, pdf, kopruDugmesi(() => {
       const gruplar = new Map();
       for (const { x, b } of ogeler) { if (!b) continue; if (!gruplar.has(b)) gruplar.set(b, []); gruplar.get(b).push(x); }
-      return [...gruplar].map(([belge, izler]) => ({ belge, izler }));
+      return [...gruplar].map(([belge, izler]) => ({ belge, izler, kirpinti: "ilgili" }));
     }, d.ad)),
     h("div", { class: "derleme-arac" }, h("span", { class: "t-aside" }, "Sırala"), tarihSira, kitapSira, h("span", { class: "izlerim-ust__bosluk" }), sil),
     ogeler.length ? liste : bosDurum("Derleme boş.", "Bir alıntının yanındaki artıya dokun ve Deftere ekle’den bu derlemeyi seç."));
@@ -978,7 +1026,9 @@ function uzunBas(el, ac) {
   let zaman = 0, x0 = 0, y0 = 0, tetik = false;
   el.addEventListener("pointerdown", (e) => {
     tetik = false;
+    clearTimeout(zaman);
     if (e.pointerType === "mouse" || e.button !== 0) return;
+    if (e.target.closest?.(".formul-tex, .formul-kap")) return;   // formülün uzun basışı formül menüsü (matematik.js)
     x0 = e.clientX; y0 = e.clientY;
     clearTimeout(zaman);
     zaman = setTimeout(() => { tetik = true; ac(); }, 500);

@@ -180,11 +180,11 @@ export function koltukKur(kok, s) {
       oturdu = true;
       if (!hareketAz()) {
         el.iz.classList.remove("kayiyor");
-        el.iz.style.setProperty("--p", "0");
+        el.iz.style.setProperty("--iz-p", "0");
         void el.iz.offsetWidth;
         requestAnimationFrame(() => {
           el.iz.classList.add("kayiyor");
-          el.iz.style.removeProperty("--p");
+          el.iz.style.removeProperty("--iz-p");
           zamanla(() => el.iz.classList.remove("kayiyor"), 460);
         });
       }
@@ -255,7 +255,7 @@ export function koltukKur(kok, s) {
   const cetvelOrani = (e) => { const R = el.cetvel.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - R.left) / Math.max(1, R.width))); };
   function surukleGoster(oran) {
     el.iz.classList.remove("kayiyor");
-    el.iz.style.setProperty("--p", oran.toFixed(4));
+    el.iz.style.setProperty("--iz-p", oran.toFixed(4));
     el.etiket.textContent = s.etiket ? s.etiket(oran) : "%" + Math.round(oran * 100);
   }
   el.cetvel.addEventListener("pointerdown", (e) => {
@@ -280,11 +280,12 @@ export function koltukKur(kok, s) {
       // Çentiğe dokunuş (6 px içinde) o ize gider; iz bir an parlar
       const R = el.cetvel.getBoundingClientRect(), x = e.clientX - R.left;
       const centik = izListe.reduce((m, z) => { const d = Math.abs(z.oran * R.width - x); return d < 6 && (!m || d < m.d) ? { d, z } : m; }, null);
-      el.cetvel.style.setProperty("--p", (centik ? centik.z.oran : oran).toFixed(4));   // gidilen yer beklemeden görünsün
+      // Gidilen yer beklemeden görünsün
+      ilerlemeYaz(centik ? centik.z.oran : oran);
       if (centik && s.izeGit) s.izeGit(centik.z.id); else s.git?.(oran);
       sifirla();
     }
-    el.iz.style.removeProperty("--p");
+    el.iz.style.removeProperty("--iz-p");
     cekmeyiKur();
   };
   el.cetvel.addEventListener("pointerup", birak, sinyal);
@@ -417,11 +418,17 @@ export function koltukKur(kok, s) {
 
   // ---------- görünüm ----------
   let sonSol = "", sonSag = "";
+  // --p cetvelin kendisine değil yalnız onu okuyan iki öğeye yazılır: kalıtılan değişken her sayfa çevirmede
+  // yüzlerce bölüm çentiğinin stilini yeniden hesaplatıyordu (uzun kitapta çevirme başına ~25 ms)
+  function ilerlemeYaz(p) {
+    el.dolu.style.setProperty("--p", p.toFixed(4));
+    el.iz.style.setProperty("--p", p.toFixed(4));
+  }
   function guncelle() {
     const k = s.konum?.();
     if (!k) return;
     const p = Math.min(1, Math.max(0, k.oran || 0));
-    el.cetvel.style.setProperty("--p", p.toFixed(4));
+    ilerlemeYaz(p);
     el.cizgi.style.setProperty("--p", p.toFixed(4));
     el.cetvel.setAttribute("aria-valuenow", String(Math.round(p * 100)));
     el.cetvel.setAttribute("aria-valuetext", s.etiket ? s.etiket(p) : "%" + Math.round(p * 100));

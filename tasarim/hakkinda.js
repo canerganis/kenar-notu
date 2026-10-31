@@ -12,15 +12,19 @@ import { altCekmece, cekmeceMi } from "./cekmece.js";
 const DEPO = "https://github.com/canerganis/kenar-notu";
 
 // [ad, sürüm, lisans, ne için, bağlantı]
+// Sürümler lib/ içindeki dosyalardan doğrulandı: PDF.js (pdf.min.mjs Version), JSZip (başlık yorumu), Temml
+// (temml.min.js version), Bergamot (lib/ceviri/KAYNAK.txt). Başlığında sürüm olmayanlar npm paketinin dist
+// dosyasıyla bayt bayt karşılaştırıldı: pdf-lib 1.17.1, sql.js 1.14.2 (js ve wasm), epub.js 0.3.93.
+// pako, JSZip 3.10.1'in package.json bağımlılığı (~1.0.2) ile 1.0 serisidir. Modeller sürümsüz, istenince iner.
 const LISANSLAR = [
   ["PDF.js", "6.4.299", "Apache-2.0", "PDF okuma", "https://github.com/mozilla/pdf.js"],
-  ["pdf-lib", "", "MIT", "Notlu PDF", "https://github.com/Hopding/pdf-lib"],
+  ["pdf-lib", "1.17.1", "MIT", "Notlu PDF", "https://github.com/Hopding/pdf-lib"],
   ["JSZip", "3.10.1", "MIT ya da GPLv3 (çift lisans, MIT seçildi)", "EPUB ve yedek", "https://github.com/Stuk/jszip"],
-  ["pako (JSZip içinde)", "", "MIT", "Sıkıştırma", "https://github.com/nodeca/pako"],
+  ["pako (JSZip içinde)", "1.0", "MIT", "Sıkıştırma", "https://github.com/nodeca/pako"],
   ["Temml", "0.14.0", "MIT", "Matematik", "https://github.com/ronkok/Temml"],
   ["Bergamot translator", "0.4.9", "MPL-2.0", "Cihazda çeviri motoru", "https://github.com/browsermt/bergamot-translator"],
   ["Firefox Translations modelleri", "", "MPL-2.0", "Çeviri paketleri, istenince iner", "https://github.com/mozilla/firefox-translations-models"],
-  ["sql.js", "", "MIT", "Anki'ye aktarım", "https://github.com/sql-js/sql.js"],
+  ["sql.js", "1.14.2", "MIT", "Anki'ye aktarım", "https://github.com/sql-js/sql.js"],
   ["epub.js", "0.3.93", "BSD-2-Clause", "Eski arayüz", "https://github.com/futurepress/epub.js"],
 ];
 const YAZI_TIPLERI = [

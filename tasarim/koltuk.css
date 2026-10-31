@@ -94,7 +94,8 @@
 .cetvel-izler { position: absolute; inset: 0; pointer-events: none; }
 .cetvel-izler i { position: absolute; top: 29px; width: 2px; height: 6px; translate: -50% 0; border-radius: 1px;
   background: var(--ilerleme, var(--accent)); opacity: .8; }
-.cetvel-iz { position: absolute; inset: 0; transform: translateX(calc(var(--p, 0) * 100%)); pointer-events: none; }
+/* Sürüklerken ve ilk açılış kaymasında --iz-p, yoksa okunan yer (--p) */
+.cetvel-iz { position: absolute; inset: 0; transform: translateX(calc(var(--iz-p, var(--p, 0)) * 100%)); pointer-events: none; }
 .cetvel-iz.kayiyor { transition: transform var(--sure-uzun) var(--egri-kagit); }
 .cetvel-imlec { position: absolute; left: 0; top: 12px; width: 2px; height: 20px; translate: -50% 0; border-radius: 1px; background: var(--metin); }
 /* başında 8px bordo kurdele üçgeni */

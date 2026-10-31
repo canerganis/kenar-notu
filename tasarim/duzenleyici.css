@@ -435,7 +435,9 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .not.kucuk-yazi { font-family: var(--f-arayuz); font-size: max(13px, calc(16px * var(--k))); }   /* Caveat 13px altına düşecekse */
 .not.konuyor { animation: not-kon 280ms var(--egri-kagit); }
 @keyframes not-kon { from { transform: scale(1.04); rotate: 0deg; box-shadow: 0 18px 24px -12px #1C1B1966; } }
-.not-yazi { position: relative; min-height: calc(150px * var(--k)); outline: none; white-space: pre-wrap; cursor: text; caret-color: #1F3A68; }
+/* Uzun not sayfa boyu uzamaz: yaklaşık 18 satırdan sonra içte kayar (parmakla kaydırma: duzenleyici.js kaydirDevam) */
+.not-yazi { position: relative; min-height: calc(150px * var(--k)); max-height: calc(440px * var(--k)); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: #2A252040 transparent; outline: none; white-space: pre-wrap; cursor: text; caret-color: #1F3A68; }
 .not-yazi:empty::before { content: attr(data-bos); color: #2A252073; pointer-events: none; }
 
 /* Küçültülmüş: köşesi kıvrık 44px kare, içinde ilk harf */
@@ -533,6 +535,7 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .sayfa-menu .renk-nokta:first-child { margin-left: 4px; }
 /* Sayfadan geniş menü (telefonda seçim menüsü) satıra sarar; yükseklik içerikten */
 .sayfa-menu { flex-wrap: wrap; height: auto; min-height: 44px; }
+.sayfa-menu .satir-basi::before { display: none; }   /* alt satırın ilk düğmesi: ayraç yok (duzenleyici.js sayfaMenusu) */
 
 /* Kement: renk ve kalınlık (OZELLIKLER-8 2.2). Seçim menüsünde renk diski, ikinci menüde palet ızgarası. */
 .sayfa-menu .bicim-dugme { width: 44px; padding: 0; display: grid; place-items: center; }

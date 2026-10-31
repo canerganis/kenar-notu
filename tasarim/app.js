@@ -276,20 +276,24 @@ let bildirimKapat = null;
 function bildirimGoster(metin, eylem) {
   bildirimKapat?.(true);
   const el = h("div", { class: "bildirim" }, h("span", {}, metin));
-  let zaman = 0, bitti = false, eylemle = false;
-  // eylem.kalici: kendiliğinden kapanmaz. eylem.kapaninca(eylemle): bildirim nasıl kapanırsa kapansın bir kez çağrılır
+  let zaman = 0, bitti = false, eylemle = false, elle = false;
+  // eylem.kalici: kendiliğinden kapanmaz. eylem.kapatilir: yanında kapatma düğmesi olur.
+  // eylem.kapaninca(eylemle, elle): bildirim nasıl kapanırsa kapansın bir kez çağrılır (elle: kapatma düğmesiyle)
   const kapat = (hemen = false) => {
     if (bitti) return;
     bitti = true;
     clearTimeout(zaman);
     if (bildirimKapat === kapat) bildirimKapat = null;
-    try { eylem?.kapaninca?.(eylemle); } catch (hata) { console.warn(hata); }
+    try { eylem?.kapaninca?.(eylemle, elle); } catch (hata) { console.warn(hata); }
     if (hemen || hareketAz()) return el.remove();
     el.classList.add("gidiyor");
     setTimeout(() => el.remove(), 200);
   };
   if (eylem?.etiket) {
     el.append(h("button", { type: "button", onclick: () => { eylemle = true; kapat(true); eylem.calistir?.(); } }, eylem.etiket));
+  }
+  if (eylem?.kapatilir) {
+    el.append(h("button", { class: "bildirim-kapat", type: "button", "aria-label": "Kapat", onclick: () => { elle = true; kapat(true); } }, icon("kapat", "i-20")));
   }
   // Araç çubuğu alttaysa bildirim onun üstünde çıkar
   const altCubuk = $('[data-arac-konum="alt"]');
@@ -312,6 +316,7 @@ const KAYIT_UYARILARI = {
   baska: ["Kenar Notu başka bir pencerede de açık. Burada yapılanlar kaydedilmez; o pencereyi kapatıp burayı yenile.", "Tamam", null],
   serbest: ["Öbür pencere kapandı. Kaydetmek için burayı yenile.", "Yenile", () => location.reload()],
   degisti: ["Kitaplık başka bir pencerede değişti; burada yapılanlar artık kaydedilmiyor. Yenile.", "Yenile", () => location.reload()],
+  okuma: ["Kayıt okunamadı; bu oturumda yapılanlar saklanmaz. Sayfayı yenile.", "Yenile", () => location.reload()],
 };
 const kayitUyariZamani = {};
 function kayitUyarisi(kod) {
@@ -1429,7 +1434,9 @@ async function oncekiyeDon(b, g) {
     belgeAcIstegi(b, kapakBul(b.id));
   } catch (hata) {
     console.warn("[kenar-notu] Önceki hâle dönülemedi:", hata);
-    toast(hata?.kod === "kilit" ? "Kayıt bu pencerede kapalı; dönülemedi." : "Önceki hâline dönülemedi; belge değişmedi.");
+    toast(hata?.kod === "kilit" ? "Kayıt bu pencerede kapalı; dönülemedi."
+      : hata?.kod === "okuma" ? "Önceki hâline dönüldü ama okunamadı; sayfayı yenile."
+        : "Önceki hâline dönülemedi; belge değişmedi.");
   }
 }
 
@@ -1961,13 +1968,21 @@ async function klasorSecIstegi(dugme) {
     if (dugme.isConnected) { dugme.disabled = false; dugme.replaceChildren(...asil); }
   }
 }
-// İzin düşünce (tarayıcı yeniden açılınca çoğu zaman) dokunuşla izin isteyen sessiz fiş; oturumda bir kez
+// İzin düşünce (tarayıcı yeniden açılınca çoğu zaman) dokunuşla izin isteyen sessiz fiş. kayit.js açılıştan
+// birkaç saniye sonra sorar. Kapatılan ya da cevaplanan fiş sayfa yenilense de bu oturumda (sekmede) yeniden çıkmaz.
+// Başka bir bildirim fişi itip yerini aldıysa kullanıcı onu görmemiş olabilir: sonraki yedek denemesinde yine çıkar.
+const IZIN_FISI = "kn-tasarim:klasor-izni-kapandi";
 let klasorIzniSoruldu = false;
+try { klasorIzniSoruldu = sessionStorage.getItem(IZIN_FISI) === "1"; } catch { /* gizli pencere */ }
 bus.on("yedek:klasor", (o) => {
   if (o?.tur === "izin-gerek" && !klasorIzniSoruldu) {
     klasorIzniSoruldu = true;
-    toast("Yedek klasörüne izin ver", { etiket: "İzin ver", kalici: true,
-      calistir: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); }) });
+    toast("Yedek klasörüne izin ver", { etiket: "İzin ver", kalici: true, kapatilir: true,
+      calistir: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); }),
+      kapaninca: (eylemle, elle) => {
+        if (!eylemle && !elle) { klasorIzniSoruldu = false; return; }
+        try { sessionStorage.setItem(IZIN_FISI, "1"); } catch { /* gizli pencere */ }
+      } });
   } else if (o?.tur === "yazildi") ayarla({ sonYedek: o.son });
   else if (o?.tur === "hata") toast(`Otomatik yedek: ${o.mesaj}`);
   else if (o?.tur === "hatirlat") yedekHatirlat();
@@ -1983,6 +1998,7 @@ function yedekHatirlat() {
   toast("Son yedeğin üstünden bir hafta geçti.", { etiket: "Yedeği kaydet", kalici: true, calistir: () => yedekAlIstegi() });
 }
 
+const izSayisi = () => store.belgeler.reduce((t, b) => t + (Array.isArray(b.veri?.izler) ? b.veri.izler.length : 0), 0);
 // Kenar çubuğundaki Yedekle ve bırakılan .kenar dosyası buraya gelir
 function yedekPenceresi(dosya = null) {
   cekmeceKapat();
@@ -2000,14 +2016,16 @@ function yedekPenceresi(dosya = null) {
       : "Her şey tek bir .kenar dosyasına yazılır: belgeler, çizgi romanlar ve dosyaları, kalem izleri ve cep defterleri, derlemeler, notlar, bantlar, kartlar ve kırpıntılar. API anahtarları yedeğe girmez."),
     h("dl", { class: "kilavuzlar" }, [["Kitaplar", s.kitaplar], ["Defterler", s.defterler], ...(s.cizgiler ? [["Çizgi romanlar", s.cizgiler]] : []),
       ["Klasörler", KLASORLER.length], ["Kırpıntılar", s.kirpilanlar], ["Kartlar", store.kartlar.length],
-      ["İzler", store.belgeler.reduce((t, b) => t + (Array.isArray(b.veri?.izler) ? b.veri.izler.length : 0), 0)]]
-      .map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", {}, String(deger))))),
+      ["İzler", izSayisi()]]
+      .map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", ad === "İzler" ? { "data-iz-sayisi": "" } : {}, String(deger))))),
     depoGostergesi(),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, parca('<svg viewBox="0 0 28 16"><use href="#i-hedera"/></svg>')),
     h("div", { class: "pencere-alt" },
       h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, "Kapat"),
       dosya ? null : yukle, dosya ? yukle : al));
   if (dosya) yukle.className = "birincil";
+  // Belge verileri açılışta kitaplıktan sonra gelir: iz sayısı onlar gelince yeniden yazılır
+  kayit.veriBekle().then(() => { const dd = $("[data-iz-sayisi]", dlg); if (dd) dd.textContent = String(izSayisi()); });
   pencereKur(dlg);
   odakla($(".pencere-alt button:last-child", dlg));
 }
@@ -2872,6 +2890,7 @@ function dilOzet(b) {
 async function dilBelirle(b) {
   if (!dilDestekli(b)) return null;
   if (b.tur === "defter") {
+    await kayit.veriBekle([b.id]);
     let metin = "";
     for (const v of (b.veri?.sayfalar || []).slice(0, 8)) {
       for (const m of v.metinler || []) if (m.metin && m.tur !== "damga" && m.tur !== "asistan") metin += m.metin + "\n";
@@ -3055,6 +3074,10 @@ addEventListener("popstate", () => {
 
 // ek: { ara, konum } (OZELLIKLER-4): ekran modülüne beşinci değişkenle gider
 async function belgeyeGit(id, { sayfa, mod, ara, konum, iz, kaynak = null, gecmis = "it" } = {}) {
+  // Açılışta belge verileri sonradan gelir: bu belgeninki sırasını beklemeden okunur (kayit.js veriBekle).
+  // PDF ve defterde defterler de beklenir (yükleme sırasında öndeler): düzenleyici yan yana açtığı defterin verisine bakar.
+  const defterler = belgeBul(id)?.tur === "epub" ? [] : store.belgeler.filter((b) => !b.dosya).map((b) => b.id);
+  await Promise.all([kayit.veriBekle(id), kayit.veriBekle(defterler)]);
   // iz: İzler listesinden gelen iz kimliği; modül o ize gider ve izi bir an parlatır
   const ek = { ara: ara || undefined, konum: konum || undefined, iz: iz || undefined };
   const belge = belgeBul(id);
@@ -3268,6 +3291,7 @@ function belgeyiKapat() {
 
 // Tekrar ekranı (tekrar.js: ac(kap, secenek?) ve kapat()). Kitaplığın ya da açık belgenin üstüne opaklıkla gelir.
 async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
+  await kayit.veriBekle();   // kartın sayfası belgenin verisinde
   const secenek = sinav || kartId ? { sinav, kartId } : undefined;
   if (acik.ekran === "tekrar" && acik.kap) {
     // Açık Tekrar'a gelen kart ya da sınav isteği ekran yerinde yeniden kurularak uygulanır
@@ -3319,6 +3343,7 @@ async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
 
 // Arama ekranı (arama.js: ac(kap, { terim }) ve kapat()). Tekrar gibi kitaplığın ya da açık ekranın üstüne gelir.
 async function aramaAc({ gecmis = "it", terim } = {}) {
+  await kayit.veriBekle();   // notlar ve izler belge verilerinde
   terim = typeof terim === "string" ? terim.trim() : "";
   if (terim) sonAramaTerim = terim;
   if (acik.ekran === "arama" && acik.kap) {
@@ -3368,6 +3393,7 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
 
 // İzlerim ekranı (izler.js: ac(kap) ve kapat()). Arama gibi kitaplığın ya da açık ekranın üstüne gelir.
 async function izlerAc({ gecmis = "it" } = {}) {
+  await kayit.veriBekle();
   if (acik.ekran === "izler" && acik.kap) return;
   fisKapat(true);
   cekmeceKapat();
@@ -3455,12 +3481,12 @@ const izlerModulu = () => import("./izler.js");
 bus.on("defter:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  izlerModulu().then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); modulHatasi(hata, "Cep defteri açılamadı."); });
+  kayit.veriBekle().then(izlerModulu).then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); modulHatasi(hata, "Cep defteri açılamadı."); });
 });
 bus.on("izler:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  izlerModulu().then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); modulHatasi(hata, "İzler açılamadı."); });
+  kayit.veriBekle().then(izlerModulu).then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); modulHatasi(hata, "İzler açılamadı."); });
 });
 bus.on("belgeler", (o) => { if (!sessiz && o?.tur !== "dil") kitaplikYenile(); });
 bus.on("kirpintilar", () => { if (!sessiz) kitaplikYenile(); });
@@ -3932,7 +3958,7 @@ function aramaDizininiBaslat() {
   if (aramaYuklendi) return;
   aramaYuklendi = true;
   const yukle = () => import("./arama.js").catch((hata) => console.warn("[kenar-notu] Arama dizini başlatılamadı:", hata));
-  setTimeout(() => bosta(yukle, { timeout: 4000 }), 3000);
+  kayit.veriBekle().then(() => setTimeout(() => bosta(yukle, { timeout: 4000 }), 3000));
 }
 
 /* ================= Başlat ================= */
@@ -3941,12 +3967,19 @@ ayarlariUygula(true);
 const ilkDurum = await durumGeriYukle();
 const baslangic = baslangicIstegi();
 let karsilama = false;
-if (ilkDurum.geri) {
-  // Eski sürümün örnek verisi belge açılmadan yeni düzene geçer; görüntüleri boş bir anda yeniden kesilir
+// Belge verileri kitaplık çizildikten sonra gelir (kayit.js veriBekle). Bütün ekran geçişleri sıradan geçer;
+// belge açılışı kendi verisini, Tekrar, İzlerim ve arama hepsini bekler. Sıranın ilk işi örnek belgeler:
+// eski sürümün örnek verisi belge açılmadan yeni düzene geçer (öbür belgelerde yalnız yedekten kalan sürüm işareti
+// silinir; verisi o an gelmemişse işaret bir dahaki açılışa kalır, zararsız). Örnek görüntüleri ondan sonra boş bir
+// anda yeniden kesilir; kayıtta kart alanı hiç yoksa örnek kartlar bir kez istenir (sırayı bekletmez).
+siraya(async () => {
+  if (!ilkDurum.geri) return;
+  await kayit.veriBekle(store.belgeler.filter((b) => !b.dosya && ORNEK_IDLER.has(b.id)).map((b) => b.id));
   try { ornekVeriyiTasi(ilkDurum.ornekSurum || 0); } catch (hata) { console.warn("[kenar-notu] Örnek veri taşınamadı:", hata); }
   setTimeout(() => ornekGorselleriTazele().catch((hata) => console.warn("[kenar-notu] Örnek görüntüler yenilenemedi:", hata)), 2000);
-  // Kayıtta kart alanı hiç yoksa örnek kartlar bir kez istenir
   if (!ilkDurum.kartlarVar) ornekKartlar();
+});
+if (ilkDurum.geri) {
   // 9. turun yeni örneği (çizgi roman) mevcut kitaplığa da bir kez girer; açılıştan sonra, boş bir anda
   if (!kayit.ornekCizgiVar()) setTimeout(ornekCizgiRoman, 4000);
 } else if (ilkDurum.engel || baslangic === "ornek") ornekleBasla();
@@ -4034,7 +4067,7 @@ setTimeout(async () => {
 }, 2500);
 // Paylaş menüsüyle gelen dosya ya da metin (PWA); paylasim.js yoksa sessiz geçilir.
 // Asistan önce kurulur: paylaşılan metin bekleyen soruya cevap olarak gidebilsin.
-asistanHazir.then(() => import("./paylasim.js")).then((m) => m.paylasimKontrol?.()).catch(() => {});
+asistanHazir.then(() => kayit.veriBekle()).then(() => import("./paylasim.js")).then((m) => m.paylasimKontrol?.()).catch(() => {});
 // Kurulu uygulamayla açılan dosya (manifest file_handlers; masaüstü Chrome): PDF, EPUB, CBZ kitaplığa alınır
 if ("launchQueue" in window) {
   window.launchQueue.setConsumer(async (p) => {

@@ -1902,3 +1902,7 @@ a, button, [role="button"], .cip, .sekme { touch-action: manipulation; }
 .oto-yedek__klasor small.hata { color: var(--danger); }
 .onceki-not { max-width: 280px; margin: 4px 10px 8px; font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); text-wrap: pretty; }
 .onceki-satir small { font-variant-numeric: tabular-nums; }
+
+/* Kapatılabilir bildirim (yedek klasörü izni): eylem düğmesinin yanında küçük kapatma düğmesi */
+.bildirim .bildirim-kapat { display: grid; place-items: center; width: 44px; padding: 0; margin-left: -12px; color: var(--inverse-ink); opacity: .72; }
+.bildirim .bildirim-kapat:hover { opacity: 1; }

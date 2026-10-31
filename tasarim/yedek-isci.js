@@ -11,6 +11,7 @@
 //                { tur: "bitir" }                                          arşiv kurulur
 //                { tur: "oku", dosya }                                     durum.json ayrıştırılır
 //                { tur: "onceki", id, eskiZaman, gun, simdi }              belgenin önceki hâli kopyalanır
+//                { tur: "donus", id, anahtar, simdi, gun, zaman }          seçilen önceki hâle dönülür
 //   işçi -> ana  { tur: "hazir" } (açılışta), { tur: "ilerleme", oran: 0..1 },
 //                { tur: "parca", alan, liste } (okurken), { tur: "tamam", blob | durum | tanimadi }, { tur: "hata", kod, mesaj }
 
@@ -244,6 +245,32 @@ export function oncekiKopyaAl(db, { id, eskiZaman = 0, gun, simdi = Date.now() }
     t.onerror = t.onabort = () => tamam(false);
   });
 }
+// Seçilen önceki hâle dönüş (kayit.js oncekiHaleDon): kayıttaki şimdiki veri de önceki hâl olarak saklanır
+// (donus: true), seçilen kopya belgenin verisi olur. Tek işlem: yarıda kalırsa hiçbiri olmaz.
+// Dönen: { bulundu: seçilen kopya vardı mı, donus: saklanan şimdiki hâlin anahtarı ya da null }
+export function oncekiDonus(db, { id, anahtar, simdi = Date.now(), gun, zaman = 0 }) {
+  return new Promise((tamam, hata) => {
+    let t, bulundu = false, donus = null;
+    try { t = db.transaction("durum", "readwrite"); } catch (e) { hata(e); return; }
+    const d = t.objectStore("durum");
+    const qd = d.get(oncekiDizinAnahtari(id)), qh = d.get(anahtar), qv = d.get("veri:" + id);
+    qv.onsuccess = () => {
+      if (qh.result == null) return;
+      bulundu = true;
+      const liste = dizinTemizle(qd.result).liste;
+      if (qv.result != null) {
+        const g = { anahtar: oncekiAnahtari(id, simdi), gun, zaman, alindi: simdi, ozet: ozetCikar(qv.result), donus: true };
+        d.put(qv.result, g.anahtar);
+        liste.unshift(g);
+        donus = g.anahtar;
+      }
+      d.put(qh.result, "veri:" + id);
+      oncekiBuda(d, id, liste);
+    };
+    t.oncomplete = () => tamam({ bulundu, donus });
+    t.onerror = t.onabort = () => hata(t.error || new Error("Önceki hâle dönülemedi"));
+  });
+}
 // İşçinin kendi bağlantısı: sürüm verilmez (var olan veritabanı); yoksa kurulmaz, yükseltme gelirse yol verir
 function vtAcIsci() {
   return new Promise((tamam, hata) => {
@@ -298,6 +325,9 @@ if (isciMi) {
       } else if (m.tur === "onceki") {
         const db = await vtAcIsci();
         try { gonder({ is, tur: "tamam", sonuc: await oncekiKopyaAl(db, m) }); } finally { db.close(); }
+      } else if (m.tur === "donus") {
+        const db = await vtAcIsci();
+        try { gonder({ is, tur: "tamam", sonuc: await oncekiDonus(db, m) }); } finally { db.close(); }
       }
     } catch (hata) {
       isler.delete(is);

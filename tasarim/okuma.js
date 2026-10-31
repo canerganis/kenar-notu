@@ -37,7 +37,7 @@ import {
 } from "./kalem.js";
 import METIN, { SAHNE } from "./okuma-metni.js";
 import { epubCoz, epubSurumu, bicimCoz } from "./epub-belge.js";
-import { epubFormul } from "./matematik.js";
+import { epubFormul, formulGoruntusu } from "./matematik.js";
 
 // ---------- sabitler ----------
 const BIRIM = 640;        // sütun genişliği, mürekkep biriminde (varsayılan düzende 1 birim ≈ 1,15 px)
@@ -741,6 +741,8 @@ function metniKur() {
   S.el.kenarNotlari = h("div", { class: "kenar-notlari" });
   S.el.sutun.append(parca, S.el.yerImleri, S.el.kenarNotlari);
   for (const t of S.veri.tuvaller) tuvalKaydi(t);
+  // Formül alanı gelmeden önce çizilmiş vurgular: formülleri bir kez eklenir (cep defteri onları çizer)
+  for (const v of S.veri.vurgular) if (!v.formuller && P[v.bas.p]) vurguFormulleri(v);
   paragraflariCiz();   // tuvaller paragrafCiz'in sonunda yerine takılır; açıklar ilk yerleşimde satır başına oturur
   exLibrisKur();
   oduncGuncelle();
@@ -748,7 +750,15 @@ function metniKur() {
 
 // Paragrafı vurgu ve arama eşleşmeleriyle yeniden yazar. Metin değişmez, yalnız işaretler.
 // Metnin [a, b) parçasını italik ve kalın aralıklarıyla ekler (gerçek EPUB'ta P[gi].bicim).
-// Tamamı parçanın içinde kalan formül MathML olarak çizilir; vurgu ya da eşleşme bölüyorsa düz metin kalır.
+// Tamamı parçanın içinde kalan formül MathML olarak çizilir. Vurgu ve eşleşme formülü bölmez: paragrafCiz
+// onların uçlarını formulUclari ile formülün uçlarına genişletir (formül tek parça, kayıtlı ofsetler değişmez).
+function formulUclari(gi, a, b) {
+  for (const f of P[gi].mat || []) {
+    if (f.a < a && a < f.b) a = f.a;
+    if (f.a < b && b < f.b) b = f.b;
+  }
+  return [a, b];
+}
 function metinEkle(hedef, gi, a, b) {
   const mat = P[gi].mat;
   if (!mat) return bicimliEkle(hedef, gi, a, b);
@@ -780,20 +790,23 @@ function bicimliEkle(hedef, gi, a, b) {
 }
 
 function paragrafCiz(gi) {
-  const p = S.pEl[gi], metin = P[gi].metin;
+  const p = S.pEl[gi], metin = P[gi].metin, mat = !!P[gi].mat;
   const parcalar = [];
   for (const v of S.veri.vurgular) {
     if (v.son.p < gi || v.bas.p > gi) continue;
-    const a = v.bas.p === gi ? v.bas.o : 0, b = v.son.p === gi ? v.son.o : metin.length;
+    let a = v.bas.p === gi ? v.bas.o : 0, b = v.son.p === gi ? v.son.o : metin.length;
+    if (mat) [a, b] = formulUclari(gi, a, b);
     if (b > a) parcalar.push({ a, b, v, son: v.son.p === gi });
   }
   parcalar.sort((x, y) => x.a - y.a);
-  const es = S.arama?.paragraf.get(gi) || S.parla?.get(gi) || [];
+  let es = S.arama?.paragraf.get(gi) || S.parla?.get(gi) || [];
+  if (mat && es.length) es = es.map((e) => { const [a, b] = formulUclari(gi, e.a, e.b); return a === e.a && b === e.b ? e : { ...e, a, b }; });
   const yaz = (hedef, a, b) => {
     let k = a;
     for (const e of es) {
       if (e.b <= a || e.a >= b) continue;
-      const s = Math.max(e.a, a), t = Math.min(e.b, b);
+      const s = Math.max(e.a, a, k), t = Math.min(e.b, b);
+      if (t <= s) continue;
       if (s > k) metinEkle(hedef, gi, k, s);
       const m = h("mark", { class: "eslesme" + (e.parla ? " parla" : e.i === S.arama.etkin ? " etkin" : ""), "data-e": e.i });
       metinEkle(m, gi, s, t);
@@ -805,10 +818,11 @@ function paragrafCiz(gi) {
   const frag = document.createDocumentFragment();
   let i = 0;
   for (const q of parcalar) {
-    if (q.a < i) continue;
-    if (q.a > i) yaz(frag, i, q.a);
+    const a = Math.max(q.a, i);   // aynı formüle değen iki vurgu: ikincisi formülden sonra başlar
+    if (q.b <= a) continue;
+    if (a > i) yaz(frag, i, a);
     const m = h("mark", { class: vurguSinifi(q.v.renk) + (q.son && q.v.not ? " notlu" : ""), "data-v": q.v.id });
-    yaz(m, q.a, q.b);
+    yaz(m, a, q.b);
     frag.append(m);
     i = q.b;
   }
@@ -960,9 +974,11 @@ function koltukSinir(cubuk = false) {
 }
 // Sayfa kesimi için satır: bölünmez grubun (büyük ilk harf) içindeyse grubun tamamı tek blok sayılır
 const kesim = (r) => (r.grup ? { ust: r.grup[0], alt: r.grup[1], blok: true } : r);
-function koltukMaske() {
+// sinir: önceden ölçülmüş pencere (durumGuncelle yazmadan önce ölçer, yazılardan sonra yerleşim zorlanmaz)
+const koltukSinirCubuklu = () => koltukSinir(S.kap.classList.contains("cubuk-gorunur"));
+function koltukMaske(sinir) {
   if (!S?.yer || S.mod !== "koltuk") return;
-  const s = koltukSinir(S.kap.classList.contains("cubuk-gorunur")), kay = S.el.kaydir;
+  const s = sinir || koltukSinirCubuklu(), kay = S.el.kaydir;
   const u = s.ust.toFixed(1) + "px", a = (s.H - s.alt).toFixed(1) + "px";
   if (S.kMaske === u + a) return;
   S.kMaske = u + a;
@@ -1044,7 +1060,8 @@ function kaydirildi() {
   if (S.aktif?.bekleyenIslak) islakAktar();
   if (S.menu) { menuKapat(); S.menuGeri = true; }
   if (S.menuGeri) { clearTimeout(S.menuGeriZ); S.menuGeriZ = zamanla(() => { S.menuGeri = false; secimDegisti(); }, 220); }
-  planla("kare", () => { durumGuncelle(); karolariGuncelle(false); if (S.el.cetvel && S.cetvelY != null) cetvelYerlestir(S.cetvelY); });
+  // Karolar önce: ölçüleri durumGuncelle'nin yazılarından önce okunur (yazıdan sonra okuma yerleşimi zorlar)
+  planla("kare", () => { karolariGuncelle(false); durumGuncelle(); if (S.el.cetvel && S.cetvelY != null) cetvelYerlestir(S.cetvelY); });
   if (S.co) planla("ceviri", coGuncelle);   // kapalıyken hiç iş yok
 }
 
@@ -1054,38 +1071,52 @@ function durumGuncelle() {
   const kay = S.el.kaydir;
   // Düzen değişti ama henüz ölçülmedi (yazı boyutu, döndürme): eski ölçülerle konum yanlış çıkar, önce yeniden ölçülür
   if (kay.scrollHeight !== S.yer.kayYuk) { planla("yerlesim", yerlesimDegisti); return; }
-  const k = konumAl();
-  const p = P[k.p], bolum = BOLUMLER[p.b];
+  // Önce bütün ölçüler, sonra yazılar: yazıdan sonra okunan her ölçü yerleşimi yeniden zorlar
+  // (7500 paragraflı kitapta her biri 5 ile 25 ms, sayfa çevirme başına üç kez)
+  const st = kay.scrollTop, H = kay.clientHeight;
+  const k = konumAl(st + ustPay());
+  const p = P[k.p], bolum = BOLUMLER[p.b], sonBolum = bolum.i === BOLUMLER.length - 1;
   const okunan = okunanKelime(k);
-  const sonda = kay.scrollTop + kay.clientHeight >= kay.scrollHeight - 4;
+  const sonda = st + H >= S.yer.kayYuk - 4;
+  const oduncGorunur = !!S.koltuk && sonBolum && st + H > S.el.odunc.offsetTop + S.el.sutun.offsetTop + 40;
+  const sinir = S.koltuk ? koltukSinirCubuklu() : null;
+  const yerImli = gorunenYerImleri(st, H).length > 0;
   const oran = sonda ? 1 : okunan / TOPLAM;
   const kalanKelime = bolum.onceki + bolum.kelime - okunan;
-  S.el.durumBolum.textContent = bolum.baslik;
-  S.el.kalan.textContent = kalanKelime < DAKIKADA || (sonda && bolum.i === BOLUMLER.length - 1)
-    ? "Bölüm bitmek üzere" : `Bölümün bitmesine yaklaşık ${Math.ceil(kalanKelime / DAKIKADA)} dk`;
-  S.el.yuzde.textContent = yuzde(oran);
-  S.el.altBaslik.textContent = `${bolum.ad} · ${yuzde(oran)}`;
+  metinYaz(S.el.durumBolum, bolum.baslik);
+  metinYaz(S.el.kalan, kalanKelime < DAKIKADA || (sonda && sonBolum)
+    ? "Bölüm bitmek üzere" : `Bölümün bitmesine yaklaşık ${Math.ceil(kalanKelime / DAKIKADA)} dk`);
+  metinYaz(S.el.yuzde, yuzde(oran));
+  metinYaz(S.el.altBaslik, `${bolum.ad} · ${yuzde(oran)}`);
   S.el.ilerleme.style.setProperty("--p", oran.toFixed(4));
   S.el.ilerleme.setAttribute("aria-valuenow", String(Math.round(oran * 100)));
   S.belge.ilerleme = oran;
   S.belge.sayfa = Math.min(SAYFA_SAYISI, Math.floor(okunan / SAYFADA) + 1);
-  S.el.sayfaNo.textContent = `${S.belge.sayfa} / ${SAYFA_SAYISI}`;
+  metinYaz(S.el.sayfaNo, `${S.belge.sayfa} / ${SAYFA_SAYISI}`);
   S.veri.konum = k;
   if (S.koltuk) {
     // Ödünç kartı: son sayfaya varınca bitiş günü; kitabın sonu görünürken kart tazelenir (günün damgası bir kez basılır)
-    if (sonda && bolum.i === BOLUMLER.length - 1 && !S.oduncBittiDendi) { S.oduncBittiDendi = true; oduncBitti(); }
-    if (bolum.i === BOLUMLER.length - 1) oduncGuncelle(kay.scrollTop + kay.clientHeight > S.el.odunc.offsetTop + S.el.sutun.offsetTop + 40);
+    if (sonda && sonBolum && !S.oduncBittiDendi) { S.oduncBittiDendi = true; oduncBitti(); }
+    if (sonBolum) oduncGuncelle(oduncGorunur);
     if (S.exBekliyor) exLibrisBas();
     const n = S.veri.vurgular.length + S.veri.izler.length;   // alt çubuktaki İzler rozeti
     if (S.el.tRozet.textContent !== String(n)) { S.el.tRozet.textContent = String(n); S.el.tRozet.hidden = !n; }
     kalinlikGuncelle(oran);
     S.kKonum = { oran, bolumAd: bolum.ad, kelimeKalanBolum: Math.max(0, kalanKelime), kelimeKalanKitap: Math.max(0, TOPLAM - okunan) };
-    hizOlc(okunan);
+    hizOlc(okunan, st, H);
     S.koltuk.guncelle();
-    koltukMaske();
+    koltukMaske(sinir);
   }
-  yerImiDurumu();
+  yerImiDurumu(yerImli);
   if (bolum.i !== S.sonBolum) { S.sonBolum = bolum.i; if (S.panel === "sol") icindekilerCiz(); }
+}
+// Yazı aynıysa dokunulmaz (aynı metni yeniden yazmak da yerleşimi kirletir). Değişince var olan metin düğümü
+// güncellenir: textContent düğümü söküp takar, bu da kabuktaki :has() kurallarının bütün belgeyi yeniden
+// taramasına yol açıyordu (uzun kitapta her yazıda yaklaşık 5 ms).
+function metinYaz(el, t) {
+  const d = el.firstChild;
+  if (d && d.nodeType === 3 && !d.nextSibling) { if (d.data !== t) d.data = t; }
+  else if (el.textContent !== t) el.textContent = t;
 }
 
 // ---------- vurgular ----------
@@ -1164,6 +1195,18 @@ function vurgulariDegistir() {
   panelYenile();
 }
 
+// Vurgunun değdiği formüller vurguyla saklanır: { p, a, b, ml }. Cep defteri ve İzlerim kitabı açmadan
+// formülü MathML olarak çizer (izler.js). Formülsüz vurguda alan yazılmaz.
+function vurguFormulleri(v) {
+  const out = [];
+  for (let gi = v.bas.p; gi <= v.son.p; gi++) {
+    const a = gi === v.bas.p ? v.bas.o : 0, b = gi === v.son.p ? v.son.o : Infinity;
+    for (const f of P[gi]?.mat || []) if (f.b > a && f.a < b) out.push({ p: gi, a: f.a, b: f.b, ml: f.ml });
+  }
+  if (out.length) v.formuller = out;
+  else delete v.formuller;
+}
+
 // Çakışan vurgular birleşir: aralık birleşir, notlar alt alta eklenir, renk yeninin rengidir
 function vurguEkle({ bas, son }, renk) {
   let yeni = null;
@@ -1178,6 +1221,7 @@ function vurguEkle({ bas, son }, renk) {
     }
     S.veri.vurgular = S.veri.vurgular.filter((x) => !cakisan.includes(x));
     yeni = { id: yeniId("v"), renk, bas: { ...b }, son: { ...s }, not: notlar.join("\n"), zaman: Date.now() };
+    vurguFormulleri(yeni);
     S.veri.vurgular.push(yeni);
     S.veri.vurgular.sort((x, y) => kars(x.bas, y.bas));
   });
@@ -1223,6 +1267,9 @@ function secimAraligi(r) {
   const m0 = P[bas.p].metin, m1 = P[son.p].metin;
   while (bas.o > 0 && HARF.test(m0[bas.o - 1]) && HARF.test(m0[bas.o])) bas.o--;
   while (son.o < m1.length && HARF.test(m1[son.o]) && HARF.test(m1[son.o - 1])) son.o++;
+  // Formül tek parça: uç formülün içine düştüyse formülün ucuna
+  if (P[bas.p].mat) bas.o = formulUclari(bas.p, bas.o, bas.o)[0];
+  if (P[son.p].mat) son.o = formulUclari(son.p, son.o, son.o)[1];
   return { bas, son };
 }
 
@@ -1293,17 +1340,16 @@ function asistanSatirlari(goster) {
 }
 
 // ---------- yer imleri ----------
-function gorunurAralik() {
-  const kay = S.el.kaydir;
-  return [kay.scrollTop + ustPay(), kay.scrollTop + kay.clientHeight];
+// st, H: önceden okunmuş kaydırma ve yükseklik (durumGuncelle), yoksa şimdi okunur
+function gorunurAralik(st = S.el.kaydir.scrollTop, H = S.el.kaydir.clientHeight) {
+  return [st + ustPay(), st + H];
 }
-function gorunenYerImleri() {
+function gorunenYerImleri(st, H) {
   if (!S.yer) return [];
-  const [a, b] = gorunurAralik();
+  const [a, b] = gorunurAralik(st, H);
   return S.veri.yerImleri.filter((y) => S.yer.pAlt[y.p] > a && S.yer.pUst[y.p] < b - 40);
 }
-function yerImiDurumu() {
-  const var_ = gorunenYerImleri().length > 0;
+function yerImiDurumu(var_ = gorunenYerImleri().length > 0) {
   if (!S.kose) S.el.kose.classList.toggle("kivrik", var_);   // Koltuk: yer imli sayfanın köşesi kıvrık
   S.el.yerImi.setAttribute("aria-pressed", String(var_));
   S.el.yerImi.setAttribute("aria-label", var_ ? "Yer imini kaldır" : "Yer imi ekle");
@@ -2800,6 +2846,16 @@ function koltukKapat() {
 // Kenar dokunuşu: sayfa sayfa çevirir. İleride yeni sayfa, gizlenen ilk satırdan başlar; geride bir önceki sayfa
 // tam şimdiki ilk satırın üstünde biter. Kaydırma anında olur (ardışık çevirmede hedef hep doğru, bekleme yok);
 // his yalnız içeriğin 180 ms'lik ince kayması ve solmasıdır (transform ve opacity).
+// Solma metnin üstündeki zemin renkli bir perdeyle olur, görünüşü aynı: metin katmanının kendi opaklığı her
+// çevirmede bütün ağacın boyama özelliklerini yeniden yürütüyordu (7500 paragrafta iki karede 45'er ms).
+function cevirPerdesi() {
+  if (!S.el.cevirPerde?.isConnected) {
+    S.el.cevirPerde = h("div", { class: "cevir-perde", "aria-hidden": "true",
+      style: "position:absolute;inset:0;z-index:0;pointer-events:none;background:var(--zemin);opacity:0" });
+    S.el.kaydir.after(S.el.cevirPerde);   // kaydırıcının üstünde, sayfa kenarı ve çubukların altında
+  }
+  return S.el.cevirPerde;
+}
 function koltukCevir(yon) {
   const kay = S.el.kaydir;
   menuKapat();
@@ -2827,7 +2883,7 @@ function koltukCevir(yon) {
   // Kayma Aa'nın sütun kaydırmasının üstüne eklenir (add); opaklık eklenirse 1'i aşıp kırpılır, ayrı ve yerine
   for (const a of S.cevirAnim || []) a.cancel();
   const zaman = { duration: 180, easing: "cubic-bezier(.2,.7,.25,1)" };
-  S.cevirAnim = [S.el.ic.animate([{ opacity: 0.5 }, { opacity: 1 }], zaman)];
+  S.cevirAnim = [cevirPerdesi().animate([{ opacity: 0.5 }, { opacity: 0 }], zaman)];
   // Kayma yalnız kısa kitapta: uzun kitapta bütün metin katmanı her çevirmede baştan boyanıyordu
   // (1500 paragrafta yavaş tablette çevirme başına yaklaşık 200 ms). Solma tek başına ucuz.
   if (P.length <= KAYAN_CEVIRME) {
@@ -2855,9 +2911,8 @@ function oranaGit(oran) {
   durumGuncelle();
 }
 // Okuma hızı ölçümü: okunan kelime bir ekranın %80'ini geçince bir ölçüm. Geri dönüş ya da büyük sıçrama ölçülmez.
-function hizOlc(okunan) {
-  const kay = S.el.kaydir;
-  const ekran = okunanKelime(konumAl(kay.scrollTop + UST + kay.clientHeight * 0.85)) - okunan;
+function hizOlc(okunan, st, H) {
+  const ekran = okunanKelime(konumAl(st + UST + H * 0.85)) - okunan;
   if (S.olcum == null || ekran <= 0) { S.olcum = okunan; S.koltuk.sifirla(); return; }
   const fark = okunan - S.olcum;
   if (fark < -5 || fark > ekran * 2.5) { S.olcum = okunan; S.koltuk.sifirla(); }
@@ -4650,26 +4705,33 @@ function secimdenKirp({ bas, son }) {
   r.setEnd(...bul(son));
   const icR = S.el.ic.getBoundingClientRect(), sR = S.el.sutun.getBoundingClientRect();
   const qs = [...r.getClientRects()].filter((q) => q.width > 0);
+  // Formülün görünen kutusu gölge DOM'da; ışık DOM'daki düz metni 1 px'liktir
+  for (const k of S.el.sutun.querySelectorAll(".formul-kap")) if (r.intersectsNode(k)) qs.push(k.getBoundingClientRect());
   if (!qs.length) return;
   const y0 = Math.min(...qs.map((q) => q.top)) - icR.top - 10, y1 = Math.max(...qs.map((q) => q.bottom)) - icR.top + 10;
   kirpYap({ x: sR.left - icR.left - 16, y: y0, w: sR.width + 32, h: y1 - y0 }, bas.p);
 }
 
 // ap: bağlanacak paragraf; verilmezse alanın üst kısmındaki paragraf (düzen değişince kırpıntı onunla kayar)
-function kirpYap(r, ap = yakinParagraf(r.y + Math.min(r.h / 2, 24))) {
-  const gorsel = bolgeGorsel(r);
-  const { s, sol, pUst } = S.yer;
-  const k = kirpintiEkle({ gorsel, belgeId: S.belge.id, belgeAd: S.belge.ad, sayfa: Math.floor(P[ap].onceki / SAYFADA) + 1, not: "" });
-  k.okuma = { ap, x: (r.x - sol) / s, y: (r.y - pUst[ap]) / s, w: r.w / s, h: r.h / s };
+// Görsel formül varsa bir an sonra hazır olur (formulGoruntusu): kırpıntı o zaman eklenir, flaş hemen çakar.
+async function kirpYap(r, ap = yakinParagraf(r.y + Math.min(r.h / 2, 24))) {
+  const S0 = S, { s, sol, pUst } = S.yer;
+  const alan = { belgeId: S.belge.id, belgeAd: S.belge.ad, sayfa: Math.floor(P[ap].onceki / SAYFADA) + 1, not: "" };
+  const okuma = { ap, x: (r.x - sol) / s, y: (r.y - pUst[ap]) / s, w: r.w / s, h: r.h / s };
   // Flaş, baskının uçuşu, hedefin karşılaması, bildirim
   const icR = S.el.ic.getBoundingClientRect(), oR = S.el.okuma.getBoundingClientRect();
   const ekran = { left: icR.left + r.x, top: icR.top + r.y, width: r.w, height: r.h };
+  const t0 = performance.now();
   if (!hareketAz()) {
     const flas = h("div", { class: "kirp-flas", style: `inset:auto;left:${ekran.left - oR.left}px;top:${ekran.top - oR.top}px;width:${r.w}px;height:${r.h}px` });
     S.el.okuma.append(flas);
     zamanla(() => flas.remove(), 340);
-    zamanla(() => kirpUcur(gorsel, ekran), 190);
   }
+  const gorsel = await bolgeGorsel(r);
+  const k = kirpintiEkle({ gorsel, ...alan });
+  k.okuma = okuma;
+  if (S !== S0) return;
+  if (!hareketAz()) zamanla(() => kirpUcur(gorsel, ekran), Math.max(0, 190 - (performance.now() - t0)));
   toast("Kırpılanlar'a kaydedildi", { etiket: "Göster", calistir: () => S && panelAc("sag", "kirpintilar", { zorla: true }) });
   if (S.panel === "sag" && S.sekme === "kirpintilar") panelYenile();
 }
@@ -4689,8 +4751,9 @@ function kirpUcur(gorsel, ekran) {
 }
 
 // Bölgenin görseli: metin, vurgular, süsler ve mürekkep tuvale yeniden dizilir (DOM ekran görüntüsü yok).
-// r: .okuma-ic içinde piksel dikdörtgen. Birim başına 2 piksel.
-function bolgeGorsel(r) {
+// r: .okuma-ic içinde piksel dikdörtgen. Birim başına 2 piksel. Formüller (gölge DOM'daki MathML) görüntüye
+// çevrilip yerine konur; olmazsa düz karşılıkları yazılır. Ölçümler beklemeden önce alınır.
+async function bolgeGorsel(r) {
   const O = 2, W = Math.max(1, Math.round(r.w * O)), H = Math.max(1, Math.round(r.h * O));
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
@@ -4735,11 +4798,28 @@ function bolgeGorsel(r) {
   }
   // 4) yazılar
   yazilariCiz(g, kesisir);
-  // 5) mürekkep: ekrandaki gibi sayfayla çarpılarak
-  const s = S.yer.s;
+  // 5) formüller
+  const formuller = [];
+  for (const kap of S.el.sutun.querySelectorAll(".formul-kap")) {
+    const m = kap.shadowRoot?.querySelector("math"), q = m?.getBoundingClientRect();
+    if (!q || !kesisir(q)) continue;
+    const st = getComputedStyle(kap);
+    formuller.push({ m, q, duz: kap.textContent, renk: st.color, boyut: parseFloat(st.fontSize) || 16, font: `${st.fontStyle} ${st.fontWeight} ${st.fontSize} ${st.fontFamily}` });
+  }
+  const s = S.yer.s, cizgiler = gorunenCizgiler(r.y, r.y + r.h);
+  if (formuller.length) {
+    const resimler = await Promise.all(formuller.map((f) => formulGoruntusu(f.m, { w: f.q.width, h: f.q.height, renk: f.renk, boyut: f.boyut, olcek: O })));
+    formuller.forEach((f, i) => {
+      if (resimler[i]) { g.drawImage(resimler[i], f.q.left, f.q.top, f.q.width, f.q.height); return; }
+      g.font = f.font; g.fillStyle = f.renk; g.letterSpacing = "0px"; g.textBaseline = "middle";
+      g.fillText(f.duz, f.q.left, f.q.top + f.q.height / 2, Math.max(f.q.width, 8));
+      g.textBaseline = "alphabetic";
+    });
+  }
+  // 6) mürekkep: ekrandaki gibi sayfayla çarpılarak
   g.setTransform(O * s, 0, 0, O * s, -r.x * O, -r.y * O);
   g.globalCompositeOperation = koyu ? "screen" : "multiply";   // ekrandaki CSS karışımıyla aynı
-  for (const c of gorunenCizgiler(r.y, r.y + r.h)) {
+  for (const c of cizgiler) {
     const k = c.kutu;
     if (k.x1 > r.x && k.x0 < r.x + r.w && k.y1 > r.y && k.y0 < r.y + r.h) cizgiCiz(g, c, { koyuSayfa: koyu });
   }
@@ -4767,7 +4847,7 @@ function yazilariCiz(g, kesisir) {
   let d;
   while ((d = yuruyen.nextNode())) {
     const el = d.parentElement;
-    if (!el || el.closest("svg, button.metin-dugme")) continue;
+    if (!el || el.closest("svg, button.metin-dugme, .formul-kap")) continue;   // formülün görünmez düz metni: bolgeGorsel 5
     rng.selectNodeContents(d);
     if (!kesisir(rng.getBoundingClientRect())) continue;
     const st = stil(el), metin = d.data;

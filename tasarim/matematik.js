@@ -9,7 +9,10 @@
 //   formulleriCiz(kok)           -> Promise    [data-tex] yer tutucularını çizer (asistan cevabı); çizilemeyen yedek yazıyla kalır
 //   mathmlSuz(kaynak)            -> <math> | null   yalnız MathML öğeleri ve güvenli nitelikler (href, on*, url() yok)
 //   epubFormul(duz, mathml)      -> Node     Koltuk: düz metin ışık DOM'da (ofsetler için), formül gölge DOM'da
-//   latexAl(el)                  -> string   formülün TeX'i (annotation application/x-tex)
+//   mathmlCiz(mathml, duz)       -> Node     kaydedilmiş EPUB MathML'i (vurgu.formuller) satır içi formül; olmazsa düz metin
+//   formulGoruntusu(math, o)     -> Promise<img | null>   kırpma için formülün görüntüsü (SVG foreignObject)
+//   matematikStili()                         Temml yazı tipi CSS'i (Temml betiği yüklenmeden)
+//   latexAl(el)                -> string   formülün TeX'i (annotation application/x-tex)
 //
 // Hata olursa metin olduğu gibi kalır. Temml çıktısı da EPUB'unki gibi süzülür: DOM'a ham HTML girmez.
 
@@ -77,12 +80,14 @@ export function texParcala(s) {
 
 /* ================= Temml (tembel) ================= */
 let yukleniyor = null;
+export function matematikStili() {
+  if (document.querySelector("link[data-temml]")) return;
+  document.head.append(h("link", { rel: "stylesheet", href: new URL("../lib/temml/Temml-Local.css", import.meta.url).href, "data-temml": "" }));
+}
 export function matematikYukle() {
   if (window.temml) return Promise.resolve(window.temml);
   yukleniyor ||= new Promise((tamam, hata) => {
-    if (!document.querySelector("link[data-temml]")) {
-      document.head.append(h("link", { rel: "stylesheet", href: new URL("../lib/temml/Temml-Local.css", import.meta.url).href, "data-temml": "" }));
-    }
+    matematikStili();
     const s = document.createElement("script");
     s.src = new URL("../lib/temml/temml.min.js", import.meta.url).href;
     s.onload = () => (window.temml ? tamam(window.temml) : hata(new Error("Temml yüklenemedi")));
@@ -266,6 +271,45 @@ export function epubFormul(duz, mathml) {
   return kap;
 }
 
+// İzlerim ve cep defteri: vurguyla kaydedilmiş EPUB MathML'i. TeX yoksa kopyalama menüsü düz metni verir.
+export function mathmlCiz(mathml, duz = "") {
+  let ml = typeof mathml === "string" ? EPUB_ONBELLEK.get(mathml) : undefined;
+  if (ml === undefined && typeof mathml === "string") { ml = mathmlSuz(mathml); onbellekYaz(EPUB_ONBELLEK, mathml, ml); }
+  if (!ml) return document.createTextNode(duz);
+  const el = ml.cloneNode(true);
+  const kap = formulSarmali(el, latexAl(el), el.getAttribute("display") === "block");
+  if (!kap.dataset.tex) kap.removeAttribute("data-tex");
+  if (duz) kap.dataset.duz = duz;
+  matematikStili();
+  return kap;
+}
+
+/* ================= Kırpma: formülün görüntüsü ================= */
+// MathML, SVG foreignObject içinde görüntüye çevrilir (cihazın matematik yazı tipiyle). Tuvali kirleten
+// tarayıcıda (foreignObject'i güvensiz sayan Safari sürümleri) ya da yüklenemezse null: çağıran düz metni yazar.
+// o: { w, h } CSS piksel kutu, renk, boyut (px), olcek (görüntü pikseli / CSS pikseli)
+export async function formulGoruntusu(math, { w, h: y, renk = "#000", boyut = 16, olcek = 2 } = {}) {
+  if (!math || !(w > 0) || !(y > 0) || typeof XMLSerializer !== "function") return null;
+  try {
+    const ml = new XMLSerializer().serializeToString(math);
+    const stil = `math{font-family:"Cambria Math","STIX Two Math","Noto Sans Math",math;font-size:${boyut}px;color:${renk};`
+      + "font-style:normal;font-weight:normal;letter-spacing:normal;text-indent:0;line-height:normal;margin:0}";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(w * olcek)}" height="${Math.ceil(y * olcek)}" viewBox="0 0 ${w} ${y}">`
+      + `<foreignObject x="0" y="0" width="${w}" height="${y}"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:0;line-height:0;white-space:nowrap">`
+      + `<style>${stil}</style>${ml}</div></foreignObject></svg>`;
+    const img = new Image();
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    await (img.decode ? img.decode() : new Promise((tamam, hata) => { img.onload = tamam; img.onerror = hata; }));
+    // Kirlenme denemesi: görüntü tuvali kirletiyorsa getImageData hata verir
+    const dene = document.createElement("canvas");
+    dene.width = dene.height = 1;
+    const g = dene.getContext("2d");
+    g.drawImage(img, 0, 0);
+    g.getImageData(0, 0, 1, 1);
+    return img;
+  } catch { return null; }
+}
+
 /* ================= LaTeX olarak kopyala ================= */
 export function latexAl(el) {
   if (!el) return "";
@@ -289,7 +333,8 @@ function menuKapat() { menu?.kapat(); menu = null; }
 function menuAc(f, x, y) {
   menuKapat();
   const tex = latexAl(f);
-  const duz = f.classList.contains("formul-kap") ? f.textContent : "";
+  const k = f.closest?.(".formul-tex, .formul-kap") || f;
+  const duz = k.dataset?.duz || (k.classList.contains("formul-kap") ? k.textContent : "");
   if (!tex && !duz) return;
   const d = h("button", { class: "izler-fis__satir", type: "button", role: "menuitem" }, h("span", {}, tex ? "LaTeX olarak kopyala" : "Metin olarak kopyala"));
   d.addEventListener("click", async () => {
@@ -310,32 +355,44 @@ function menuAc(f, x, y) {
   d.focus({ preventScroll: true });
 }
 // Sağ tık ve Android'de uzun basış "contextmenu" verir; iOS vermez: parmakla 550 ms basış da açar.
-// Kalemle uzun basış Koltuk'un anlam kartına kalır.
-let menuKuruldu = false, sonIsaretci = "", basili = null;
-// Dokunulabilir satırın içindeki formül (İzlerim, cep defteri): uzun basış satırın kendi eylemidir (alıntı kartı)
-const kendiUzunBasisi = (f) => !!f.closest("button, a, [role=listitem]");
+// Kalemle uzun basış Koltuk'un anlam kartına kalır. Dokunulabilir satırın (İzlerim, cep defteri) içindeki
+// formülde de uzun basış formül menüsüdür: satırın kendi uzun basışı formülü atlar (izler.js uzunBas),
+// parmak kalkınca gelen tıklama yutulur, satır yerine gitmez.
+let menuKuruldu = false, sonIsaretci = "", basili = null, tiklamaYut = false;
 export function formulMenusuKur() {
   if (menuKuruldu) return;
   menuKuruldu = true;
   document.addEventListener("pointerdown", (e) => {
     sonIsaretci = e.pointerType;
+    tiklamaYut = false;
     clearTimeout(basili?.z);
     basili = null;
     if (e.pointerType !== "touch") return;
     const f = formulBul(e);
-    if (!f || kendiUzunBasisi(f)) return;
+    if (!f) return;
     const x = e.clientX, y = e.clientY;
-    basili = { x, y, z: setTimeout(() => { basili = null; menuAc(f, x, y); }, 550) };
+    basili = { x, y, z: setTimeout(() => { basili = null; tiklamaYut = true; menuAc(f, x, y); }, 550) };
+  }, true);
+  document.addEventListener("click", (e) => {
+    if (!tiklamaYut) return;
+    tiklamaYut = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
   }, true);
   document.addEventListener("pointermove", (e) => { if (basili && Math.hypot(e.clientX - basili.x, e.clientY - basili.y) > 8) { clearTimeout(basili.z); basili = null; } }, { capture: true, passive: true });
-  for (const t of ["pointerup", "pointercancel"]) document.addEventListener(t, () => { clearTimeout(basili?.z); basili = null; }, true);
+  for (const t of ["pointerup", "pointercancel"]) document.addEventListener(t, () => {
+    clearTimeout(basili?.z);
+    basili = null;
+    if (tiklamaYut) setTimeout(() => { tiklamaYut = false; }, 400);
+  }, true);
   document.addEventListener("contextmenu", (e) => {
     if (sonIsaretci === "pen") return;
     const f = formulBul(e);
-    if (!f || (sonIsaretci === "touch" && kendiUzunBasisi(f))) return;
+    if (!f) return;
     e.preventDefault();
     clearTimeout(basili?.z);
     basili = null;
+    if (sonIsaretci === "touch") tiklamaYut = true;
     menuAc(f, e.clientX, e.clientY);
   }, true);
 }

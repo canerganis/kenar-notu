@@ -827,7 +827,7 @@ function listeCiz() {
   const eylem = store.kartlar.length ? h("div", { class: "kart-liste-eylem" },
     h("button", { class: "metin-dugme", type: "button", "aria-haspopup": "dialog", onclick: (e) => ankiFisiAc(e.currentTarget, kartlar) },
       icon("disa-aktar", "i-20"), "Anki’ye aktar"),
-    h("button", { class: "metin-dugme", type: "button", onclick: (e) => takvimeEkle(e.currentTarget) },
+    h("button", { class: "metin-dugme", type: "button", "aria-haspopup": "dialog", onclick: (e) => takvimFisiAc(e.currentTarget) },
       icon("indir", "i-20"), "Takvime ekle")) : null;
   liste.append(...[eylem, ic].filter(Boolean));
   const kaydirma = D.govde.querySelector(".kart-liste")?.scrollTop || 0;
@@ -839,7 +839,7 @@ function listeCiz() {
 // ---------- Anki ve takvim (OZELLIKLER-8 1.2, 1.3) ----------
 const BICIMLER = [["apkg", "Anki paketi"], ["tsv", "TSV ve görseller"]];
 const BICIM_NOT = {
-  apkg: "Anki, AnkiDroid ve AnkiMobile açar. Görseller pakete girer.",
+  apkg: "Anki, AnkiDroid ve AnkiMobile açar. Görseller pakete girer. Takvim de gelsin diye içe aktarırken “Import any learning progress” seçeneğini aç.",
   tsv: "Anki’de Dosya > İçe aktar. Görseller zip içinde, OKU.txt yolu anlatır.",
 };
 
@@ -905,16 +905,69 @@ function ankiFisiAc(acan, listedekiler) {
   (satirlar.find((s) => s._o === secili) || fis).focus();
 }
 
-async function takvimeEkle(dugme) {
-  if (dugme.disabled) return;
-  dugme.disabled = true;
-  try {
-    const { takvimAktar } = await import("./anki.js");
-    aktarimBildir(await takvimAktar(), "Takvim dosyası indirildi. Açınca 14 günlük hatırlatma eklenir.");
-  } catch (hata) {
-    console.error("[tekrar] takvim:", hata);
-    toast("Takvim dosyası hazırlanamadı");
-  } finally { dugme.disabled = false; }
+// Takvim fişi: hatırlatma saati seçilir, seçim cihazda hatırlanır. Yalnız kartlı günler takvime girer.
+const SAAT_ANAHTAR = "kn-tasarim:takvim-saat";
+const HAZIR_SAATLER = ["07:00", "09:00", "12:00", "18:00", "21:00"];
+const saatGecerli = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s || "");
+function takvimSaati() {
+  try { const s = localStorage.getItem(SAAT_ANAHTAR); if (saatGecerli(s)) return s; } catch {}
+  return "09:00";
+}
+
+async function takvimFisiAc(acan) {
+  if (D.fis) return fisKapat();
+  if (acan.disabled) return;
+  let A;
+  acan.disabled = true;
+  try { A = await import("./anki.js"); }
+  catch (hata) { console.error("[tekrar] takvim:", hata); toast("Takvim dosyası hazırlanamadı"); return; }
+  finally { acan.disabled = false; }
+  if (D.fis || !acan.isConnected) return;
+  const gunSayisi = A.takvimGunleri().filter((g) => g.sayi).length;
+  let saat = takvimSaati();
+  const ekle = h("button", { class: "birincil", type: "button", disabled: !gunSayisi }, icon("indir", "i-20"), h("span", {}, "Takvime ekle"));
+  const saatGir = h("input", { class: "tekrar-saat", type: "time", step: "300", value: saat, "aria-label": "Başka saat" });
+  const parcali = h("div", { class: "parcali", role: "radiogroup", "aria-label": "Hazır saatler" },
+    ...HAZIR_SAATLER.map((s) => h("button", { type: "button", role: "radio", onclick: (e) => { sec(s); e.currentTarget.focus(); } }, s)));
+  const sec = (yeni) => {
+    saat = yeni;
+    const butonlar = [...parcali.children], secili = butonlar.find((b) => b.textContent === saat);
+    for (const b of butonlar) {
+      const evet = b === secili;
+      b.setAttribute("aria-pressed", String(evet));
+      b.setAttribute("aria-checked", String(evet));
+      b.tabIndex = evet || (!secili && b === butonlar[0]) ? 0 : -1;
+    }
+    if (saatGir.value !== saat) saatGir.value = saat;
+    try { localStorage.setItem(SAAT_ANAHTAR, saat); } catch {}
+  };
+  saatGir.addEventListener("change", () => { if (saatGecerli(saatGir.value)) sec(saatGir.value); });
+  sec(saat);
+  ekle.onclick = async () => {
+    if (ekle.disabled) return;
+    ekle.disabled = true;
+    try {
+      const sonuc = await A.takvimAktar({ saat });
+      fisKapat(true);
+      aktarimBildir(sonuc, `Takvim dosyası indirildi. Açınca ${gunSayisi} güne saat ${saat} hatırlatması eklenir.`);
+    } catch (hata) {
+      console.error("[tekrar] takvim:", hata);
+      toast("Takvim dosyası hazırlanamadı");
+      ekle.disabled = false;
+    }
+  };
+  const fis = h("div", { class: "fis fis-sabit tekrar-sinav-fis tekrar-takvim-fis", role: "dialog", "aria-modal": "true", "aria-label": "Takvime ekle", tabindex: "-1" },
+    h("div", { class: "fis-baslik" }, "Takvime ekle"),
+    h("p", { class: "tekrar-fis-not tekrar-takvim-ozet" }, gunSayisi
+      ? `Önümüzdeki 14 günde ${gunSayisi} gün tekrar var. Yalnız o günlere hatırlatma yazılır.`
+      : "Önümüzdeki 14 günde vakti gelen kart yok."),
+    h("div", { class: "fis-ayrac" }),
+    h("div", { class: "fis-form" }, h("span", { class: "t-daktilo" }, "Hatırlatma saati"), parcali,
+      h("label", { class: "tekrar-saat-satir" }, h("span", {}, "Başka saat"), saatGir)),
+    h("div", { class: "fis-form-alt" }, ekle));
+  radyoOklari(parcali);
+  fisGoster(fis, acan);
+  (parcali.querySelector('[tabindex="0"]') || fis).focus();
 }
 
 // paylas() sonucu: paylaşıldıysa ya da vazgeçildiyse sessiz; "bekliyor"da bildirimi paylas kendisi gösterir

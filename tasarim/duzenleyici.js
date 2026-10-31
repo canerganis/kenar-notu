@@ -550,7 +550,6 @@ export function kaydet() {
   if (!D) return;
   islakAktar();
   try { izKuyruguBosalt(); } catch { /* boş */ }
-  try { D.oduncYaz?.(); } catch { /* süre bir sonraki dilimde */ }
   try { konumKaydet(); } catch { /* yerleşim yoksa geç */ }
   try { D.yan?.modul?.kaydet?.(); } catch { /* bölme yarım kurulduysa geç */ }
   D.belge.sayfaSayisi = toplamNo();
@@ -562,6 +561,7 @@ export function kapat() {
   if (!D) return;
   const d = D;
   islakAktar();
+  for (const S of d.sayfalar) metinleriTazele(S);   // yazılan son harfler öğeler sökülmeden okunur
   try { izKuyruguBosalt(); } catch (e) { console.warn("[duzenleyici] iz:", e); }
   try { konumKaydet(); } catch { /* yerleşim yoksa geç */ }
   try { odagiBirak(); } catch { /* boş */ }
@@ -1538,12 +1538,16 @@ function oduncKur() {
     if (document.hidden) { yaz(); return; }
     d.oduncT = d.sonEtkilesim = performance.now();
   };
-  document.addEventListener("visibilitychange", gorunurluk);
-  // kaydet() (kayıt yazılmadan hemen önce) de son dilimi ekler: kayit.js'in gizlenme dinleyicisi bundan önce çalışır
-  d.oduncYaz = () => { if (D === d) yaz(); };
+  // Yakalama evresinde: kayit.js'in gizlenme ve pagehide kaydından önce çalışır, son dilim o kayda girer.
+  // Eskiden kaydet() her kayıtta dilimi yazıyordu; ortak.js'in "odunc" yayını açılıştaki ilk kaydın hemen ardından
+  // ikinci bir tam kayıt planlıyordu (ağır sayfada belge verisinin kopyası yaklaşık 600 ms).
+  const kapanis = () => { if (D === d) yaz(); };
+  document.addEventListener("visibilitychange", gorunurluk, { capture: true });
+  addEventListener("pagehide", kapanis, { capture: true });
   d.temizlik.push(() => {
     clearInterval(id);
-    document.removeEventListener("visibilitychange", gorunurluk);
+    document.removeEventListener("visibilitychange", gorunurluk, { capture: true });
+    removeEventListener("pagehide", kapanis, { capture: true });
     if (!document.hidden) yaz();
   });
 }
@@ -1584,6 +1588,7 @@ function gozlemcileriKur() {
 
 // ---------- nesne katmanı: notlar, metin kutuları, bantlar ----------
 function nesneleriCiz(S) {
+  metinleriTazele(S);
   S.nesneler.querySelectorAll(".not, .metin-kutusu, .bant, .asistan-notu, .damga-nesne").forEach((e) => e.remove());
   const parca = document.createDocumentFragment();
   for (const m of S.veri.metinler) parca.append(m.tur === "asistan" ? asistanNotuEl(m) : m.tur === "damga" ? damgaEl(m) : metinEl(S, m));
@@ -1602,8 +1607,35 @@ function duzenlenebilir(el) {
 }
 const ilkHarf = (s) => (s || "").trim().charAt(0).toLocaleUpperCase("tr") || "·";
 
+// Yazarken metin her tuşta okunmaz: innerText düzeni zorlar, uzun notta tuş başına 100 ms'yi aşıyordu.
+// Tuşta yalnız kirli işaretlenir; nesnenin metin alanı okununca (kayıt, geri al kopyası, panel, odak çıkışı)
+// o an okunur, yazma 300 ms durunca da boşta bir kez. Böylece hiçbir okuyucu son yazılan harfi kaçırmaz.
+// sonra: boştaki okumadan sonra (ilk harf, panel, düğme durumu).
+function metinBagla(nesne, el, sonra) {
+  let deger = nesne.metin ?? "", kirli = false, bekle = 0, iptal = null;
+  const oku = () => {
+    if (kirli) { kirli = false; deger = el.innerText.replace(/\n$/, ""); }
+    return deger;
+  };
+  Object.defineProperty(nesne, "metin", { get: oku, set: (v) => { kirli = false; deger = v; }, enumerable: true, configurable: true });
+  el.addEventListener("input", () => {
+    kirli = true;
+    clearTimeout(bekle);
+    iptal?.();
+    bekle = setTimeout(() => { iptal = ORTAK.bosta(() => { iptal = null; oku(); sonra?.(); }, { timeout: 600 }); }, 300);
+  });
+}
+// Yazı satır başına ayrı metin düğümü olur: tek dev düğümde (50.000 harflik not) her tuş bütün metni yeniden
+// biçimliyordu (CPU 4x tuş başına 50 ms); satır düğümünde yalnız o satır. Görünüş ve innerText aynı.
+const satirDugumleri = (s) => (s || "").split("\n").map((x, i, a) => (i < a.length - 1 ? x + "\n" : x)).filter(Boolean);
+// Yeniden çizimden önce bekleyen yazı eski öğeden okunur: kopmuş öğenin innerText'i satır sonlarını kaybedebilir
+function metinleriTazele(S) {
+  for (const x of S.veri?.notlar || []) void x.metin;
+  for (const x of S.veri?.metinler || []) void x.metin;
+}
+
 function notEl(S, n) {
-  const yazi = duzenlenebilir(h("div", { class: "not-yazi", "data-bos": "Not yaz", "aria-label": "Yapışkan not", role: "textbox", "aria-multiline": "true" }, n.metin));
+  const yazi = duzenlenebilir(h("div", { class: "not-yazi", "data-bos": "Not yaz", "aria-label": "Yapışkan not", role: "textbox", "aria-multiline": "true" }, satirDugumleri(n.metin)));
   const harf = h("span", { class: "ilk-harf", "aria-hidden": "true" }, ilkHarf(n.metin));
   const el = h("div", { class: "not" + (n.kucuk ? " kucuk" : "") + (22 * D.k < 13 ? " kucuk-yazi" : ""), "data-id": n.id,
     style: `--x:${n.x};--y:${n.y};--n:${n.renk};--aci:${n.aci || 0}deg` }, yazi, harf);
@@ -1611,11 +1643,7 @@ function notEl(S, n) {
     D.notDuzen = { S, n, once: structuredClone(S.veri.notlar), metin: n.metin };
     notSec(S, n, el);
   });
-  yazi.addEventListener("input", () => {
-    n.metin = yazi.innerText.replace(/\n$/, "");
-    harf.textContent = ilkHarf(n.metin);
-    sagPanelPlanla();
-  });
+  metinBagla(n, yazi, () => { harf.textContent = ilkHarf(n.metin); sagPanelPlanla(); });
   yazi.addEventListener("focusout", () => {
     const d = D?.notDuzen;
     if (!d || d.n !== n) return;
@@ -1628,7 +1656,7 @@ function notEl(S, n) {
 }
 
 function metinEl(S, m) {
-  const ic = duzenlenebilir(h("div", { class: "metin-ic", "data-bos": "Yazmaya başla", "aria-label": "Metin kutusu", role: "textbox", "aria-multiline": "true" }, m.metin));
+  const ic = duzenlenebilir(h("div", { class: "metin-ic", "data-bos": "Yazmaya başla", "aria-label": "Metin kutusu", role: "textbox", "aria-multiline": "true" }, satirDugumleri(m.metin)));
   const el = h("div", { class: "metin-kutusu" + (m.el ? " el-yazisi" : ""), "data-id": m.id,
     style: `--x:${m.x};--y:${m.y};--fs:${m.fs};--renk:${renkSayfaya(m.renk)};--sinir:${S.veri.kenar ? TW : PW}` },
   h("button", { class: "tasi", "aria-label": "Metin kutusunu taşı", tabindex: "-1" }, icon("tutamak")), ic);
@@ -1641,7 +1669,7 @@ function metinEl(S, m) {
     D.nesneSecim = { S, tur: "metin", id: m.id, el };
     D.sayfaMenu = sayfaMenusu(S, [silDugmesi("Sil", () => metinSil(S, m, el))], kutuPx(el, S));
   });
-  ic.addEventListener("input", () => { m.metin = ic.innerText.replace(/\n$/, ""); sagPanelPlanla(); });
+  metinBagla(m, ic, sagPanelPlanla);
   ic.addEventListener("focusout", () => {
     el.classList.remove("duzenleniyor");
     const d = D?.metinDuzen;
@@ -2616,8 +2644,16 @@ function kaydirDevam(j, e) {
   if (j.uzunZ && j.hareket >= 8) { zamanIptal(j.uzunZ); j.uzunZ = 0; }
   if (!j.basladi && j.hareket < 6) return;
   if (!j.basladi) { j.basladi = true; j.x = e.clientX; j.y = e.clientY; }
-  const dx = e.clientX - j.x, dy = e.clientY - j.y;
+  const dx = e.clientX - j.x;
+  let dy = e.clientY - j.y;
   j.x = e.clientX; j.y = e.clientY;
+  // İçte kayan uzun not önce kendi kayar, kalan hareket masaya geçer
+  const ic = j.odakla;
+  if (ic && dy && ic.scrollHeight > ic.clientHeight + 1) {
+    const once = ic.scrollTop;
+    ic.scrollTop = once - dy;
+    if (ic.scrollTop !== once) { j.icKaydi = true; dy += ic.scrollTop - once; }
+  }
   kaydirBy(dx, dy);
   const t = performance.now();
   j.ornek.push([t, e.clientX, e.clientY]);
@@ -2627,7 +2663,7 @@ function kaydirBitir(j, e) {
   if (j.uzunZ) { zamanIptal(j.uzunZ); j.uzunZ = 0; }
   lastikBirak();
   const dokunus = j.hareket < 8 && performance.now() - j.bas < 400;
-  if (!dokunus) { if (e) ataletBasla(j.ornek); return; }
+  if (!dokunus) { if (e && !j.icKaydi) ataletBasla(j.ornek); return; }
   if (!e) return;
   // Koltukta dokunma bölgelerini koltuk.js dinler; yüklenemediyse masa kendisi bakar
   if (j.okuma) { if (D.mod === "koltuk") { if (!D.koltuk) koltukDokun(e); } else cubukGoster(); return; }
@@ -3437,6 +3473,8 @@ function sayfaMenusu(S, dugmeler, kutu, bosluk = 12, sinif = "") {
   el.style.maxWidth = Math.max(160, kw - 8) + "px";
   S.kap.append(el);
   const w = el.offsetWidth, mh = el.offsetHeight;
+  // Sarınca alt satırın ilk düğmesinin solundaki ayraç çizgisi gizlenir (CSS satır başını bilemez)
+  if (mh > 50) for (const b of el.children) b.classList.toggle("satir-basi", !!b.previousElementSibling && b.offsetTop > b.previousElementSibling.offsetTop + 4);
   let top = kutu.y - mh - bosluk;
   if (top < 4) top = kutu.y + kutu.h + bosluk;
   el.style.left = sinirla(kutu.x + kutu.w / 2 - w / 2, 4, Math.max(4, kw - w - 4)) + "px";
@@ -5130,7 +5168,7 @@ function ceviriAc(S, kel, kutu) {
       etiketKoy("hesap");
       const u = YZ_UYGULAMALAR.find((x) => x.id === store.ayarlar.yz?.uygulama) || YZ_UYGULAMALAR[0];
       const alan = duzenlenebilir(h("div", { class: "ceviri-notu__yapistir", role: "textbox", "aria-multiline": "true", "aria-label": "Çeviri", "data-bos": "Çeviriyi buraya yapıştır" }));
-      alan.addEventListener("input", () => { n.metin = alan.innerText.replace(/\n$/, ""); hazir(); });
+      metinBagla(n, alan, hazir);
       govde.replaceChildren(h("p", { class: "ceviri-notu__bilgi" }, "Bu cihazda internetsiz çeviri hazır değil. Hesabınla çevir, cevabı kopyalayıp buraya yapıştır."), alan);
       const uygulama = h("button", { onclick: async () => {
         try { const r = await m.hesapIleCevir(kaynakMetin, { kaynak, hedef, uygulama: u.id }); if (r?.kopyalandi) bildir("Metin panoda. Cevabı buraya yapıştır."); }

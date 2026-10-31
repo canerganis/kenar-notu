@@ -2,7 +2,13 @@
 //
 //   readwiseCsv(kitaplar)   -> Blob   Readwise içe aktarma CSV'si: Highlight, Title, Author, Note, Location, Date
 //   obsidianZip(kitaplar)   -> Blob   Obsidian kasası için zip: kitap başına .md (YAML ön bilgi), kırpıntılar ekler/ içinde
-//   kitaplar: [{ belge, izler }]   izler: izler.js izleriTopla çıktısı (aynı sırayla)
+//   kitaplar: [{ belge, izler, kirpinti? }]   izler: izler.js izleriTopla çıktısı (aynı sırayla)
+//   kirpintilariSec(kitap)  -> [kırpıntı]   Obsidian'a girecek kırpıntılar
+//
+// Kırpıntı seçimi (kirpinti): "kitap" bütün kitap aktarılırken (cep defteri, İzlerim süzgeçsiz) kitabın bütün
+// kırpıntıları; "ilgili" (varsayılan) seçili izler aktarılırken (derleme, süzgeçli İzlerim) yalnız o izlerin
+// yanındakiler: sayfalı belgede aynı sayfa, EPUB'da kırpıntının bağlandığı paragraf izin paragraflarına iki
+// paragraf yakın. Koltuk kırpıntısının sayfası sanal sayfadır (250 kelime), izinki paragraf: sayfa karşılaştırılmaz.
 //
 // Yalnız okur; paylaşma ya da indirme çağıranın işi (disa-aktar.js paylas).
 
@@ -64,6 +70,21 @@ function etiketler(belge) {
   return [...new Set(e.filter(Boolean))];
 }
 
+const YAKIN = 2;
+const tamsayi = Number.isInteger;
+function izeYakin(k, x) {
+  if (tamsayi(k.okuma?.ap) && tamsayi(x.konum?.p)) {
+    const bas = tamsayi(x.kayit?.bas?.p) ? x.kayit.bas.p : x.konum.p;
+    const son = tamsayi(x.kayit?.son?.p) ? Math.max(bas, x.kayit.son.p) : bas;
+    return k.okuma.ap >= bas - YAKIN && k.okuma.ap <= son + YAKIN;
+  }
+  return !k.okuma && x.konum?.sayfa != null && Number(k.sayfa) === x.konum.sayfa;
+}
+export function kirpintilariSec({ belge, izler = [], kirpinti = "ilgili" }) {
+  const hepsi = (store.kirpintilar || []).filter((k) => k?.belgeId === belge?.id);
+  return kirpinti === "kitap" ? hepsi : hepsi.filter((k) => izler.some((x) => izeYakin(k, x)));
+}
+
 function kitapMd(belge, izler, kirpintilar, ekAdi) {
   const s = ["---", `title: ${yaml(belge.ad || "Adsız")}`];
   if (belge.yazar) s.push(`author: ${yaml(belge.yazar)}`);
@@ -103,12 +124,12 @@ export async function obsidianZip(kitaplar) {
     adlar.add(a.toLocaleLowerCase("tr"));
     return a;
   };
-  for (const { belge, izler } of kitaplar) {
+  for (const kitap of kitaplar) {
+    const { belge, izler } = kitap;
     const ad = dosyaAdi(belge.ad);
     const kirpintilar = [];
     const ekler = new Map();
-    for (const k of store.kirpintilar || []) {
-      if (k?.belgeId !== belge.id) continue;
+    for (const k of kirpintilariSec(kitap)) {
       const v = dataUrlBayt(k.gorsel);
       if (!v) continue;
       const yol = "ekler/" + benzersiz(`${ad} ${kirpintilar.length + 1}`, uzanti(v.tur));

@@ -1,12 +1,19 @@
 // Tekrar kartlarını dışarı verme (OZELLIKLER-8 1.2 ve 1.3): Anki paketi (.apkg), TSV + görseller zip, takvim (.ics).
-// Sözleşme: ankiAktar(kartlar, { bicim: "apkg" | "tsv" }), takvimAktar(), ankiPaketi(kartlar), ankiTsvZip(kartlar), takvimIcs().
-// sql.js (1.14.2, MIT, lib/sql-wasm.*) ve JSZip yalnız aktarırken yüklenir.
+// Sözleşme: ankiAktar(kartlar, { bicim: "apkg" | "tsv" }), takvimAktar({ saat: "HH:MM" }), ankiPaketi(kartlar), ankiTsvZip(kartlar), takvimIcs().
+// sql.js (1.14.2, MIT, lib/sql-wasm.*) ve JSZip yalnız aktarırken yüklenir; ikisi de sw.js kabuğunda, çevrimdışı çalışır.
 //
 // .apkg: Anki 2.1'in eski şeması (collection.anki2, şema 11) + "media" JSON ({ "0": "ad.png" }) + numaralı medya dosyaları.
 // Her kart iki alanlı (Ön, Arka) bir not; deste "Kenar Notu::<belge adı>". Not guid'i kart kimliğinden türer:
-// aynı kart yeniden aktarılınca Anki onu çoğaltmaz, günceller. Kartlar Anki'ye yeni kart olarak girer.
+// aynı kart yeniden aktarılınca Anki onu çoğaltmaz, notu günceller (Anki'de zaten olan kartın takvimine dokunmaz).
+// Takvim: hiç cevaplanmamış kart yeni kart (type 0) girer. Tekrar edilmiş kart tekrar kartıdır (type 2, queue 2):
+// ivl gün, due koleksiyonun crt gününden sayılan gün, reps, lapses, SM-2 factor, gecmis'ten revlog (type 1, ease 1 ya da 3).
+// Bilemedim sonrası kart bugün vadeli tekrar olur (ivl 1). FSRS bellek durumu cards.data içinde JSON:
+// {"s","d","decay","lrt"} (Anki rslib storage/card/data.rs CardData; Anki 23.10 öncesi bu alanı okumaz, dokunmaz).
+// Eski şema ve v1 zamanlayıcı bilerek seçildi: Anki 2.1.x de açar; yeni Anki içe alırken v2'ye yükseltir,
+// yalnız tekrar kartı ve type 1 revlog olduğundan yükseltme hiçbir şeyi değiştirmez (v2_upgrade.sql yalnız type 0 ve 2'ye dokunur).
+// Yeni Anki takvimi yalnız içe aktarma ekranında "Import any learning progress" açıksa alır; kapalıysa kartlar yeni girer.
 
-import { store, belgeBul, gunBasi } from "./ortak.js";
+import { store, belgeBul, gunBasi, gunFarki, fsrsHesapla, KUTU_ARALIK } from "./ortak.js";
 import { texParcala } from "./matematik.js";
 
 const AYRAC = String.fromCharCode(31);     // Anki alan ayracı (US)
@@ -102,6 +109,51 @@ const guid = (k) => "kn" + sha1Hex("kenar-notu:" + k.id).slice(0, 14);
 // Deste kimliği adından: aynı belge her aktarımda aynı desteye gider
 const desteId = (ad) => 1e12 + parseInt(sha1Hex(ad).slice(0, 10), 16);
 
+// ---------- Anki zamanlaması ----------
+const ANKI_DONUM = 4;          // Anki günü sabah 4'te döner; crt de Anki'nin kurduğu gibi bir günün saat 4'ü
+const UNUTMA_IVL = -600;       // revlog'da bilemedim: eksi değer saniyedir, Anki'nin 10 dakikalık yeniden öğrenme adımı gibi
+const faktor = (lapses) => Math.max(1300, 2500 - 200 * lapses);
+const yuvarla = (v, n) => Math.round(v * 10 ** n) / 10 ** n;
+
+// Kartın Anki takvimi. Hiç cevaplanmamış kartta null (yeni kart kalır).
+// fark: vadeye kalan takvim günü (bugün 0, gecikmişte eksi). revlog geçmiş FSRS ile yeniden oynatılarak kurulur.
+export function ankiTakvim(k, simdi = Date.now()) {
+  const gecmis = (Array.isArray(k.gecmis) ? k.gecmis : []).filter((g) => g && Number.isFinite(g.zaman)).sort((a, b) => a.zaman - b.zaman);
+  const kutu = Math.min(5, Math.max(1, k.kutu || 1));
+  if (!gecmis.length && !(k.fsrs?.s > 0) && kutu === 1) return null;
+  const revlog = [];
+  let durum = { kutu: 1, gecmis: [] }, lapses = 0, basarili = false, onceki = 0;
+  for (const g of gecmis) {
+    const c = fsrsHesapla(durum, g.bildi, g.zaman);
+    if (!g.bildi && basarili) lapses++;
+    if (g.bildi) basarili = true;
+    const ivl = g.bildi ? c.aralik : UNUTMA_IVL;
+    revlog.push({ zaman: g.zaman, ease: g.bildi ? 3 : 1, ivl, lastIvl: onceki, factor: faktor(lapses) });
+    onceki = ivl;
+    durum = { kutu: c.kutu, fsrs: c.fsrs };
+  }
+  const son = gecmis.length ? gecmis[gecmis.length - 1] : null;
+  const sonZaman = son?.zaman ?? k.fsrs?.son;
+  const sonraki = Number.isFinite(k.sonraki) ? k.sonraki : simdi;
+  // Tekrar kartında aralık en az 1 gün: bilemedim sonrası kart bugün vadeli, 1 günlük tekrar olur
+  const ivl = Number.isFinite(sonZaman) ? Math.max(1, gunFarki(sonraki, sonZaman)) : KUTU_ARALIK[kutu];
+  // Son cevap "bildim" ise revlog'daki aralık kartın gerçek aralığıdır (eski Leitner kartında yeniden oynatma farklı çıkabilir)
+  if (son?.bildi) revlog[revlog.length - 1].ivl = ivl;
+  const f = k.fsrs;
+  const data = f?.s > 0 && f.d > 0 ? JSON.stringify({ s: yuvarla(f.s, 4), d: yuvarla(f.d, 3), decay: 0.5,
+    ...(Number.isFinite(f.son) ? { lrt: Math.floor(f.son / 1000) } : {}) }) : "";
+  return { fark: gunFarki(sonraki, simdi), ivl, reps: gecmis.length, lapses, factor: faktor(lapses), data, revlog };
+}
+
+// Koleksiyonun oluşturulma anı (sn): Anki'nin bugününün saat 4'ü, gecikmiş kart eksi vadeye düşmesin diye geriGun gün önce
+function koleksiyonCrt(simdi, geriGun) {
+  const d = new Date(simdi);
+  if (d.getHours() < ANKI_DONUM) d.setDate(d.getDate() - 1);
+  d.setHours(ANKI_DONUM, 0, 0, 0);
+  d.setDate(d.getDate() - geriGun);
+  return Math.floor(d.getTime() / 1000);
+}
+
 // ---------- collection.anki2 ----------
 const SEMA = `
 CREATE TABLE col (id integer primary key, crt integer not null, mod integer not null, scm integer not null, ver integer not null,
@@ -166,14 +218,32 @@ export async function ankiPaketi(kartlar) {
     db.run(SEMA);
     // Büyük tam sayılar (ms kimlikler) SQL metnine sayı olarak yazılır: bağlanan JS sayıları REAL olarak girebilir
     const tam = (v) => String(Math.trunc(v));
-    db.run(`INSERT INTO col VALUES (1, ${tam(gunBasi(simdi) / 1000)}, ${tam(simdi)}, ${tam(simdi)}, 11, 0, 0, 0, ?, ?, ?, ?, '{}')`,
+    // Vade günleri crt'den sayılır: en çok gecikmiş kart koleksiyonun ilk günü (0) olur, bugün geriGun'dür
+    const takvimler = notlar.map((n) => ankiTakvim(n.k, simdi));
+    const geriGun = Math.max(0, ...takvimler.map((t) => (t ? -t.fark : 0)));
+    db.run(`INSERT INTO col VALUES (1, ${tam(koleksiyonCrt(simdi, geriGun))}, ${tam(simdi)}, ${tam(simdi)}, 11, 0, 0, 0, ?, ?, ?, ?, '{}')`,
       [JSON.stringify(conf), JSON.stringify(models), JSON.stringify(decks), JSON.stringify(dconf)]);
+    const revlogIdler = new Set();
+    let yeniSira = 0;
     notlar.forEach((n, i) => {
-      const id = simdi + i, sfld = duzMetin(n.on);
+      const id = simdi + i, sfld = duzMetin(n.on), t = takvimler[i];
       const csum = parseInt(sha1Hex(sfld).slice(0, 8), 16);
       db.run(`INSERT INTO notes VALUES (${tam(id)}, ?, ${MODEL_ID}, ${simdiSn}, -1, ?, ?, ?, ${csum}, 0, '')`,
         [guid(n.k), ` ${n.etiketler.join(" ")} `, n.on + AYRAC + n.arka, sfld]);
-      db.run(`INSERT INTO cards VALUES (${tam(id)}, ${tam(id)}, ${tam(desteler.get(n.deste))}, 0, ${simdiSn}, -1, 0, 0, ${i + 1}, 0, 0, 0, 0, 0, 0, 0, 0, '')`);
+      const did = tam(desteler.get(n.deste));
+      if (!t) {
+        db.run(`INSERT INTO cards VALUES (${tam(id)}, ${tam(id)}, ${did}, 0, ${simdiSn}, -1, 0, 0, ${++yeniSira}, 0, 0, 0, 0, 0, 0, 0, 0, '')`);
+        return;
+      }
+      // Tekrar kartı: type 2, queue 2, due crt gününden sayılan gün
+      db.run(`INSERT INTO cards VALUES (${tam(id)}, ${tam(id)}, ${did}, 0, ${simdiSn}, -1, 2, 2, ${geriGun + t.fark}, ${t.ivl}, ${t.factor},
+        ${t.reps}, ${t.lapses}, 0, 0, 0, 0, ?)`, [t.data]);
+      for (const r of t.revlog) {
+        let rid = Math.trunc(r.zaman);
+        while (revlogIdler.has(rid)) rid++;
+        revlogIdler.add(rid);
+        db.run(`INSERT INTO revlog VALUES (${tam(rid)}, ${tam(id)}, -1, ${r.ease}, ${r.ivl}, ${r.lastIvl}, ${r.factor}, 0, 1)`);
+      }
     });
     const zip = new JSZip();
     zip.file("collection.anki2", db.export());
@@ -189,7 +259,9 @@ export async function ankiTsvZip(kartlar) {
   const [JSZip, { notlar, medya }] = await Promise.all([jszip(), alanlar(kartlar)]);
   // Anki ayrıştırıcısı tırnağı alan sınırı sayar: tırnaklı alan tırnak içine alınır, iç tırnak ikilenir
   const alan = (s) => { const t = String(s).replace(/[\t\r\n]+/g, " "); return /"/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-  const satirlar = ["#separator:tab", "#html:true", "#notetype:Basic", "#deck column:3", "#tags column:4", "#guid column:5"];
+  // Not türü başlığı yok: Anki hazır türün adını dile göre koyar (Türkçede "Basic" değil "Temel"), ad tutmazsa başlık boşa düşer.
+  // Türü içe aktarma ekranı seçer (son kullanılan, çoğunlukla iki alanlı Temel); ilk iki sütun sırayla Ön ve Arka alanına gider.
+  const satirlar = ["#separator:tab", "#html:true", "#deck column:3", "#tags column:4", "#guid column:5"];
   for (const n of notlar) satirlar.push([n.on, n.arka, n.deste, n.etiketler.join(" "), guid(n.k)].map(alan).join("\t"));
   const zip = new JSZip();
   zip.file("kartlar.txt", satirlar.join("\n") + "\n");
@@ -199,7 +271,8 @@ export async function ankiTsvZip(kartlar) {
     "1. medya klasöründeki görselleri Anki'nin collection.media klasörüne kopyala",
     "   (Anki masaüstü: Araçlar > Medyayı denetle > Medya klasörünü aç).",
     "2. Anki'de Dosya > İçe aktar ile kartlar.txt dosyasını seç.",
-    "Deste, etiket ve not türü dosyanın başındaki satırlardan okunur.",
+    "3. Not türü olarak iki alanlı Temel (İngilizcede Basic) türünü seç.",
+    "Deste ve etiketler dosyadaki sütunlardan okunur.",
   ].join("\n") + "\n");
   for (const m of medya) zip.file("medya/" + m.ad, m.blob);
   return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/zip" });
@@ -207,7 +280,7 @@ export async function ankiTsvZip(kartlar) {
 
 // ---------- takvim (.ics) ----------
 // Önümüzdeki gun gün için her güne bir etkinlik: o gün vakti gelen kart sayısı (FSRS tarihlerinden, bugün gecikenler dahil).
-// Kart varsa etkinlik başında hatırlatma (VALARM). UID güne bağlı: yeniden eklenen takvim eski etkinlikleri günceller.
+// Yalnız kartlı günler etkinlik olur, başında hatırlatma (VALARM). UID güne bağlı: yeniden eklenen takvim eski etkinlikleri günceller.
 export function takvimGunleri(kartlar = store.kartlar, { gun = 14, simdi = Date.now() } = {}) {
   const sonuc = [];
   for (let i = 0; i < gun; i++) {
@@ -232,21 +305,28 @@ function katla(satir) {
   parca.push(cur);
   return parca.join("\r\n");
 }
-export function takvimIcs({ kartlar = store.kartlar, gun = 14, saat = 9, sure = 15, simdi = Date.now() } = {}) {
-  const st = utcAn(simdi);
+// Saat "07:30" ya da 7 gibi gelir; bozuksa 09:00
+export const TAKVIM_SAAT = "09:00";
+export function saatCoz(saat) {
+  const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(String(saat ?? "").trim());
+  const s = m ? +m[1] : NaN, d = m ? +(m[2] || 0) : NaN;
+  return s >= 0 && s < 24 && d >= 0 && d < 60 ? { s, d } : saatCoz(TAKVIM_SAAT);
+}
+// Kart olmayan güne etkinlik yazılmaz
+export function takvimIcs({ kartlar = store.kartlar, gun = 14, saat = TAKVIM_SAAT, sure = 15, simdi = Date.now() } = {}) {
+  const st = utcAn(simdi), { s: sa, d: dak } = saatCoz(saat);
   const satirlar = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Kenar Notu//Tekrar//TR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "X-WR-CALNAME:Kenar Notu tekrar"];
   for (const { bas, sayi } of takvimGunleri(kartlar, { gun, simdi })) {
+    if (!sayi) continue;
     const tarih = yerelTarih(bas);
     const dk = Math.max(1, Math.round((sayi * 30) / 60));
-    const ozet = sayi ? `Kenar Notu: ${sayi} kart tekrar` : "Kenar Notu: tekrar yok";
-    const aciklama = sayi ? `Bugün ${sayi} kart bekliyor, yaklaşık ${dk} dk.` : "Bugün vakti gelen kart yok.";
-    // Yerel saat (TZID'siz "kayan" saat): cihaz hangi saat dilimindeyse sabah 9
+    const ozet = `Kenar Notu: ${sayi} kart tekrar`;
+    // Yerel saat (TZID'siz "kayan" saat): cihaz hangi saat dilimindeyse seçilen saat
     satirlar.push("BEGIN:VEVENT", `UID:kenar-notu-tekrar-${tarih}@kenar-notu`, `DTSTAMP:${st}`,
-      `DTSTART:${tarih}T${iki(saat)}0000`, `DURATION:PT${sure}M`, `SUMMARY:${icsMetin(ozet)}`, `DESCRIPTION:${icsMetin(aciklama)}`,
-      "TRANSP:TRANSPARENT");
-    if (sayi) satirlar.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsMetin(ozet)}`, "TRIGGER:PT0M", "END:VALARM");
-    satirlar.push("END:VEVENT");
+      `DTSTART:${tarih}T${iki(sa)}${iki(dak)}00`, `DURATION:PT${sure}M`, `SUMMARY:${icsMetin(ozet)}`,
+      `DESCRIPTION:${icsMetin(`Bugün ${sayi} kart bekliyor, yaklaşık ${dk} dk.`)}`, "TRANSP:TRANSPARENT",
+      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsMetin(ozet)}`, "TRIGGER:PT0M", "END:VALARM", "END:VEVENT");
   }
   satirlar.push("END:VCALENDAR");
   return satirlar.map(katla).join("\r\n") + "\r\n";
