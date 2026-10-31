@@ -90,6 +90,12 @@
 .formul { background: none; padding: 0; white-space: nowrap; font: italic 400 1em var(--f-okuma); font-variant-numeric: lining-nums; }
 .formul .dik { font-style: normal; }
 .formul sup, .formul sub { font-size: .7em; line-height: 0; }
+/* Gerçek formül (matematik.js, Temml MathML): asistan, cep defteri, İzlerim ve kartlar. Uzun basınca "LaTeX olarak kopyala". */
+.formul-tex { white-space: nowrap; -webkit-touch-callout: none; }
+.formul-tex math { font-size: 1.06em; color: inherit; }
+.formul-tex.blok { display: block; max-width: 100%; margin: .5em 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.formul-kap { -webkit-touch-callout: none; }
+.izler-fis.formul-menu { width: auto; min-width: 220px; }
 /* KAYIT damgası solda, ölçüm pulu sağda; ikisi cevabın altında aynı satırda */
 .as-kayit { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 20px 0; }
 .as-kayit:empty { display: none; }

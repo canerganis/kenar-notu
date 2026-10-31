@@ -15,6 +15,7 @@
 
 import { $, $$, h, icon, bus, store, belgeBul, yeniId, toast, kartEkle, hareketAz, cizgiMi, EPUB_VURGULARI, vurguRengi,
   exLibrisSvg, exLibrisVar, odakla } from "./ortak.js";
+import { matematikCiz, matematikVarMi } from "./matematik.js";
 
 /* ================= Yardımcılar ================= */
 const SUZGECLER = [["tumu", "Tümü"], ["alt", "Altı çizili"], ["daire", "Yuvarlak"], ["kenar", "Kenar"], ["isaret", "İşaret"], ["vurgu", "Vurgu"], ["not", "Not"]];
@@ -306,6 +307,11 @@ function derlemeOlustur(ad, girdiler) {
 }
 
 /* ================= Satır (panel ve İzlerim ortak) ================= */
+// Alıntı ve notta $...$ varsa gerçek formül (Temml yalnız gerekince yüklenir); çizilemezse metin kalır
+function formullu(el) {
+  if (el && matematikVarMi(el.textContent)) matematikCiz(el).catch(() => {});
+  return el;
+}
 function onizlemeEl(x, sinif = "iz-onizleme") {
   const kap = h("span", { class: sinif + (x.kursun ? " kursun" : ""), "aria-hidden": "true" });
   if (x.tur === "vurgu") kap.append(h("i", { class: "iz-vurgu-serit", style: `--iz-renk:${x.renk}` }));
@@ -327,8 +333,8 @@ function izSatiri(x, { kapat } = {}) {
   const el = h("div", { class: "iz-satir", role: "listitem", tabindex: "0", "aria-label": `${TUR_ADI[x.tur] || "İz"}, ${x.metin || "metinsiz"}, ${x.yer || ""}` },
     onizlemeEl(x),
     h("span", { class: "iz-govde" },
-      h("span", { class: "iz-metin" + (x.kaynak === "not" || x.kaynak === "metin" ? " el" : "") }, x.metin),
-      x.not && x.kaynak !== "not" ? h("span", { class: "iz-satir__not" }, x.not) : null,
+      formullu(h("span", { class: "iz-metin" + (x.kaynak === "not" || x.kaynak === "metin" ? " el" : "") }, x.metin)),
+      x.not && x.kaynak !== "not" ? formullu(h("span", { class: "iz-satir__not" }, x.not)) : null,
       h("span", { class: "iz-meta" }, meta)),
     eylemler(x));
   el.addEventListener("click", () => gitIz(x, { kapat }));
@@ -438,13 +444,13 @@ export async function defterAc(belge) {
   acikDefter?.kapat(true);
   const sayac = h("span", { class: "cep-defter__sayi" }, `${liste.length} alıntı`);
   const sayfa = h("div", { class: "cep-defter__yaprak", role: "list", "aria-label": "Alıntılar" });
-  const md = h("button", { class: "hayalet", type: "button" }, "Markdown");
-  const pdf = h("button", { class: "hayalet", type: "button" }, "PDF");
+  const md = h("button", { class: "hayalet genis-eylem", type: "button" }, "Markdown");
+  const pdf = h("button", { class: "hayalet genis-eylem", type: "button" }, "PDF");
   const kapatD = h("button", { class: "simge-dugme", type: "button", "aria-label": "Defteri kapat" }, icon("kapat", "i-20"));
   const kapak = h("div", { class: "cep-defter__kapak", style: `--c:${belge.kapak || "#24324F"}` },
     h("div", { class: "cep-defter__ust" },
       h("div", {}, h("h2", { id: "cepDefterBaslik" }, belge.ad), h("p", {}, "Cep defteri · ", sayac)),
-      h("div", { class: "cep-defter__eylem" }, md, pdf, kapatD)),
+      h("div", { class: "cep-defter__eylem" }, md, pdf, kopruDugmesi(() => [{ belge, izler: liste }], belge.ad, [md, pdf]), kapatD)),
     sayfa, h("i", { class: "cep-defter__bant", "aria-hidden": "true" }));
   const perde = h("div", { class: "cep-defter", role: "dialog", "aria-modal": "true", "aria-labelledby": "cepDefterBaslik", tabindex: "-1" }, kapak);
 
@@ -481,18 +487,29 @@ export async function defterAc(belge) {
 
 function alintiEl(x, { kapat, kaynakAdi } = {}) {
   const meta = [kaynakAdi, [x.yer, x.bolum].filter(Boolean).join(", "), tarih(x.zaman)].filter(Boolean).join(" · ");
-  const metin = h("blockquote", { class: "alinti__metin" }, x.metin || h("span", { class: "metinsiz" }, "Metinsiz iz"));
+  const metin = formullu(h("blockquote", { class: "alinti__metin" }, x.metin || h("span", { class: "metinsiz" }, "Metinsiz iz")));
   const notAlani = h("textarea", { class: "alinti__not", rows: "1", placeholder: "Not ekle", "aria-label": "Alıntının yanına not", maxlength: "600" });
   notAlani.value = x.not || "";
   const boyutla = () => { notAlani.style.height = "auto"; notAlani.style.height = `${notAlani.scrollHeight}px`; };
-  notAlani.addEventListener("input", () => { notYaz(x, notAlani.value); boyutla(); });
+  // Notta formül varsa alanın altında çizilmiş hâli görünür (alan yazı olarak kalır)
+  const notFormul = h("p", { class: "alinti__not-formul", "aria-hidden": "true", hidden: true });
+  let notZ = 0;
+  const notFormulCiz = () => {
+    const v = notAlani.value;
+    notFormul.hidden = !matematikVarMi(v);
+    if (notFormul.hidden) return;
+    notFormul.textContent = v;
+    matematikCiz(notFormul).then((n) => { if (!n) notFormul.hidden = true; }).catch(() => { notFormul.hidden = true; });
+  };
+  notFormulCiz();
+  notAlani.addEventListener("input", () => { notYaz(x, notAlani.value); boyutla(); clearTimeout(notZ); notZ = setTimeout(notFormulCiz, 300); });
   requestAnimationFrame(boyutla);
   const git = h("button", { class: "alinti__git", type: "button", "aria-label": `${x.yer || "Yerine"} git` }, metin, h("span", { class: "alinti__meta" }, meta));
   git.addEventListener("click", () => gitIz(x, { kapat }));
   if (x.metin) uzunBas(git, () => alintiKartiAc(x));
   return h("article", { class: "alinti", role: "listitem" },
     h("div", { class: "alinti__kenar" }, onizlemeEl(x, "alinti__iz")),
-    h("div", { class: "alinti__govde" }, git, notAlani),
+    h("div", { class: "alinti__govde" }, git, notAlani, notFormul),
     eylemler(x));
 }
 
@@ -520,6 +537,37 @@ async function paylas(blob, ad) {
 }
 function markdownPaylas(belge, liste, opt) {
   paylas(new Blob([markdownMetni(belge.ad, liste, opt)], { type: "text/markdown" }), dosyaAdi(belge, "md"));
+}
+
+// Köprüler (OZELLIKLER-8 §4.2): Readwise CSV ve Obsidian zip. kitaplar: [{ belge, izler }]
+const kopruAdi = (ad, ek, uz) => `${String(ad || "Kenar Notu").replace(/[\\/:*?"<>|]+/g, " ").trim()} (${ek}).${uz}`;
+async function kopruAktar(tur, kitaplar, ad) {
+  fisKapat();
+  if (!kitaplar.some((k) => k.izler.length) && !(tur === "obsidian" && kitaplar.some((k) => store.kirpintilar.some((c) => c.belgeId === k.belge.id)))) {
+    toast("Aktarılacak alıntı yok.");
+    return;
+  }
+  try {
+    const m = await import("./disa-kopru.js");
+    if (tur === "readwise") await paylas(m.readwiseCsv(kitaplar), kopruAdi(ad, "Readwise", "csv"));
+    else await paylas(await m.obsidianZip(kitaplar), kopruAdi(ad, "Obsidian", "zip"));
+  } catch (hata) {
+    console.warn("[izler] dışa aktarılamadı:", hata);
+    toast("Dışa aktarılamadı.");
+  }
+}
+// gizliler: dar ekranda CSS'le gizlenen düğmeler (cep defterinin Markdown ve PDF'i); görünmüyorlarsa fişe satır olarak girer
+function kopruFisi(capa, kitaplar, ad, gizliler = []) {
+  const satir = (baslik, alt, calistir) => h("button", { class: "izler-fis__satir", type: "button", role: "menuitem", onclick: calistir },
+    icon("disa-aktar", "i-20"), h("span", {}, baslik), h("small", {}, alt));
+  const ekler = gizliler.filter((d) => !d.getClientRects().length).map((d) => satir(d.textContent, "", () => { fisKapat(); d.click(); }));
+  fisAc(capa, [h("p", { class: "izler-fis__baslik" }, ekler.length ? "Dışa aktar" : "Başka uygulamaya aktar"), ...ekler,
+    satir("Readwise", "CSV", () => kopruAktar("readwise", kitaplar, ad)), satir("Obsidian", "Markdown zip", () => kopruAktar("obsidian", kitaplar, ad))]);
+}
+function kopruDugmesi(kitaplar, ad, gizliler) {
+  const d = h("button", { class: "hayalet", type: "button", "aria-haspopup": "menu", title: "Readwise ya da Obsidian" }, "Aktar");
+  d.addEventListener("click", (e) => { e.stopPropagation(); if (acikFis) fisKapat(); else kopruFisi(d, kitaplar(), ad, gizliler); });
+  return d;
 }
 
 // PDF: her yaprak tuvalde dizilir (Türkçe harfler standart PDF yazı tiplerinde yok), A5 sayfaya görüntü olarak konur
@@ -719,7 +767,8 @@ function govdeCiz() {
   const kitaplar = E.veri.filter((k) => !kitapSecili || k.belge.id === kitapSecili);
   const birlestirD = h("button", { class: "ikincil", type: "button" }, icon("izler", "i-20"), "Birleştir");
   birlestirD.addEventListener("click", () => birlestirBasla());
-  const parcalar = [ustCiz("İzlerim", `${hepsi.length} iz · ${E.veri.length} kitap`, E.veri.length > 1 ? birlestirD : null)];
+  const aktarAd = kitapSecili ? kitaplar[0]?.belge.ad : "İzlerim";
+  const parcalar = [ustCiz("İzlerim", `${hepsi.length} iz · ${E.veri.length} kitap`, E.veri.length > 1 ? birlestirD : null, hepsi.length ? kopruDugmesi(() => kitaplar, aktarAd) : null)];
   if (!hepsi.length) {
     const b = sonKitap();
     parcalar.push(h("div", { class: "izlerim-bos" }, h("p", { class: "izlerim-bos__baslik" }, "Henüz bir iz yok."),
@@ -753,8 +802,8 @@ function izlerimSatiri(x, { kaynakAdi, ekEylem } = {}) {
   const el = h("div", { class: "izlerim-satir", role: "listitem", tabindex: "0" },
     h("div", { class: "izlerim-kenar" }, onizlemeEl(x, "kenar-iz"), h("span", { class: "konum" }, x.yer || TUR_ADI[x.tur])),
     h("div", { class: "izlerim-satir__govde" },
-      h("blockquote", { class: x.kaynak === "not" || x.kaynak === "metin" ? "el" : "" }, x.metin || h("span", { class: "metinsiz" }, TUR_ADI[x.tur] || "Metinsiz iz")),
-      x.not && x.kaynak !== "not" ? h("p", { class: "izlerim-satir__not" }, x.not) : null,
+      formullu(h("blockquote", { class: x.kaynak === "not" || x.kaynak === "metin" ? "el" : "" }, x.metin || h("span", { class: "metinsiz" }, TUR_ADI[x.tur] || "Metinsiz iz"))),
+      x.not && x.kaynak !== "not" ? formullu(h("p", { class: "izlerim-satir__not" }, x.not)) : null,
       h("p", { class: "izlerim-satir__meta" }, meta)),
     h("div", { class: "izlerim-satir__eylem" }, ekEylem || null, eylemler(x)));
   el.addEventListener("click", (e) => { if (!e.target.closest("button")) gitIz(x); });
@@ -875,7 +924,11 @@ function derlemeCiz(id) {
     liste.append(satir);
   }
   E.govde.replaceChildren(
-    ustCiz(d.ad, `${ogeler.length} alıntı · ${new Set(ogeler.map((o) => o.x.belgeId)).size} kitap`, adlandir, md, pdf),
+    ustCiz(d.ad, `${ogeler.length} alıntı · ${new Set(ogeler.map((o) => o.x.belgeId)).size} kitap`, adlandir, md, pdf, kopruDugmesi(() => {
+      const gruplar = new Map();
+      for (const { x, b } of ogeler) { if (!b) continue; if (!gruplar.has(b)) gruplar.set(b, []); gruplar.get(b).push(x); }
+      return [...gruplar].map(([belge, izler]) => ({ belge, izler }));
+    }, d.ad)),
     h("div", { class: "derleme-arac" }, h("span", { class: "t-aside" }, "Sırala"), tarihSira, kitapSira, h("span", { class: "izlerim-ust__bosluk" }), sil),
     ogeler.length ? liste : bosDurum("Derleme boş.", "Bir alıntının yanındaki artıya dokun ve Deftere ekle’den bu derlemeyi seç."));
 }

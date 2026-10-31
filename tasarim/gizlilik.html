@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Kenar Notu: Gizlilik</title>
+<meta name="description" content="Kenar Notu gizlilik politikası. Privacy policy.">
+<link rel="icon" href="ikon/ikon.svg" type="image/svg+xml">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #F7F5F0; --surface: #FDFCF9; --ink: #1C1B19; --ink-2: #4D4842; --muted: #69625A;
+    --line: #1C1B1914; --accent: #2B4A7E; --mark: #8C2B38;
+    --f-okuma: Literata, "Literata Yedek", Georgia, "Times New Roman", serif;
+    --f-arayuz: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-olcu: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; --bg: #141413; --surface: #1F1E1C; --ink: #EEEAE2; --ink-2: #BDB7AC; --muted: #9A948B;
+      --line: #EEEAE214; --accent: #A3B8DE; --mark: #E08D97; }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+  body { margin: 0; padding: max(24px, env(safe-area-inset-top)) 16px 48px; color: var(--ink); font: 400 17px/1.62 var(--f-okuma); }
+  main { max-width: 640px; margin: 0 auto; padding: 32px clamp(16px, 5vw, 48px) 40px; background: var(--surface);
+    border-radius: 6px; box-shadow: 0 0 0 .5px var(--line), 0 12px 32px -16px #00000029; }
+  nav { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 8px; font: 500 13px/1 var(--f-arayuz); }
+  nav a { padding: 8px 10px; border-radius: 4px; color: var(--ink-2); text-decoration: none; }
+  nav a:hover { background: var(--line); color: var(--ink); }
+  .kurdele { width: 22px; height: 56px; margin: -32px 0 16px; background: var(--mark);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%); }
+  h1 { margin: 0 0 4px; font: 500 30px/1.2 var(--f-okuma); letter-spacing: -.01em; }
+  h2 { margin: 32px 0 8px; font: 600 15px/1.4 var(--f-arayuz); }
+  .tarih { margin: 0 0 24px; color: var(--muted); font: 400 12px/1.4 var(--f-olcu); letter-spacing: .04em; text-transform: uppercase; }
+  .ozet { margin: 0 0 8px; padding-left: 16px; border-left: 2px solid var(--mark); font-size: 19px; }
+  p, li { color: var(--ink-2); }
+  ul { padding-left: 1.2em; }
+  li { margin: 6px 0; }
+  b { color: var(--ink); font-weight: 600; }
+  a { color: var(--accent); }
+  code { font: 400 .85em var(--f-olcu); overflow-wrap: anywhere; }
+  hr { margin: 48px 0 32px; border: 0; border-top: .5px solid var(--line); }
+  footer { margin-top: 32px; color: var(--muted); font: 400 13px/1.5 var(--f-arayuz); }
+</style>
+</head>
+<body>
+<main>
+  <nav aria-label="Dil / Language"><a href="#tr" lang="tr">Türkçe</a><a href="#en" lang="en">English</a></nav>
+  <div class="kurdele" aria-hidden="true"></div>
+
+  <article id="tr" lang="tr">
+    <h1>Gizlilik</h1>
+    <p class="tarih">Kenar Notu · Son güncelleme 31 Ekim 2026</p>
+    <p class="ozet">Kenar Notu hesap istemez, hiçbir kişisel veri toplamaz. Reklam, analitik ve telemetri yok. Notların senin cihazında kalır.</p>
+
+    <h2>Verilerin nerede durur</h2>
+    <p>Kitapların, PDF'lerin, çizimlerin, notların, kartların ve ayarların yalnız bu cihazda, tarayıcının deposunda (IndexedDB ve localStorage) durur. Bizim bir sunucumuz yok; bu verileri göremeyiz. Yedek (<code>.kenar</code> dosyası) yalnız sen kaydedince oluşur ve nereye koyacağını sen seçersin. Uygulamayı ya da tarayıcı verisini silersen bunlar da silinir.</p>
+
+    <h2>Cihazdan dışarı ne gider</h2>
+    <p>Yalnız şunlar, ve yalnız o özelliği kullandığında:</p>
+    <ul>
+      <li><b>Uygulamanın kendisi.</b> Dosyalar GitHub Pages'ten iner. GitHub, her web sunucusu gibi, IP adresini kısa süre kayıt altında tutabilir.</li>
+      <li><b>Yazı tipleri.</b> Literata, Inter, IBM Plex Mono, Caveat ve Noto Sans Math, Google Fonts'tan (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>) bir kez iner, sonra cihazda saklanır. Google bu isteklerde IP adresini görür.</li>
+      <li><b>Çeviri paketi.</b> Bir dil paketini indirmeyi seçersen paket listesi Mozilla'dan (<code>firefox.settings.services.mozilla.com</code>), model dosyaları Hugging Face'ten (<code>huggingface.co</code>) iner. Çevirdiğin metin gönderilmez; çeviri cihazda yapılır. Chrome'un kendi çeviri motorunu kullanırsan Chrome dil modelini Google'dan indirir, çeviri yine cihazda kalır.</li>
+      <li><b>Kendi anahtarınla asistan ve çeviri.</b> Ayarlar'a kendi API anahtarını girersen, sorduğun metin ve seçtiğin görsel doğrudan seçtiğin sağlayıcıya gider: Google (Gemini), Anthropic (Claude) ya da OpenAI (ChatGPT). Anahtarın yalnız bu cihazda saklanır. Bu isteklerde sağlayıcının kendi gizlilik koşulları geçerlidir.</li>
+      <li><b>"Hesabımla sor".</b> Soru panoya kopyalanır ve seçtiğin uygulama (ChatGPT, Gemini ya da Claude) bir bağlantıyla ya da paylaş menüsüyle açılır. Gönderen sensin; Kenar Notu araya girmez. Google Çeviri bağlantısı da böyle çalışır.</li>
+      <li><b>Paylaş ve dışa aktar.</b> Notlu PDF, Markdown, Readwise CSV, Obsidian zip ya da alıntı kartı yalnız senin seçtiğin uygulamaya ya da klasöre gider.</li>
+    </ul>
+
+    <h2>İzinler</h2>
+    <p>Mikrofon yalnız ses notunu sen başlatınca istenir; kayıt cihazda kalır. Pano yalnız kopyala ve yapıştır dediğinde kullanılır.</p>
+
+    <h2>Çocuklar</h2>
+    <p>Kenar Notu kimseden veri toplamadığı için çocuklardan da veri toplamaz.</p>
+
+    <h2>Değişiklikler ve iletişim</h2>
+    <p>Bu metin değişirse tarih güncellenir. Soruların için GitHub'daki sorunlar sayfası: <a href="https://github.com/canerganis/kenar-notu/issues" rel="noopener">github.com/canerganis/kenar-notu/issues</a>.</p>
+  </article>
+
+  <hr>
+
+  <article id="en" lang="en">
+    <h1>Privacy</h1>
+    <p class="tarih">Kenar Notu · Last updated 31 October 2026</p>
+    <p class="ozet">Kenar Notu needs no account and collects no personal data. No ads, no analytics, no telemetry. Your notes stay on your device.</p>
+
+    <h2>Where your data lives</h2>
+    <p>Your books, PDFs, drawings, notes, cards and settings are stored only on this device, in the browser's storage (IndexedDB and localStorage). We run no server and cannot see this data. A backup (<code>.kenar</code> file) is created only when you save one, in a place you choose. Removing the app or clearing browser data removes it too.</p>
+
+    <h2>What leaves the device</h2>
+    <p>Only the following, and only when you use that feature:</p>
+    <ul>
+      <li><b>The app itself.</b> Files are served by GitHub Pages. Like any web server, GitHub may briefly log your IP address.</li>
+      <li><b>Fonts.</b> Literata, Inter, IBM Plex Mono, Caveat and Noto Sans Math are downloaded once from Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>) and then kept on the device. Google sees your IP address for these requests.</li>
+      <li><b>Translation packs.</b> If you choose to download a language pack, the pack list comes from Mozilla (<code>firefox.settings.services.mozilla.com</code>) and the model files from Hugging Face (<code>huggingface.co</code>). The text you translate is not sent; translation runs on the device. If you use Chrome's built-in translator, Chrome downloads its language model from Google and translation still stays on the device.</li>
+      <li><b>Assistant and translation with your own key.</b> If you enter your own API key in Settings, the text you ask about and any image you select go directly to the provider you chose: Google (Gemini), Anthropic (Claude) or OpenAI (ChatGPT). Your key is stored only on this device. The provider's own privacy terms apply to those requests.</li>
+      <li><b>"Ask with my account".</b> The question is copied to the clipboard and the app you chose (ChatGPT, Gemini or Claude) opens through a link or the share sheet. You send it; Kenar Notu is not in between. The Google Translate link works the same way.</li>
+      <li><b>Share and export.</b> Annotated PDFs, Markdown, Readwise CSV, Obsidian zip files and quote cards go only to the app or folder you pick.</li>
+    </ul>
+
+    <h2>Permissions</h2>
+    <p>The microphone is requested only when you start a voice note; the recording stays on the device. The clipboard is used only when you copy or paste.</p>
+
+    <h2>Children</h2>
+    <p>Kenar Notu collects no data from anyone, including children.</p>
+
+    <h2>Changes and contact</h2>
+    <p>If this policy changes, the date above changes. For questions, use the issues page on GitHub: <a href="https://github.com/canerganis/kenar-notu/issues" rel="noopener">github.com/canerganis/kenar-notu/issues</a>.</p>
+  </article>
+
+  <footer>Kenar Notu · <a href="./">Uygulamaya dön / Back to the app</a></footer>
+</main>
+</body>
+</html>

@@ -1,10 +1,11 @@
-// Tekrar ekranı: günlük deste, Leitner göstergesi, sınav ve kart listesi.
+// Tekrar ekranı: günlük deste, kutu göstergesi, sınav ve kart listesi (Anki ve takvim aktarımı anki.js).
 // İş tanımı OZELLIKLER-2 §4, görünüm TASARIM-2 §6. Sözleşme: ac(kap), kapat().
 import {
   h, icon, bus, store, belgeBul, hareketAz, toast, KLASORLER, BANTLAR,
-  KUTU_ARALIK, kartEkle, kartSil, kartCevapla, bugunTekrar, gunBasi, gunFarki,
+  kutuAralikMetni, fsrsHesapla, kartEkle, kartSil, kartCevapla, bugunTekrar, gunBasi, gunFarki,
 } from "./ortak.js";
 import { PW, PH, PDF_PAGES } from "./sayfalar.js";
+import { matematikVarMi, matematikCiz } from "./matematik.js";
 
 const ROMA = ["", "I", "II", "III", "IV", "V"];
 const GUN = 24 * 3600e3;
@@ -17,7 +18,6 @@ const BANT_IDLER = new Set(BANTLAR.map(([, id]) => id));
 
 const ust = (s) => String(s).toLocaleUpperCase("tr");
 const kartBul = (id) => store.kartlar.find((k) => k.id === id);
-const gunMetni = (g) => (g <= 0 ? "bugün" : g === 1 ? "yarın" : `${g} gün`);
 const sureMetni = (ms) => { const s = Math.round(ms / 1000), d = Math.floor(s / 60); return d ? `${d} dk ${s % 60} sn` : `${s} sn`; };
 const saatMetni = (ms) => { const s = Math.floor(ms / 1000); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const karistir = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -203,7 +203,7 @@ function gostergeGuncelle() {
     el.firstChild.style.setProperty("--n", Math.min(7, c));   // kutudaki kart çizgileri: sayı kadar, en çok 7
     if (c > 7) el.dataset.cok = ""; else delete el.dataset.cok;
     b.textContent = c;
-    el.setAttribute("aria-label", `${ROMA[n]}. kutu, ${c} kart, ${n === 1 ? "her gün" : KUTU_ARALIK[n] + " günde bir"}`);
+    el.setAttribute("aria-label", `${ROMA[n]}. kutu, ${c} kart, ${kutuAralikMetni(n)}`);
     if (n === simdi) el.dataset.simdi = ""; else delete el.dataset.simdi;
   });
 }
@@ -285,8 +285,9 @@ function sahneCiz() {
   zeminUygula();
   if (D.kart) {
     girisOynat(D.kart.el);
-    // Kart boyu değişince (döndürme, pencere) bant yeniden oturur; ilk bildirim de yerleştirir
-    D.kartGozlem = new ResizeObserver(bantYerlestir);
+    // Kart boyu değişince (döndürme, pencere, sonradan çizilen formül) bant yeniden oturur; ilk bildirim de
+    // yerleştirir. Bir sonraki karede: gözlemci içinde düzen değişirse WebKit "ResizeObserver loop" hatası verir
+    D.kartGozlem = new ResizeObserver(() => requestAnimationFrame(bantYerlestir));
     D.kartGozlem.observe(D.kart.yuz);
   }
   if (odakTasi) (D.kart?.el || sahne.querySelector("button"))?.focus({ preventScroll: true });
@@ -305,7 +306,12 @@ function ipucuYaz() {
 function yuzIcerik(yuz, sinif) {
   const parca = [];
   if (yuz?.gorsel) parca.push(h("img", { class: "kart-gorsel", src: yuz.gorsel, alt: "", draggable: "false" }));
-  if (yuz?.metin) parca.push(h("div", { class: "kart-metin" + (yuz.metin.length > 140 ? " uzun" : "") }, yuz.metin));
+  if (yuz?.metin) {
+    const m = h("div", { class: "kart-metin" + (yuz.metin.length > 140 ? " uzun" : "") }, yuz.metin);
+    // $...$ formülleri MathML olur; Temml yalnız formül varsa yüklenir, hata olursa metin kalır
+    if (matematikVarMi(yuz.metin)) matematikCiz(m).catch(() => {});
+    parca.push(m);
+  }
   return h("div", { class: sinif }, ...parca);
 }
 
@@ -432,18 +438,19 @@ function cevir() {
 // Ön yüzde tek düğme: Cevabı göster. Çevrilince yerine Bildim ve Bilemedim gelir (yalnız opaklık, 240ms).
 function cevapDugmeleri(k) {
   const sinav = D.gorunum === "sinav";
-  const yeni = Math.min(5, (k.kutu || 1) + 1);
+  // FSRS: "Bildim"in gerçek aralığı (kart değişmeden hesaplanır)
+  const g = fsrsHesapla(k, true).aralik;
   const klavye = matchMedia("(hover: hover)").matches;
   const goster = h("button", { class: "goster", type: "button", onclick: () => cevir() },
     h("span", {}, "Cevabı göster"), klavye ? h("small", {}, "Boşluk") : null);
   const bilemedim = h("button", { class: "bilemedim", type: "button", disabled: true, inert: true, onclick: () => cevapla(false) },
-    h("span", {}, "Bilemedim"), h("small", {}, (k.kutu || 1) === 1 ? "Kutu I'de kalır" : "Kutu I'e döner"));
+    h("span", {}, "Bilemedim"), h("small", {}, sinav ? "Kutu I'e döner" : "Bugün yeniden"));
   const bildim = h("button", { class: "bildim", type: "button", disabled: true, inert: true, onclick: () => cevapla(true) },
-    h("span", {}, "Bildim"), h("small", {}, sinav ? "Takvim değişmez" : `Kutu ${ROMA[yeni]} · ${gunMetni(KUTU_ARALIK[yeni])}`));
+    h("span", {}, "Bildim"), h("small", {}, sinav ? "Takvim değişmez" : g === 1 ? "Yarın" : `${g} gün sonra`));
   return { el: h("div", { class: "tekrar-cevap" }, goster, bilemedim, bildim), goster, bilemedim, bildim };
 }
 
-// Deste: Leitner kutusunu günceller. Sınav: yalnız bilinemeyen kart I. kutuya döner, bilinenin takvimi değişmez.
+// Deste: FSRS takvimini günceller. Sınav: yalnız bilinemeyen kart I. kutuya döner, bilinenin takvimi değişmez.
 function cevapla(bildi, { itme = false } = {}) {
   const c = D?.kart;
   if (!c || !c.acik || c.kilit) return;
@@ -452,16 +459,17 @@ function cevapla(bildi, { itme = false } = {}) {
   const akis = sinav ? D.sinav : D.deste;
   const eski = c.k.kutu || 1;
   if (!sinav || !bildi) kartCevapla(c.k.id, bildi);
+  const yeni = c.k.kutu || 1;   // FSRS aralığından türeyen kutu
   akis.cevap.push({ id: c.k.id, bildi });
   akis.sira++;
-  if (!sinav) fosforKalicilik(eski, bildi ? Math.min(5, eski + 1) : 1, bildi);
+  if (!sinav) fosforKalicilik(eski, yeni, bildi);
   D.odakTasi = D.govde.contains(document.activeElement);
   for (const b of c.cevap.el.querySelectorAll("button")) b.disabled = true;
   // TASARIM-3 nüans 10: düğmeyle "Bildim" denince kartın köşesine kurşun kalemle tik ve yeni kutu yazılır, kart 300ms sonra çekilir.
   // İtmede (parmak kartı sürüklerken) ve sade harekette beklenmez.
   const tik = bildi && !sinav && !itme && !hareketAz();
   if (tik) c.el.append(h("span", { class: "kart-tik", "aria-hidden": "true" },
-    svgTik(), h("b", {}, "→ " + ROMA[Math.min(5, eski + 1)])));
+    svgTik(), h("b", {}, "→ " + ROMA[yeni])));
   const cik = () => cikisOynat(c.el, bildi ? 1 : -1, itme).then(() => { if (D && D.kart === c) sahneCiz(); });
   if (tik) sonra(cik, 300); else cik();
 }
@@ -604,10 +612,15 @@ function sinavFisiAc(dersId = null) {
     h("div", { class: "fis-ayrac" }),
     h("div", { class: "fis-form" }, h("span", { class: "t-daktilo" }, "Süre sınırı"), parcali),
     h("div", { class: "fis-form-alt" }, baslat));
-  const perde = h("div", { class: "perde tekrar-perde", onclick: () => fisKapat() });
   radyoOklari(dersGrup);
   radyoOklari(parcali);
-  // Odak fişin içinde kalır: arka plan erişilemez, Tab fişin içinde döner
+  fisGoster(fis, D.sinavDugme);
+  (satirlar.find((s) => s._g === secili) || fis).focus();
+}
+
+// Fiş açan düğmenin altına, sağa hizalı açılır. Odak fişin içinde kalır: arka plan erişilemez, Tab fişin içinde döner.
+function fisGoster(fis, acan) {
+  const perde = h("div", { class: "perde tekrar-perde", onclick: () => fisKapat() });
   fis.addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;
     const odaklanir = [...fis.querySelectorAll("button:not([disabled])")].filter((b) => b.tabIndex >= 0);
@@ -618,28 +631,26 @@ function sinavFisiAc(dersId = null) {
   });
   D.kok.inert = true;
   document.body.append(perde, fis);
-  // Sınav düğmesinin altına, sağa hizalı
-  const r = D.sinavDugme.getBoundingClientRect();
+  const r = acan.getBoundingClientRect();
   const genislik = Math.min(360, innerWidth - 32);
   fis.style.width = `${genislik}px`;
-  fis.style.top = `${Math.min(r.bottom + 8, innerHeight - 120)}px`;
+  fis.style.top = `${Math.max(8, Math.min(r.bottom + 8, innerHeight - Math.max(120, fis.offsetHeight + 8)))}px`;
   fis.style.left = `${Math.max(16, Math.min(r.right - genislik, innerWidth - genislik - 16))}px`;
-  D.sinavDugme.setAttribute("aria-expanded", "true");
-  D.fis = { fis, perde };
-  (satirlar.find((s) => s._g === secili) || fis).focus();
+  acan.setAttribute("aria-expanded", "true");
+  D.fis = { fis, perde, acan };
 }
 
 function fisKapat(hemen = false) {
   if (!D?.fis) return;
-  const { fis, perde } = D.fis;
+  const { fis, perde, acan } = D.fis;
   D.fis = null;
   D.kok.inert = false;
-  D.sinavDugme.setAttribute("aria-expanded", "false");
+  acan.setAttribute("aria-expanded", "false");
   if (hemen || hareketAz()) { fis.remove(); perde.remove(); return; }
   fis.classList.add("kapaniyor");
   perde.classList.add("gidiyor");
   setTimeout(() => { fis.remove(); perde.remove(); }, 160);
-  D.sinavDugme.focus();
+  acan.focus();
 }
 
 // Radyo grubu: ok tuşları seçimi gezdirir (asistan.js uygulama seçicisindeki gibi), kapalı seçenek atlanır
@@ -812,11 +823,104 @@ function listeCiz() {
       sil));
   }
   if (!kartlar.length) ic.append(h("li", { class: "kart-liste-bos" }, kutu != null ? `${ROMA[kutu]}. kutuda bu türde kart yok.` : "Bu türde kart yok."));
-  liste.append(ic);
+  // Dışarı: Anki (listedeki ya da bütün kartlar) ve önümüzdeki 14 günün takvimi
+  const eylem = store.kartlar.length ? h("div", { class: "kart-liste-eylem" },
+    h("button", { class: "metin-dugme", type: "button", "aria-haspopup": "dialog", onclick: (e) => ankiFisiAc(e.currentTarget, kartlar) },
+      icon("disa-aktar", "i-20"), "Anki’ye aktar"),
+    h("button", { class: "metin-dugme", type: "button", onclick: (e) => takvimeEkle(e.currentTarget) },
+      icon("indir", "i-20"), "Takvime ekle")) : null;
+  liste.append(...[eylem, ic].filter(Boolean));
   const kaydirma = D.govde.querySelector(".kart-liste")?.scrollTop || 0;
   D.govde.replaceChildren(h("div", { class: "tekrar-liste" }, sekmeler, liste));
   liste.scrollTop = kaydirma;
   zeminUygula();
+}
+
+// ---------- Anki ve takvim (OZELLIKLER-8 1.2, 1.3) ----------
+const BICIMLER = [["apkg", "Anki paketi"], ["tsv", "TSV ve görseller"]];
+const BICIM_NOT = {
+  apkg: "Anki, AnkiDroid ve AnkiMobile açar. Görseller pakete girer.",
+  tsv: "Anki’de Dosya > İçe aktar. Görseller zip içinde, OKU.txt yolu anlatır.",
+};
+
+function ankiFisiAc(acan, listedekiler) {
+  if (D.fis) return fisKapat();
+  const hepsi = store.kartlar.slice();
+  const secenekler = [];
+  if (listedekiler.length && listedekiler.length !== hepsi.length) secenekler.push({ ad: "Bu listedekiler", ikon: "liste", kartlar: listedekiler.slice() });
+  secenekler.push({ ad: "Bütün kartlar", ikon: "tumu", kartlar: hepsi });
+  let secili = secenekler[0], bicim = "apkg";
+  const aktar = h("button", { class: "birincil", type: "button" }, icon("disa-aktar", "i-20"), h("span", {}, "Aktar"));
+  const not = h("p", { class: "tekrar-fis-not" }, BICIM_NOT[bicim]);
+  const satirlar = secenekler.map((o) => {
+    const s = h("button", { class: "fis-satir sinav-ders", type: "button", role: "radio", "aria-checked": String(o === secili),
+      tabindex: o === secili ? "0" : "-1", onclick: () => { secili = o; guncelle(); s.focus(); } },
+      icon(o.ikon, "i-20"), h("span", {}, o.ad), h("span", { class: "t-deger-k" }, `${o.kartlar.length} kart`));
+    s._o = o;
+    return s;
+  });
+  const guncelle = () => {
+    for (const s of satirlar) { s.setAttribute("aria-checked", String(s._o === secili)); s.tabIndex = s._o === secili ? 0 : -1; }
+    not.textContent = BICIM_NOT[bicim];
+  };
+  const parcali = h("div", { class: "parcali", role: "radiogroup", "aria-label": "Biçim" },
+    ...BICIMLER.map(([id, ad]) => h("button", { type: "button", role: "radio", "aria-checked": String(id === bicim), "aria-pressed": String(id === bicim),
+      tabindex: id === bicim ? "0" : "-1", onclick: (e) => {
+        bicim = id;
+        for (const b of parcali.children) {
+          const sec = b === e.currentTarget;
+          b.setAttribute("aria-pressed", String(sec));
+          b.setAttribute("aria-checked", String(sec));
+          b.tabIndex = sec ? 0 : -1;
+        }
+        guncelle();
+        e.currentTarget.focus();
+      } }, ad)));
+  aktar.onclick = async () => {
+    if (aktar.disabled) return;
+    aktar.disabled = true;
+    aktar.lastChild.textContent = "Hazırlanıyor";
+    try {
+      const { ankiAktar } = await import("./anki.js");
+      const sonuc = await ankiAktar(secili.kartlar, { bicim });
+      fisKapat(true);
+      aktarimBildir(sonuc, bicim === "tsv" ? "Anki dosyaları indirildi" : "Anki paketi indirildi");
+    } catch (hata) {
+      console.error("[tekrar] Anki aktarımı:", hata);
+      toast("Anki dosyası hazırlanamadı");
+      aktar.disabled = false;
+      aktar.lastChild.textContent = "Aktar";
+    }
+  };
+  const kartGrup = h("div", { role: "radiogroup", "aria-label": "Kartlar" }, ...satirlar);
+  const fis = h("div", { class: "fis fis-sabit tekrar-sinav-fis tekrar-anki-fis", role: "dialog", "aria-modal": "true", "aria-label": "Anki’ye aktar", tabindex: "-1" },
+    h("div", { class: "fis-baslik" }, "Anki’ye aktar"),
+    kartGrup,
+    h("div", { class: "fis-ayrac" }),
+    h("div", { class: "fis-form" }, h("span", { class: "t-daktilo" }, "Biçim"), parcali, not),
+    h("div", { class: "fis-form-alt" }, aktar));
+  radyoOklari(kartGrup);
+  radyoOklari(parcali);
+  fisGoster(fis, acan);
+  (satirlar.find((s) => s._o === secili) || fis).focus();
+}
+
+async function takvimeEkle(dugme) {
+  if (dugme.disabled) return;
+  dugme.disabled = true;
+  try {
+    const { takvimAktar } = await import("./anki.js");
+    aktarimBildir(await takvimAktar(), "Takvim dosyası indirildi. Açınca 14 günlük hatırlatma eklenir.");
+  } catch (hata) {
+    console.error("[tekrar] takvim:", hata);
+    toast("Takvim dosyası hazırlanamadı");
+  } finally { dugme.disabled = false; }
+}
+
+// paylas() sonucu: paylaşıldıysa ya da vazgeçildiyse sessiz; "bekliyor"da bildirimi paylas kendisi gösterir
+function aktarimBildir(sonuc, indirildi) {
+  if (sonuc === "indirildi") toast(indirildi);
+  else if (sonuc === "kaydedildi") toast("Kaydedildi");
 }
 
 function kaynagaGit(k) {

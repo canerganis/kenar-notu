@@ -4,6 +4,7 @@
 // Anahtar hiçbir yerde loglanmaz: bu dosyada console çağrısı yok, hata metinlerine istek başlığı girmez.
 import { h, icon, bus, store, toast, ayarla, kartEkle, panoyaYaz, belgeBul, YZ_UYGULAMALAR, YZ_SAGLAYICILAR } from "./ortak.js";
 import * as SAYFALAR from "./sayfalar.js";
+import { formulleriCiz } from "./matematik.js";
 
 /* ================= Sabitler ================= */
 const HAZIR_METIN = [
@@ -36,6 +37,7 @@ const HATALAR = {
   sinir: { lamba: "denenmedi", metin: "Sağlayıcının sınırına ulaşıldı. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
   sunucu: { lamba: "denenmedi", metin: "Sağlayıcı şu an cevap veremiyor. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
   ag: { lamba: "", metin: "Şu an bağlantı yok. Bağlantı gelince yeniden dene; okuma, yazma ve arama internetsiz çalışır.", eylem: "Yeniden dene" },
+  zaman: { lamba: "denenmedi", metin: "Sağlayıcı 60 saniyedir cevap vermiyor. Bağlantını kontrol edip yeniden dene.", eylem: "Yeniden dene" },
   ret: { lamba: null, metin: "Bu soruya cevap verilemedi.", eylem: "Soruyu değiştir" },
 };
 
@@ -148,6 +150,8 @@ function formul(ic) {
   s = s.split(/(<[^>]+>|&[a-z]+;)/).map((p, i) => (i % 2 ? p : p.replace(/[0-9]+(?:[.,][0-9]+)?|[()[\]=+−±∓·×÷<>≤≥≠≈→⇒∞∑∏∫√]+/g, (m) => `<span class="dik">${m}</span>`))).join("");
   return `<i class="formul">${s}</i>`;
 }
+// Gerçek formülü matematik.js çizer (Temml, cevapCiz'den sonra); yüklenene kadar ya da TeX hatalıysa bu yedek yazı kalır
+const formulYeri = (tex, blok) => `<span data-tex="${kacis(tex.trim())}"${blok ? " data-blok" : ""}>${formul(tex)}</span>`;
 const metinIci = (t) => kacis(t)
   .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
   .replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -156,7 +160,7 @@ function satirIci(s) {
   let son = 0, out = "", m;
   while ((m = re.exec(s))) {
     if (m[2] != null && /^\s|\s$/.test(m[2])) { re.lastIndex = m.index + 1; continue; } // "$5 ve $6" para birimi
-    out += metinIci(s.slice(son, m.index)) + formul(m[1] ?? m[2] ?? m[3]);
+    out += metinIci(s.slice(son, m.index)) + formulYeri(m[1] ?? m[2] ?? m[3], m[1] != null);
     son = re.lastIndex;
   }
   return out + metinIci(s.slice(son));
@@ -212,11 +216,18 @@ function blokCoz(blok) {
 }
 async function* sseOku(res) {
   const okuyucu = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  const sure = zamanlar.get(res);
   let tampon = "";
   try {
     for (;;) {
-      const { value, done } = await okuyucu.read();
+      let parca;
+      try { parca = await okuyucu.read(); } catch (e) {
+        if (sure?.doldu()) throw new AsistanHatasi("zaman", "60 SN · ZAMAN AŞIMI");
+        throw e;
+      }
+      const { value, done } = parca;
       if (done) break;
+      sure?.yenile();
       tampon += value;
       let m;
       while ((m = tampon.match(/\r?\n\r?\n/))) {
@@ -229,6 +240,7 @@ async function* sseOku(res) {
     const son = tampon.trim() && blokCoz(tampon);
     if (son && !son.bitti) yield son;
   } finally {
+    sure?.birak();
     okuyucu.cancel().catch(() => {});
   }
 }
@@ -253,20 +265,37 @@ function akisHatasi(tip = "", kod = "") {
   if (/overloaded|529|503/i.test(t)) return new AsistanHatasi("sunucu", "529 · YOĞUN");
   return new AsistanHatasi("sunucu", "AKIŞ · HATA");
 }
+// Sağlayıcı 60 sn ses vermezse istek kesilir: cevap başlamadan önce ve akış sırasında (her parça süreyi yeniler).
+// Kullanıcının durdurması (dış signal) AbortError olarak kalır ve sessizce biter; zaman aşımı kendi hatasıdır.
+const ZAMAN_ASIMI = 60_000;
 async function istekAt(url, secenek) {
   if (navigator.onLine === false) throw new AsistanHatasi("ag", "AĞ YOK");
+  const dis = secenek.signal;
+  if (dis?.aborted) throw new DOMException("Durduruldu", "AbortError");
+  const denetci = new AbortController();
+  let doldu = false, z = 0;
+  const sure = { yenile() { clearTimeout(z); z = setTimeout(() => { doldu = true; denetci.abort(); }, ZAMAN_ASIMI); }, birak() { clearTimeout(z); }, doldu: () => doldu };
+  dis?.addEventListener("abort", () => { sure.birak(); denetci.abort(); }, { once: true });
+  sure.yenile();
   let res;
-  try { res = await fetch(url, secenek); } catch (e) {
+  try { res = await fetch(url, { ...secenek, signal: denetci.signal }); } catch (e) {
+    sure.birak();
+    if (doldu) throw new AsistanHatasi("zaman", "60 SN · ZAMAN AŞIMI");
     if (e.name === "AbortError") throw e;
     throw new AsistanHatasi("ag", "AĞ YOK");
   }
   if (!res.ok) {
     let govde = "";
     try { govde = await res.text(); } catch { govde = ""; }
+    sure.birak();
     throw httpHatasi(res.status, govde);
   }
+  // Akışı okuyan (sseOku) süreyi her parçada yeniler ve bitince bırakır
+  if (res.body) zamanlar.set(res, sure);
+  else sure.birak();
   return res;
 }
+const zamanlar = new WeakMap();   // Response -> süre (istekAt)
 
 /* ================= Sağlayıcı adaptörleri =================
    Her biri: async (istek, yaz) => void. istek: { sistem, mesajlar: [{ rol, metin, gorsel? }], model, anahtar, signal, ... }
@@ -1438,6 +1467,7 @@ function cevapCiz(tur, imlecli) {
   const g = P.govde;
   const dipte = g.scrollHeight - g.scrollTop - g.clientHeight < 48;
   tur.cevapEl.innerHTML = cevapHtml(tur.cevap);
+  formulleriCiz(tur.cevapEl);
   if (imlecli) {
     let son = tur.cevapEl.lastElementChild || tur.cevapEl;
     if (/^(OL|UL)$/.test(son.tagName)) son = son.lastElementChild || son;

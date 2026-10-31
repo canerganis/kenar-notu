@@ -1333,8 +1333,27 @@ function belgeFisi(b, capa) {
       // replaceChildren null'u "null" yazısına çevirir: satır yoksa hiç eklenmez
       ...(b.tur === "pdf" && b.dosya ? [fisSatir("cizgi-roman", b.cizgi ? "Belge olarak oku" : "Çizgi roman olarak oku",
         b.cizgi ? "Masa ve Koltuk’ta açılır" : "Sayfa ve panel görünümü, karanlık zemin", () => cizgiDegistir(b))] : []),
+      // Belge değiştikçe günde bir kez saklanan önceki hâller (OZELLIKLER-8 §3.2)
+      fisSatir("geri-al", "Önceki hâline dön", "Son 7 günün kayıtları", oncekiSec),
       h("div", { class: "fis-ayrac" }),
       silSatiri("Sil", () => { fisKapat(true); belgeSil(b); }));
+  };
+  const oncekiSec = async () => {
+    const baslik = h("div", { class: "fis-baslik" }, "Önceki hâline dön");
+    icerik.replaceChildren(baslik, h("p", { class: "onceki-not" }, "Bakılıyor"));
+    aktifFis?.konumla();
+    const { liste, buyuk } = await kayit.oncekiHaller(b.id);
+    if (!icerik.isConnected) return;
+    const satirlar = liste.map((g) => h("button", { class: "fis-satir onceki-satir", type: "button", role: "menuitem", onclick: () => oncekiyeDon(b, g) },
+      icon(g.donus ? "geri-al" : "kronometre", "i-20"), h("span", {}, oncekiTarih(g)),
+      h("small", {}, (g.donus ? "Dönmeden önceki hâl · " : "") + oncekiOzet(g.ozet))));
+    icerik.replaceChildren(baslik,
+      ...(satirlar.length ? satirlar : [h("p", { class: "onceki-not" }, "Henüz önceki hâl yok. Belge değiştikçe günde bir kez saklanır.")]),
+      ...(buyuk ? [h("p", { class: "onceki-not" }, "Belge çok büyük; yeni önceki hâller saklanmıyor.")] : []),
+      h("div", { class: "fis-ayrac" }),
+      h("button", { class: "fis-satir", type: "button", role: "menuitem", onclick: () => { anaMenu(); aktifFis?.konumla(); } }, icon("sol", "i-20"), h("span", {}, "Geri")));
+    aktifFis?.konumla();
+    $("button", icerik)?.focus();
   };
   const adlandir = () => {
     const girdi = h("input", { class: "ad-alani kucuk", value: b.ad, "aria-label": "Belgenin yeni adı", maxlength: "120", autocomplete: "off", enterkeyhint: "done" });
@@ -1391,6 +1410,27 @@ function belgeFisi(b, capa) {
   };
   anaMenu();
   fisAc(capa, icerik, { hiza: "yan", etiket: `${b.ad} seçenekleri` });
+}
+
+// Önceki hâl satırı: o hâlin son değiştiği an (bilinmiyorsa kopyanın alındığı günden önce) ve kısa özet
+function oncekiTarih(g) {
+  if (g.zaman) return new Date(g.zaman).toLocaleString("tr", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  return `${new Date(g.alindi).toLocaleDateString("tr", { day: "numeric", month: "long" })} öncesi`;
+}
+const oncekiOzet = (o) => [o?.sayfa ? `${o.sayfa} sayfa` : null, `${o?.cizgi || 0} çizgi`, `${o?.iz || 0} iz`].filter(Boolean).join(" · ");
+// Seçilen hâle döner: şimdiki hâl de önceki hâller listesine girer (aynı menüden ona dönülür), belge yeniden açılır
+async function oncekiyeDon(b, g) {
+  fisKapat(true);
+  const yan = window.__knYan;
+  if ((acik.ekran === "belge" && acik.belgeId === b.id) || (yan?.belgeId === b.id && yan.cerceve?.isConnected)) { toast("Önce belgeyi kapat."); return; }
+  try {
+    const donus = await kayit.oncekiHaleDon(b.id, g.anahtar);
+    toast(`“${b.ad}” ${oncekiTarih(g)} hâline döndü.${donus ? " Şimdiki hâli de saklandı." : ""}`);
+    belgeAcIstegi(b, kapakBul(b.id));
+  } catch (hata) {
+    console.warn("[kenar-notu] Önceki hâle dönülemedi:", hata);
+    toast(hata?.kod === "kilit" ? "Kayıt bu pencerede kapalı; dönülemedi." : "Önceki hâline dönülemedi; belge değişmedi.");
+  }
 }
 
 // "Çizgi roman olarak oku": belge.cizgi kaydedilir ve belge yeni görünümünde açılır; geri dönmek aynı satırdan
@@ -1585,7 +1625,8 @@ let dosyaGirdisi = null;
 function dosyaSec() {
   if (!dosyaGirdisi) {
     // iOS dosya seçicisi uzantıları tür kimliğine çevirir; türler de verilir ki Android'de EPUB gri kalmasın
-    dosyaGirdisi = h("input", { type: "file", accept: ".pdf,.epub,.cbz,.cbr,.zip,.kenar,application/pdf,application/epub+zip,application/vnd.comicbook+zip", multiple: true, hidden: true });
+    // application/octet-stream: uzantısız dosya da seçilebilsin (tür içerikten tanınır)
+    dosyaGirdisi = h("input", { type: "file", accept: ".pdf,.epub,.cbz,.cbr,.zip,.kenar,application/pdf,application/epub+zip,application/vnd.comicbook+zip,application/octet-stream", multiple: true, hidden: true });
     dosyaGirdisi.addEventListener("change", () => {
       const dosyalar = [...dosyaGirdisi.files];
       dosyaGirdisi.value = "";
@@ -1601,6 +1642,19 @@ const tahminiTur = (f) => (/\.epub$/i.test(f.name) || f.type === "application/ep
   : /\.(cbz|cbr|zip)$/i.test(f.name) || /comicbook/.test(f.type) ? "cizgi" : "pdf");
 // Kitaplığın açtığı dosyalar: PDF, EPUB, CBZ (ve içinde yalnız görsel olan zip). CBR'yi kayit.js nedeniyle reddeder.
 const uygunDosya = (f) => /\.(pdf|epub|cbz|cbr|zip)$/i.test(f.name) || /^application\/(pdf|epub\+zip|vnd\.comicbook\+zip|vnd\.comicbook-rar)$/.test(f.type);
+// Adından tanınmayan dosya içeriğinden tanınır (OZELLIKLER-8 §3.3): uzantısız PDF, adı değişmiş .kenar yedeği
+async function dosyalariAyir(dosyalar) {
+  const s = { belgeler: [], yedek: null };
+  for (const f of dosyalar) {
+    if (/\.kenar$/i.test(f.name)) { s.yedek ||= f; continue; }
+    if (uygunDosya(f)) { s.belgeler.push(f); continue; }
+    let tur = null;
+    try { tur = await kayit.dosyaTuru(f); } catch { tur = null; }
+    if (tur === "yedek") s.yedek ||= f;
+    else if (tur) s.belgeler.push(f);
+  }
+  return s;
+}
 // Klasör görünümündeyken gelen PDF o klasöre düşer
 const secimKlasoru = () => (tercih.secim.startsWith("klasor:") && klasorBul(tercih.secim.slice(7)) ? tercih.secim.slice(7) : undefined);
 
@@ -1619,6 +1673,8 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
       const b = await kayit.belgeIceAktar(f, { klasor });
       sonuclar.push({ b, vardi: once.has(b.id) });
     } catch (hata) {
+      // Adı ne olursa olsun içi Kenar Notu yedeği: yedekten yükleme sorulur
+      if (hata?.kod === "yedek") { yedekPenceresi(f); continue; }
       console.warn("[kenar-notu] İçe aktarılamadı:", f.name, hata);
       toast(hata?.kod === "cbr" || hata?.kod === "bozuk" ? hata.message
         : hata?.kod === "tur" ? `“${f.name}” açılamadı: yalnız PDF, EPUB ve CBZ.` : `“${f.name}” içe aktarılamadı.`);
@@ -1813,10 +1869,13 @@ let yedekSuruyor = false;
 async function yedekAlIstegi(dugme) {
   if (yedekSuruyor) return;
   yedekSuruyor = true;
-  const asil = dugme?.textContent;
+  const asil = dugme ? [...dugme.childNodes] : null;
   if (dugme) { dugme.disabled = true; dugme.textContent = "Hazırlanıyor"; }
+  else toast("Yedek hazırlanıyor", { kalici: true });
+  // Ağır iş işçide: ekran kilitlenmez, düğme yüzdeyi gösterir
+  const ilerleme = (o) => { if (dugme) dugme.textContent = `Yedek hazırlanıyor %${Math.round(o * 100)}`; };
   try {
-    const blob = await kayit.yedekAl();
+    const blob = await kayit.yedekAl({ ilerleme });
     await dosyaPaylas(blob, yedekAdi());
     ayarla({ sonYedek: Date.now() });
     toast(`Yedek hazır: ${boyutMetni(blob.size)}`);
@@ -1825,7 +1884,7 @@ async function yedekAlIstegi(dugme) {
     toast(hata?.kod === "eksik" || hata?.kod === "buyuk" ? hata.message : "Yedek alınamadı.");
   } finally {
     yedekSuruyor = false;
-    if (dugme) { dugme.disabled = false; dugme.textContent = asil; }
+    if (dugme) { dugme.disabled = false; dugme.replaceChildren(...asil); }
   }
 }
 let yedekGirdisi = null;
@@ -1852,6 +1911,78 @@ async function yedekYukleIstegi(f) {
       : "Yedek yüklenemedi; kitaplık değişmedi.");
   }
 }
+// Otomatik yedek (OZELLIKLER-8 §3.1). Ayarlar'da klasör seçimi ve son yazılan yedek; kayit.js günde bir yazar.
+// Klasöre yazamayan tarayıcıda (iOS, Firefox) yedek 7 günde bir sessizce hatırlatılır.
+function otoYedekDenetimi() {
+  const el = h("div", { class: "oto-yedek" });
+  if (!kayit.klasorDestegi()) {
+    el.append(h("p", { class: "ayar-not" }, "Bu tarayıcı klasöre kendiliğinden yazamıyor; haftada bir yedek almayı hatırlatırız."));
+    return { el, guncelle: () => {} };
+  }
+  let yaziyor = "";
+  const ciz = async () => {
+    const k = await kayit.yedekKlasoru().catch(() => null);
+    const sec = h("button", { class: "ikincil", type: "button" }, icon("klasor", "i-20"), k ? "Klasörü değiştir" : "Otomatik yedek klasörü seç");
+    sec.addEventListener("click", () => klasorSecIstegi(sec));
+    if (!k) {
+      el.replaceChildren(h("p", { class: "ayar-not" }, "Bir klasör seç: Kenar Notu oraya günde bir yedek yazar, son 7 tanesi kalır."),
+        h("div", { class: "ayar-yedek__dugmeler" }, sec));
+      return;
+    }
+    const durum = yaziyor || (k.izin !== "granted" ? "İzin bekliyor" : k.hata ? k.hata : k.son ? `Son otomatik yedek: ${neZaman(k.son)}` : "Henüz yazılmadı");
+    const izin = k.izin !== "granted"
+      ? h("button", { class: "ikincil", type: "button", onclick: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); ciz(); }) }, "İzin ver")
+      : null;
+    const kapat = h("button", { class: "metin-dugme", type: "button", onclick: () => kayit.yedekKlasoruBirak().then(() => toast("Otomatik yedek kapandı; klasördeki dosyalar duruyor.")) }, "Otomatik yedeği kapat");
+    el.replaceChildren(
+      h("p", { class: "oto-yedek__klasor" }, icon("klasor", "i-20"), h("span", {}, k.ad, h("small", { class: k.hata && !yaziyor ? "hata" : null }, durum))),
+      h("div", { class: "ayar-yedek__dugmeler" }, izin, sec, kapat));
+  };
+  const coz = bus.on("yedek:klasor", (o) => {
+    if (!el.isConnected && el.dataset.cizildi) { coz(); return; }
+    yaziyor = o?.tur === "yaziyor" ? "Yedek yazılıyor" : "";
+    ciz();
+  });
+  ciz().then(() => { el.dataset.cizildi = "1"; });
+  return { el, guncelle: () => {} };
+}
+async function klasorSecIstegi(dugme) {
+  const asil = [...dugme.childNodes];
+  try {
+    const ilerleme = (o) => { dugme.disabled = true; dugme.textContent = `Yedek hazırlanıyor %${Math.round(o * 100)}`; };
+    const ok = await kayit.yedekKlasoruSec({ ilerleme });
+    toast(ok ? "Otomatik yedek açık: ilk yedek klasöre yazıldı." : "Klasör seçildi ama yedek yazılamadı.");
+  } catch (hata) {
+    if (hata?.name !== "AbortError") {
+      console.warn("[kenar-notu] Yedek klasörü seçilemedi:", hata);
+      toast(hata?.kod === "baska" ? "Kitaplık başka bir pencerede açık; klasörü orada seç." : "Klasör seçilemedi.");
+    }
+  } finally {
+    if (dugme.isConnected) { dugme.disabled = false; dugme.replaceChildren(...asil); }
+  }
+}
+// İzin düşünce (tarayıcı yeniden açılınca çoğu zaman) dokunuşla izin isteyen sessiz fiş; oturumda bir kez
+let klasorIzniSoruldu = false;
+bus.on("yedek:klasor", (o) => {
+  if (o?.tur === "izin-gerek" && !klasorIzniSoruldu) {
+    klasorIzniSoruldu = true;
+    toast("Yedek klasörüne izin ver", { etiket: "İzin ver", kalici: true,
+      calistir: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); }) });
+  } else if (o?.tur === "yazildi") ayarla({ sonYedek: o.son });
+  else if (o?.tur === "hata") toast(`Otomatik yedek: ${o.mesaj}`);
+  else if (o?.tur === "hatirlat") yedekHatirlat();
+});
+// Klasöre yazamayan tarayıcıda: son yedekten (ya da son hatırlatmadan) 7 gün geçtiyse "Yedeği kaydet".
+// Kitaplıkta yalnız dokunulmamış örnekler varsa hatırlatılmaz.
+function yedekHatirlat() {
+  const simdi = Date.now(), son = Math.max(Number(store.ayarlar.sonYedek) || 0, Number(store.ayarlar.yedekHatirlatma) || 0);
+  if (!store.belgeler.some((b) => !ORNEK_IDLER.has(b.id) || b.degisim)) return;
+  if (!son) { ayarla({ yedekHatirlatma: simdi }); return; }
+  if (simdi - son < 7 * 864e5) return;
+  ayarla({ yedekHatirlatma: simdi });
+  toast("Son yedeğin üstünden bir hafta geçti.", { etiket: "Yedeği kaydet", kalici: true, calistir: () => yedekAlIstegi() });
+}
+
 // Kenar çubuğundaki Yedekle ve bırakılan .kenar dosyası buraya gelir
 function yedekPenceresi(dosya = null) {
   cekmeceKapat();
@@ -1895,12 +2026,12 @@ function dosyaBirakma() {
     K.birak.hidden = true;
     const dosyalar = [...(e.dataTransfer.files || [])];
     if (!dosyalar.length) return;
-    // .kenar yedeği bırakılırsa yedekten yükleme sorulur
-    const yedek = dosyalar.find((f) => /\.kenar$/i.test(f.name));
-    if (yedek) { yedekPenceresi(yedek); return; }
-    const uygun = dosyalar.filter(uygunDosya);
-    if (uygun.length) { dosyalariAl(uygun); return; }
-    bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: "Kenar Notu PDF, EPUB ve CBZ (çizgi roman) dosyalarını açar. Not almak için yeni bir defter de açabilirsin." });
+    // .kenar yedeği bırakılırsa yedekten yükleme sorulur; tür adından tanınmazsa içeriğinden
+    dosyalariAyir(dosyalar).then(({ belgeler, yedek }) => {
+      if (yedek) { yedekPenceresi(yedek); return; }
+      if (belgeler.length) { dosyalariAl(belgeler); return; }
+      bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: "Kenar Notu PDF, EPUB ve CBZ (çizgi roman) dosyalarını açar. Not almak için yeni bir defter de açabilirsin." });
+    });
   });
 }
 
@@ -2034,6 +2165,7 @@ function ayarlarAc({ acan = null, bolum = null } = {}) {
   const yedekAl = h("button", { class: "ikincil", type: "button" }, icon("yedekle", "i-20"), "Şimdi yedekle");
   yedekAl.addEventListener("click", () => yedekAlIstegi(yedekAl));
   const yedekYukle = h("button", { class: "metin-dugme", type: "button", onclick: () => yedekSec() }, "Yedekten yükle");
+  const otoYedek = otoYedekDenetimi();
   const sifirEtiket = h("span", {}, "Örnek verilere dön");
   const sifir = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
     h("span", {}, sifirEtiket, h("small", {}, "Çizimler, notlar, içe aktarılan dosyalar silinir; API anahtarları kalır")));
@@ -2067,9 +2199,12 @@ function ayarlarAc({ acan = null, bolum = null } = {}) {
     ["okuma", "Okuma", [sonBelge.el, h("span", { class: "t-etiket" }, "Küçük sürprizler"), exGoster.el, odunc.el, mum.el]],
     ["ceviri", "Çeviri ve yapay zekâ", [cvSatir, yzSatir]],
     ["yedek", "Yedek ve depolama", [depoUyarisi(), h("div", { class: "ayar-yedek" }, depoGostergesi(), sonYedek,
-      h("div", { class: "ayar-yedek__dugmeler" }, yedekAl, yedekYukle)), kurulumD, h("div", { class: "fis-ayrac" }), sifir, temiz]],
+      h("div", { class: "ayar-yedek__dugmeler" }, yedekAl, yedekYukle)), otoYedek.el, kurulumD, h("div", { class: "fis-ayrac" }), sifir, temiz]],
     ["exlibris", "Ex libris", [exDuz.el, exDisa.el]],
-    ["yardim", "Yardım", [rehberD, kisayollar,
+    ["yardim", "Yardım", [rehberD,
+      h("button", { class: "fis-satir", type: "button", "aria-haspopup": "dialog", onclick: (e) => { const acan = e.currentTarget; import("./hakkinda.js").then((m) => m.hakkindaAc({ acan })); } },
+        icon("kitap", "i-20"), h("span", {}, "Hakkında"), h("small", {}, "Sürüm, gizlilik, açık kaynak lisansları")),
+      kisayollar,
       h("div", { class: "ayarlar-alt" }, parca('<svg viewBox="0 0 28 16" aria-hidden="true"><use href="#i-hedera"/></svg>'), "Kenar Notu, tasarım prototipi")]],
   ];
   ayarDenetimleri = [tema, sayfa, yazi, sade, parmak, elYazisi, sekil, kalemD, sonBelge, exGoster, odunc, mum, exDisa, metinler, exDuz, { guncelle: sonYedekYaz }];
@@ -3905,8 +4040,9 @@ if ("launchQueue" in window) {
   window.launchQueue.setConsumer(async (p) => {
     try {
       const dosyalar = await Promise.all((p?.files || []).map((f) => f.getFile()));
-      const uygun = dosyalar.filter(uygunDosya);
-      if (uygun.length) dosyalariAl(uygun, { klasor: undefined });
+      const { belgeler, yedek } = await dosyalariAyir(dosyalar);
+      if (yedek) yedekPenceresi(yedek);
+      else if (belgeler.length) dosyalariAl(belgeler, { klasor: undefined });
     } catch (hata) { console.warn("[kenar-notu] Açılan dosya alınamadı:", hata); }
   });
 }

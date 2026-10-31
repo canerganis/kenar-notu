@@ -176,10 +176,11 @@ function ornekle(D, W, wlo = 0, a = 0, b = D.n - 1) {
 // Böylece kurşun kalemin yarı saydamlığı düğümlerde koyulaşmaz, kendini kesen çizgide delik açılmaz.
 // Dar dönüşte şerit kesilir ve araya daire konur (iç kenar katlanmasın diye).
 
+// closePath yok: dolgu (fill, clip) açık alt yolu kendiliğinden kapatır, sonuç aynı. Ağır sayfada yol kurmanın
+// en pahalı çağrısıydı (5000 çizgide toplam sürenin beşte biri).
 function daire(yol, x, y, r) {
   yol.moveTo(x + r, y);
   yol.arc(x, y, r, 0, TAM);
-  yol.closePath();
 }
 
 function serit(yol, sol, sag) {
@@ -436,6 +437,36 @@ export function bolgeyiCiz(ctx, cizgiler, olcek, b, { koyuSayfa = false } = {}) 
     cizgiyiCiz(ctx, c, koyuSayfa, true);
   }
   ctx.restore();
+}
+
+// Ağır sayfada parça parça çizim: cizgiler[i]'den sırayla çizer, performance.now() bitis'i geçince durur ve
+// kaldığı indeksi döner (hepsi bittiyse cizgiler.length). ic verilirse yalnız o kutuya değenler çizilir.
+// kes() true dönerse de durur. Kırpma ve ölçek çağıranın işi.
+export function sirayla(ctx, cizgiler, i, bitis, { koyuSayfa = false, ic = null, kes = null } = {}) {
+  const n = cizgiler.length;
+  for (let j = 0; i < n; i++, j++) {
+    if (performance.now() > bitis || (kes && (j & 3) === 3 && kes())) return i;
+    const c = cizgiler[i];
+    if (!c || !c.p || !c.p.length) continue;
+    if (ic) {
+      const k = kutu(c);
+      if (k.x1 < ic.x0 || k.x0 > ic.x1 || k.y1 < ic.y0 || k.y0 > ic.y1) continue;
+    }
+    cizgiyiCiz(ctx, c, koyuSayfa, true);
+  }
+  return n;
+}
+
+// Yolu henüz kurulmamış çizgi sayısı (en çok sinir kadar sayar): ilk çizimin bedeli asıl buradadır,
+// kurulu yolu boyamak çok daha ucuz
+export function kurulmamis(cizgiler, sinir = Infinity) {
+  let n = 0;
+  for (const c of cizgiler) {
+    if (!c || !c.p || !c.p.length || c.tur === "sekil") continue;
+    const k = onbellek.get(c);
+    if (!k || !k.yol || k.p !== c.p || k.n !== c.p.length || k.w !== c.w || k.tur !== c.tur || k.duz !== c.duz) { if (++n >= sinir) break; }
+  }
+  return n;
 }
 
 // Çizgilerin kalınlık payı dahil birleşik kutusu; boşsa null

@@ -37,6 +37,7 @@ import {
 } from "./kalem.js";
 import METIN, { SAHNE } from "./okuma-metni.js";
 import { epubCoz, epubSurumu, bicimCoz } from "./epub-belge.js";
+import { epubFormul } from "./matematik.js";
 
 // ---------- sabitler ----------
 const BIRIM = 640;        // sütun genişliği, mürekkep biriminde (varsayılan düzende 1 birim ≈ 1,15 px)
@@ -134,7 +135,8 @@ function rgba(hex, a) {
 // Açık belgeye göre kurulur (modeliKur), kapatınca bırakılır. Örnek belgeler okuma-metni.js'ten,
 // dosyası olan EPUB'lar epub-belge.js'ten gelir. Diziler yerinde doldurulur: bütün kod aynı P'ye bakar.
 const SIRA = ["Birinci", "İkinci", "Üçüncü", "Dördüncü", "Beşinci", "Altıncı", "Yedinci", "Sekizinci", "Dokuzuncu", "Onuncu"];
-const P = [];          // { gi, b, metin, bicim, kelime, onceki }  bicim: [{ a, b, i, k }] italik/kalın aralıkları ya da null
+const P = [];          // { gi, b, metin, bicim, kelime, onceki, mat }  bicim: [{ a, b, i, k }] italik/kalın aralıkları ya da null
+                       // mat: [{ a, b, ml }] metnin MathML olarak çizilen aralıkları (EPUB <math>) ya da null
 const BOLUMLER = [];   // { i, baslik, ad, ilk, son, kelime, onceki, bloklar }
 let TOPLAM = 0;
 let SAYFA_SAYISI = 1;
@@ -148,11 +150,11 @@ function modeliKur(kitap, { bicimli = false } = {}) {
   for (const b of kitap.bolumler) {
     const bi = BOLUMLER.length;
     const bolum = { i: bi, baslik: b.baslik, ad: `${SIRA[bi] || bi + 1 + "."} Bölüm`, ilk: P.length, son: P.length, kelime: 0, onceki: TOPLAM, bloklar: [] };
-    for (const ham of b.paragraflar) {
+    for (const [j, ham] of b.paragraflar.entries()) {
       if (ham === SAHNE) { if (bolum.bloklar.length) bolum.bloklar.push(null); continue; }
       const { metin, bicim } = bicimli ? bicimCoz(ham) : { metin: ham, bicim: null };
       if (!metin.trim()) continue;
-      const p = { gi: P.length, b: bi, metin, bicim, kelime: kelimeSay(metin), onceki: TOPLAM };
+      const p = { gi: P.length, b: bi, metin, bicim, kelime: kelimeSay(metin), onceki: TOPLAM, mat: (bicimli && b.matematik?.[j]) || null };
       P.push(p);
       bolum.bloklar.push(p);
       bolum.kelime += p.kelime;
@@ -745,8 +747,21 @@ function metniKur() {
 }
 
 // Paragrafı vurgu ve arama eşleşmeleriyle yeniden yazar. Metin değişmez, yalnız işaretler.
-// Metnin [a, b) parçasını italik ve kalın aralıklarıyla ekler (gerçek EPUB'ta P[gi].bicim)
+// Metnin [a, b) parçasını italik ve kalın aralıklarıyla ekler (gerçek EPUB'ta P[gi].bicim).
+// Tamamı parçanın içinde kalan formül MathML olarak çizilir; vurgu ya da eşleşme bölüyorsa düz metin kalır.
 function metinEkle(hedef, gi, a, b) {
+  const mat = P[gi].mat;
+  if (!mat) return bicimliEkle(hedef, gi, a, b);
+  let k = a;
+  for (const f of mat) {
+    if (f.a < k || f.b > b) continue;
+    if (f.a > k) bicimliEkle(hedef, gi, k, f.a);
+    hedef.append(epubFormul(P[gi].metin.slice(f.a, f.b), f.ml));
+    k = f.b;
+  }
+  if (k < b) bicimliEkle(hedef, gi, k, b);
+}
+function bicimliEkle(hedef, gi, a, b) {
   const { metin, bicim } = P[gi];
   if (!bicim) { hedef.append(metin.slice(a, b)); return; }
   let k = a;
@@ -3609,6 +3624,9 @@ function ofsetteEkle(pEl, o, el) {
   const w = document.createTreeWalker(pEl, NodeFilter.SHOW_TEXT);
   let d, k = o;
   while ((d = w.nextNode())) {
+    // Formülün görünmez düz metnine düşen öğe formülün önüne konur (içinde görünmezdi)
+    const kap = k < d.length && d.parentElement?.closest(".formul-kap");
+    if (kap) { kap.before(el); return; }
     if (k < d.length) { (k > 0 ? d.splitText(k) : d).before(el); return; }
     k -= d.length;
   }

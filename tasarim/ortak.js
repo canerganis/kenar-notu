@@ -243,14 +243,67 @@ export function basincUygula(p) {
 }
 // Mod değiştirme: belge.mod = yeni; bus.emit("git", { ekran: "belge", belgeId, mod: yeni })
 
-// ---------- v2: Tekrar kartları (Leitner kutuları) ----------
+// ---------- v2: Tekrar kartları (12. turdan beri FSRS-5; kutular görsel) ----------
 // Kart: { id, tur: "bant" | "kirpinti" | "kelime" | "soru",
 //         on: { metin?, gorsel? }, arka: { metin?, gorsel? },
-//         belgeId, belgeAd, sayfa, kutu (1..5), sonraki (zaman damgası), gecmis: [{ zaman, bildi }] }
+//         belgeId, belgeAd, sayfa, kutu (1..5), sonraki (zaman damgası), gecmis: [{ zaman, bildi }],
+//         fsrs?: { s: kararlılık (gün), d: zorluk 1..10, son: son tekrar zamanı } }
 // Olay: "kartlar" ({ tur: "ekle" | "guncelle" | "sil", kart })
 store.kartlar = [];
 const GUN = 24 * 3600e3;
-export const KUTU_ARALIK = [0, 1, 3, 7, 16, 35]; // kutu n -> n. aralık (gün)
+// Leitner dönemindeki kutu aralıkları (gün): eski kartın ilk FSRS kararlılığı buradan tahmin edilir
+export const KUTU_ARALIK = [0, 1, 3, 7, 16, 35];
+// Kutu artık takvimden türer: aralık KUTU_SINIR[n] günden kısaysa n. kutu (I: bugün, II: 1..2 gün, ..., V: 16 gün ve üstü)
+export const KUTU_SINIR = [0, 1, 3, 7, 16];
+export const aralikKutusu = (gun) => { let n = 1; while (n < 5 && gun >= KUTU_SINIR[n]) n++; return n; };
+// Erişilebilir ad için: "1 ile 2 günde bir", V'te "16 günde bir ya da daha seyrek"
+export const kutuAralikMetni = (n) => (n <= 1 ? "bugün yeniden" : n >= 5 ? `${KUTU_SINIR[4]} günde bir ya da daha seyrek`
+  : `${KUTU_SINIR[n - 1]} ile ${KUTU_SINIR[n] - 1} günde bir`);
+
+// FSRS-5 (open-spaced-repetition, py-fsrs 5.x varsayılan ağırlıkları). İki düğme: Bilemedim = Again (1), Bildim = Good (3).
+// Unutma eğrisi R(t) = (1 + F t / S)^-0,5; F = 19/81 iken hedef 0,9 için aralık S gündür.
+export const FSRS_W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192,
+  1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
+const FSRS_KARAR = -0.5, FSRS_F = 0.9 ** (1 / FSRS_KARAR) - 1, FSRS_HEDEF = 0.9, FSRS_EN_UZUN = 36500;
+const zorlukSinirla = (d) => Math.min(10, Math.max(1, d));
+const ilkZorluk = (G) => zorlukSinirla(FSRS_W[4] - Math.exp(FSRS_W[5] * (G - 1)) + 1);
+export const hatirlama = (t, s) => (1 + FSRS_F * t / s) ** FSRS_KARAR;
+export const fsrsAralik = (s) => Math.min(FSRS_EN_UZUN, Math.max(1, Math.round((s / FSRS_F) * (FSRS_HEDEF ** (1 / FSRS_KARAR) - 1))));
+function sonrakiZorluk(d, G) {
+  const ara = d + (10 - d) * (-FSRS_W[6] * (G - 3)) / 9;               // doğrusal sönüm
+  return zorlukSinirla(FSRS_W[7] * ilkZorluk(4) + (1 - FSRS_W[7]) * ara);   // ortalamaya dönüş
+}
+function sonrakiKararlilik(d, s, r, G) {
+  if (G === 1) return Math.min(
+    FSRS_W[11] * d ** -FSRS_W[12] * ((s + 1) ** FSRS_W[13] - 1) * Math.exp((1 - r) * FSRS_W[14]),
+    s / Math.exp(FSRS_W[17] * FSRS_W[18]));
+  return s * (1 + Math.exp(FSRS_W[8]) * (11 - d) * s ** -FSRS_W[9] * (Math.exp((1 - r) * FSRS_W[10]) - 1));
+}
+// Kartın FSRS durumu: yoksa eski Leitner verisinden tahmin (s = kutu aralığı, d = 5, son = son cevap).
+// Hiç cevaplanmamış yeni kartta null döner.
+function fsrsDurumu(k) {
+  if (k.fsrs && k.fsrs.s > 0) return k.fsrs;
+  const kutu = Math.min(5, Math.max(1, k.kutu || 1)), gecmis = Array.isArray(k.gecmis) ? k.gecmis : [];
+  if (kutu === 1 && !gecmis.length) return null;
+  const son = gecmis.length ? gecmis[gecmis.length - 1].zaman : (k.sonraki || Date.now()) - KUTU_ARALIK[kutu] * GUN;
+  return { s: KUTU_ARALIK[kutu], d: 5, son };
+}
+// Cevabın sonucu, kartı değiştirmeden: { fsrs, aralik (gün; bilemediyse 0), kutu, sonraki }.
+// Tekrar ekranı "Bildim" altındaki "4 gün sonra"yı buradan yazar.
+export function fsrsHesapla(k, bildi, simdi = Date.now()) {
+  const G = bildi ? 3 : 1, o = fsrsDurumu(k);
+  let s, d;
+  if (!o) { s = Math.max(0.1, FSRS_W[G - 1]); d = ilkZorluk(G); }
+  else {
+    const t = Math.max(0, gunFarki(simdi, o.son));   // son tekrardan bu yana geçen takvim günü
+    // Aynı gün ikinci kez görülen kart (bilemedim sonrası): kısa vadeli kararlılık
+    s = t < 1 ? o.s * Math.exp(FSRS_W[17] * (G - 3 + FSRS_W[18])) : sonrakiKararlilik(o.d, o.s, hatirlama(t, o.s), G);
+    d = sonrakiZorluk(o.d, G);
+  }
+  s = Math.min(FSRS_EN_UZUN, Math.max(0.01, s));
+  const aralik = bildi ? fsrsAralik(s) : 0;
+  return { fsrs: { s, d, son: simdi }, aralik, kutu: aralikKutusu(aralik), sonraki: bildi ? gunBasi(simdi, aralik) : simdi };
+}
 export function kartEkle(alanlar) {
   const k = { id: yeniId("t"), kutu: 1, sonraki: Date.now(), gecmis: [], on: {}, arka: {}, ...alanlar };
   store.kartlar.unshift(k);
@@ -279,15 +332,18 @@ export function gunBasi(t = Date.now(), ekGun = 0) {
 }
 // İki an arasındaki takvim günü farkı (bugün 0, yarın 1)
 export const gunFarki = (t, simdi = Date.now()) => Math.round((gunBasi(t) - gunBasi(simdi)) / GUN);
-// Bugünün sonuna kadar vakti gelen kartlar: Leitner takvimi saatle değil günle işler
+// Bugünün sonuna kadar vakti gelen kartlar: takvim saatle değil günle işler
 export const bugunTekrar = () => { const sinir = gunBasi(Date.now(), 1); return store.kartlar.filter((k) => k.sonraki < sinir); };
-// Bildiyse bir üst kutuya, bilemediyse 1. kutuya döner. Bildiyse n gün sonrasının sabahı düşer.
+// FSRS: bildiyse aralık kadar gün sonrasının sabahı düşer, bilemediyse bugün yeniden sorulur (kutu I).
 export function kartCevapla(id, bildi) {
   const k = store.kartlar.find((x) => x.id === id);
   if (!k) return null;
-  k.kutu = bildi ? Math.min(5, k.kutu + 1) : 1;
-  k.sonraki = bildi ? gunBasi(Date.now(), KUTU_ARALIK[k.kutu]) : Date.now();
-  k.gecmis.push({ zaman: Date.now(), bildi });
+  const simdi = Date.now(), c = fsrsHesapla(k, bildi, simdi);
+  k.fsrs = c.fsrs;
+  k.kutu = c.kutu;
+  k.sonraki = c.sonraki;
+  if (!Array.isArray(k.gecmis)) k.gecmis = [];
+  k.gecmis.push({ zaman: simdi, bildi });
   bus.emit("kartlar", { tur: "guncelle", kart: k });
   return k;
 }

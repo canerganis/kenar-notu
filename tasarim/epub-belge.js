@@ -7,6 +7,9 @@
 // Paragraf metni düz yazıdır, okuma-metni.js ile aynı biçim. Tek ek: italik *böyle*, kalın **böyle**,
 // metindeki gerçek yıldız ve ters bölü \* ve \\ olarak kaçırılır. okuma.js gösterirken bunu çözer.
 // Bilinen sınır: görseller ve tablolar düz metne iner (görsel atlanır, tablo hücreleri paragraf olur).
+// MathML (sürüm 2): paragraf metninde düz karşılığı (alttext ya da TeX) durur; bölümün matematik alanı
+// { [paragraf sırası]: [{ a, b, ml }] } bu düz metnin [a, b) aralığını ve kitaptaki MathML'i verir (okuma.js çizer).
+// Metin, ofsetler ve sayfalama MathML'den etkilenmez.
 
 export const SAHNE = "***";
 
@@ -23,7 +26,7 @@ export function epubSurumu(belge) {
 // ---------- JSZip ----------
 // index.html klasik script olarak yüklemediyse bir kez buradan yüklenir
 let zipYukleniyor = null;
-function jszip() {
+export function jszip() {
   if (window.JSZip) return Promise.resolve(window.JSZip);
   zipYukleniyor ||= new Promise((tamam, hata) => {
     const s = document.createElement("script");
@@ -254,24 +257,51 @@ const kacir = (s) => s.replace(/[\\*]/g, (c) => "\\" + c);
 // İşaretleri atar, kaçışları çözer: okurun gördüğü düz metin
 const duzMetin = (m) => m.replace(/\\(.)|\*/g, (t, c) => c || "");
 const SATIR_SONU = "\u2028";   // <br>: paragraf içinde satır sonu (gösterirken "\n")
+// Formülün düz karşılığının sınırları: yalnız ayrıştırırken satırda durur, paragraf metnine girmez
+const FA = "\uE000", FB = "\uE001";
+const sinirsiz = (s) => s.replace(/[\uE000\uE001]/g, "");
+// Sınırlı paragraftan formül aralıkları (bicimCoz düz metnine göre); sayı tutmazsa null
+function formulAraliklari(isaretli, formuller) {
+  const { metin } = bicimCoz(isaretli);
+  const out = [];
+  let a = -1, n = 0;
+  for (let j = 0; j < metin.length; j++) {
+    const c = metin[j];
+    if (c === FA) { a = n; continue; }
+    if (c === FB) { if (a >= 0 && n > a) out.push({ a, b: n, ml: formuller[out.length] }); a = -1; continue; }
+    n++;
+  }
+  return out.length === formuller.length ? out : null;
+}
 
 // Bir HTML belgesini bloklara ayırır. Bloklar: { metin, baslik?, idler: [id] } ya da { sahne }.
 // idler: bu bloğun içindeki ya da önündeki öğe kimlikleri (içindekiler parçaları bölüm başlatır).
 // yeni: s\u00FCr\u00FCm 2 ve sonras\u0131 (EPUB_SURUM)
 function bloklaraAyir(govde, yeni) {
   const bloklar = [];
-  let satir = "", ital = 0, kalin = 0, idler = [], baslik = false, pre = 0;
-  const bitir = () => {
+  let satir = "", ital = 0, kalin = 0, idler = [], baslik = false, pre = 0, formuller = [];
+  const isle = (ham) => {
     // S\u00FCr\u00FCm 2'de sat\u0131r ba\u015F\u0131ndaki b\u00F6l\u00FCnmez bo\u015Fluk kal\u0131r: <pre> girintisi
-    let m = satir.replace(yeni ? /[ \t\u00A0]*\u2028[ \t]*/g : /[ \t\u00A0]*\u2028[ \t\u00A0]*/g, "\n").replace(/[ \t]+/g, " ").replace(/\u00AD/g, "");
+    let m = ham.replace(yeni ? /[ \t\u00A0]*\u2028[ \t]*/g : /[ \t\u00A0]*\u2028[ \t\u00A0]*/g, "\n").replace(/[ \t]+/g, " ").replace(/\u00AD/g, "");
     m = m.replace(/^[\s\n]+|[\s\n]+$/g, "");
     // Ayr\u0131\u015F\u0131k harf (s + U+0327) tek harf olur: klavyeden yaz\u0131lan arama ve vurgu ofsetleri tutsun
     if (yeni) m = m.normalize("NFC");
+    return m;
+  };
+  const bitir = () => {
+    // Metin sınırsız satırdan kurulur (formülsüz hâliyle aynı); sınırlı hâli aynı metne iniyorsa formül aralıkları alınır
+    const m = isle(formuller.length ? sinirsiz(satir) : satir);
+    let mat = null;
+    if (formuller.length) {
+      const isaretli = isle(satir);
+      if (sinirsiz(isaretli) === m) mat = formulAraliklari(isaretli, formuller);
+      formuller = [];
+    }
     const duz = duzMetin(m).replace(/\s/g, "");
     if (duz) {
       if ((yeni ? AYRAC : AYRAC_ESKI).test(duz)) bloklar.push({ sahne: true, idler });
       // Bölüm içi ara başlıklar kalın paragraf olur
-      else bloklar.push({ metin: baslik && !m.startsWith("**") ? "**" + m + "**" : m, baslik, idler });
+      else bloklar.push({ metin: baslik && !m.startsWith("**") ? "**" + m + "**" : m, baslik, idler, mat });
       idler = [];
     }
     satir = ""; baslik = false;
@@ -289,7 +319,10 @@ function bloklaraAyir(govde, yeni) {
     if (yeni && ad === "math") {
       const ek = dugum.getAttribute("alttext") || [...dugum.getElementsByTagName("*")].find((e) => e.localName === "annotation")?.textContent || dugum.textContent;
       const t = (ek || "").replace(/\s+/g, " ").trim();
-      if (t) satir += kacir(t);
+      if (t) {
+        satir += FA + kacir(t) + FB;
+        formuller.push(new XMLSerializer().serializeToString(dugum));
+      }
       return;
     }
     if (ATLA.has(ad)) return;
@@ -345,6 +378,8 @@ export async function epubAc(blob, { surum = EPUB_SURUM, bekle = null, kapak: ka
   }
 
   const bolumler = [];   // { baslik, paragraflar, kelime, tocVar }
+  // Formüllü paragraflar metinleriyle sırada bekler; birleştirme sırayı bozmaz, sonda yerine eşlenir
+  const formulSirasi = new Map();   // paragraf metni -> [aralıklar]
   let simdiki = null;
   const yeniBolum = (baslik, tocVar) => { simdiki = { baslik, paragraflar: [], kelime: 0, tocVar }; bolumler.push(simdiki); };
 
@@ -386,6 +421,10 @@ export async function epubAc(blob, { surum = EPUB_SURUM, bekle = null, kapak: ka
         if (a === bb || bb.includes(a) || a.includes(bb)) continue;
       }
       simdiki.paragraflar.push(b.metin);
+      if (b.mat) {
+        if (!formulSirasi.has(b.metin)) formulSirasi.set(b.metin, []);
+        formulSirasi.get(b.metin).push(b.mat);
+      }
       simdiki.kelime += kelime(duzMetin(b.metin));
     }
   }
@@ -421,12 +460,18 @@ export async function epubAc(blob, { surum = EPUB_SURUM, bekle = null, kapak: ka
   dolu = birlesik;
 
   let n = 0;
+  const matematik = (ps) => {
+    if (!formulSirasi.size) return undefined;
+    const m = {};
+    ps.forEach((p, i) => { const s = formulSirasi.get(p); if (s?.length) m[i] = s.shift(); });
+    return Object.keys(m).length ? m : undefined;
+  };
   return {
     baslik: pk.baslik,
     yazar: pk.yazar,
     kapak: kapak || undefined,
     dil: pk.dil || undefined,
-    bolumler: dolu.map((b) => ({ no: ++n, baslik: (yeni ? b.baslik.normalize("NFC") : b.baslik) || `${n}. kısım`, paragraflar: b.paragraflar })),
+    bolumler: dolu.map((b) => ({ no: ++n, baslik: (yeni ? b.baslik.normalize("NFC") : b.baslik) || `${n}. kısım`, paragraflar: b.paragraflar, matematik: matematik(b.paragraflar) })),
   };
 }
 

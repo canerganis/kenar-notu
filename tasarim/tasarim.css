@@ -1892,3 +1892,13 @@ a, button, [role="button"], .cip, .sekme { touch-action: manipulation; }
 
 /* Okuma rafı geniş ekranda satır boyunca: üç kitapta biten tahta yarım bir raf gibi duruyordu (TASARIM-4 1.2) */
 @media (min-width: 1000px) and (min-height: 500px) { .raf-kap { width: 100%; } }
+
+/* 12. tur, Kayıt (OZELLIKLER-8 §3): otomatik yedek klasörü (Ayarlar) ve belgenin önceki hâlleri (belge menüsü) */
+.oto-yedek { display: grid; gap: 8px; padding: 10px 0 2px; }
+.oto-yedek__klasor { display: grid; grid-template-columns: 20px 1fr; column-gap: 10px; align-items: start; margin: 0; font: 500 var(--fs-14)/20px var(--f-arayuz); color: var(--ink); }
+.oto-yedek__klasor .i { color: var(--ink-2); }
+.oto-yedek__klasor span { min-width: 0; overflow-wrap: anywhere; }
+.oto-yedek__klasor small { display: block; font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); }
+.oto-yedek__klasor small.hata { color: var(--danger); }
+.onceki-not { max-width: 280px; margin: 4px 10px 8px; font: 400 var(--fs-13)/18px var(--f-arayuz); color: var(--muted); text-wrap: pretty; }
+.onceki-satir small { font-variant-numeric: tabular-nums; }

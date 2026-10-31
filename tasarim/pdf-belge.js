@@ -36,6 +36,8 @@ export async function pdfAc(blob) {
 
   const gorevler = new WeakMap();   // canvas -> { no, task }
   const metinler = new Map();       // i -> Promise<satırlar>
+  const baglantiSoz = new Map();    // i -> Promise<bağlantılar>
+  let icindekilerSoz = null;
 
   // Sayfanın metin parçaları sayfa biriminde (genişlik 800, y aşağı, y taban çizgisi).
   // dx, dy: metnin ilerleme yönü; ux, uy: harfin yukarı yönü (birim vektör; döndürülmüş sayfada dikeydir)
@@ -170,6 +172,73 @@ export async function pdfAc(blob) {
         }
       }
       return sonuc;
+    },
+
+    // ---------- içindekiler ve iç bağlantılar (OZELLIKLER-8 2.4) ----------
+    // Hedef: { sayfa (0'dan), y (sayfa biriminde, üstten; hedefte yükseklik yoksa null) }.
+    // dest adlı hedef (dize) ya da açık dizi [ref | sayfaNo, { name: "XYZ" | "FitH" | ... }, ...].
+    async hedefCoz(dest) {
+      try {
+        const d = typeof dest === "string" ? await doc.getDestination(dest) : dest;
+        if (!Array.isArray(d) || !d.length) return null;
+        const ref = d[0];
+        const i = Number.isInteger(ref) ? ref : ref && typeof ref === "object" ? await doc.getPageIndex(ref) : -1;
+        if (!(i >= 0 && i < n)) return null;
+        const tur = d[1]?.name;
+        const ust = tur === "XYZ" ? d[3] : tur === "FitH" || tur === "FitBH" ? d[2] : tur === "FitR" ? d[5] : null;
+        const sol = tur === "XYZ" || tur === "FitR" ? d[2] : null;
+        if (!Number.isFinite(ust)) return { sayfa: i, y: null };
+        // Görünüm dönüşümü sayfanın döndürmesini ve /UserUnit'i de çözer
+        const vp = (await sayfa(i)).getViewport({ scale: 1 }), s = 800 / vp.width;
+        const [, vy] = vp.convertToViewportPoint(Number.isFinite(sol) ? sol : 0, ust);
+        return { sayfa: i, y: Math.max(0, vy * s) };
+      } catch { return null; }
+    },
+    // PDF'in kendi içindekileri: [{ baslik, derinlik, hedef, url, alt: [...] }]; yoksa boş dizi
+    icindekiler() {
+      icindekilerSoz ||= (async () => {
+        const kok = await doc.getOutline().catch(() => null);
+        if (!kok?.length) return [];
+        const coz = (dugumler, derinlik) => Promise.all(dugumler.map(async (o) => ({
+          baslik: String(o.title || "").replace(/\s+/g, " ").trim() || "Başlıksız",
+          derinlik,
+          hedef: o.dest ? await pdf.hedefCoz(o.dest) : null,
+          url: o.url || null,
+          alt: o.items?.length && derinlik < 8 ? await coz(o.items, derinlik + 1) : [],
+        })));
+        return coz(kok, 0);
+      })().catch(() => []);
+      return icindekilerSoz;
+    },
+    // Sayfanın Link notları, sayfa biriminde kutu: [{ x, y, w, h, hedef | null, url | null }].
+    // Dış adres yalnız http, https, mailto ve tel ise alınır (javascript: ve dosya yolu açılmaz).
+    baglantilar(i) {
+      if (!baglantiSoz.has(i)) {
+        baglantiSoz.set(i, (async () => {
+          const p = await sayfa(i), vp = p.getViewport({ scale: 1 }), s = 800 / vp.width;
+          const notlar = await p.getAnnotations({ intent: "display" });
+          const sonuc = [];
+          for (const a of notlar) {
+            if (a.subtype !== "Link" || !(a.rect?.length >= 4)) continue;   // rect bir Float32Array da olabilir
+            const [x1, y1] = vp.convertToViewportPoint(a.rect[0], a.rect[1]), [x2, y2] = vp.convertToViewportPoint(a.rect[2], a.rect[3]);
+            const x = Math.min(x1, x2) * s, y = Math.min(y1, y2) * s, w = Math.abs(x2 - x1) * s, h = Math.abs(y2 - y1) * s;
+            if (!(w > 0.5 && h > 0.5)) continue;
+            let hedef = null, url = null;
+            if (a.dest) hedef = await pdf.hedefCoz(a.dest);
+            else if (a.action) {
+              const j = { NextPage: i + 1, PrevPage: i - 1, FirstPage: 0, LastPage: n - 1 }[a.action];
+              if (j >= 0 && j < n) hedef = { sayfa: j, y: null };
+            }
+            if (!hedef) {
+              const u = a.url || a.unsafeUrl || "";
+              if (/^(https?:\/\/|mailto:|tel:)/i.test(u)) url = u;
+            }
+            if (hedef || url) sonuc.push({ x, y, w, h, hedef, url });
+          }
+          return sonuc;
+        })().catch((e) => { console.warn("[pdf-belge] bağlantılar:", e); baglantiSoz.delete(i); return []; }));
+      }
+      return baglantiSoz.get(i);
     },
 
     async kapak(genislik = 360) {

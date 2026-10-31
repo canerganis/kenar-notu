@@ -6,7 +6,11 @@
 //                                 ornekSurum (örnek verinin sürümü, ortak.js ORNEK_SURUM; yoksa bilinmiyor) }
 //             "veri:<id>"    -> belgenin düzenleyici/okuyucu verisi
 //             "kapak:<id>"   -> içe aktarılan belgenin kapak görseli (dataURL)
-//             "kartlar", "kirpintilar", "yz" (yapay zekâ ayarları, anahtarlar dahil; yedeğe girmez)
+//             "kart:<id>"    -> Tekrar kartı, kart başına (12. tur); "kartSira" -> kart id'lerinin sırası
+//             "kartlar"      -> 12. turdan önceki tek kart kaydı; açılışta okunur, ilk yazmada kart başına bölünüp silinir
+//             "kirpintilar", "yz" (yapay zekâ ayarları, anahtarlar dahil; yedeğe girmez)
+//             "onceki:<id>:<zaman>" -> belgenin önceki hâli (veri kopyası); "oncekiDizin:<id>" -> { liste: [{ anahtar, gun, zaman, alindi, ozet, boyut, donus }], buyuk }
+//             "yedekKlasoru" -> otomatik yedek klasörü: { tutamac (FileSystemDirectoryHandle), son, dosya, hata }
 //             "derlemeler"   -> İzlerim'de birleştirilen defterler: [{ id, ad, olusturma, girdiler: [{ belgeId, izId }] }]
 //   Belge kaydında dil (10. tur): belge.dil kısa dil kodu ("en"; null: bakıldı, bulunamadı), belge.dilElle kullanıcı seçtiyse true.
 //   Çeviri önbelleği ve paketleri ceviri.js'in kendi veritabanında ("kenar-notu-ceviri"); yedeğe girmez.
@@ -15,11 +19,15 @@
 // 1. sürümde bütün kitaplık "kitaplik" altında tek kayıttı (surum: 1); ilk açılışta bir kez bölünür.
 
 import { bus, store, belgeBul, yeniId, kartEkle, kartSil, KLASORLER, CILT_RENKLERI, ORNEK_SURUM } from "./ortak.js";
+import { arsivAc, okumaHatasi, yedekUret, PARCALI, oncekiAnahtari, oncekiDizinAnahtari, dizinTemizle, ozetCikar,
+  oncekiBuda, oncekiKopyaAl } from "./yedek-isci.js";
 
 const VT = { ad: "kenar-notu-tasarim", surum: 2 };
 const LISTE = "kitaplik", YZ = "yz";
 const veriAnahtari = (id) => "veri:" + id;
 const kapakAnahtari = (id) => "kapak:" + id;
+const KART = "kart:", KART_SIRA = "kartSira", ESKI_KARTLAR = "kartlar";
+const kartAnahtari = (id) => KART + id;
 const TUR_MIME = { pdf: "application/pdf", epub: "application/epub+zip", cizgi: "application/vnd.comicbook+zip" };
 
 /* ---------- veritabanı ---------- */
@@ -80,6 +88,7 @@ export async function dosyaSil(belgeId) {
   await islem(["dosyalar", "durum"], "readwrite", (d) => [
     d.dosyalar.delete(belgeId), d.durum.delete(veriAnahtari(belgeId)), d.durum.delete(kapakAnahtari(belgeId)),
     d.dosyalar.delete(aralik(ekOnEki(belgeId))),
+    d.durum.delete(aralik(`onceki:${belgeId}:`)), d.durum.delete(oncekiDizinAnahtari(belgeId)),
   ]);
 }
 
@@ -115,6 +124,8 @@ export async function ekDosyalar(belgeId) {
 /* ---------- kayıt düzeni ---------- */
 const kirli = new Set();          // verisi yazılacak belgeler
 const degisen = new Set();        // içeriği açıkça değişen belgeler (degisim damgası; yedek birleşiminde kullanılır)
+const kirliKartlar = new Set();   // yazılacak ya da silinecek kartlar (kartlarKirli: hepsi)
+let kartSiraKirli = false;
 let kartlarKirli = false, kirpintilarKirli = false, yzKirli = false, derlemelerKirli = false, hepsiKirli = false;
 let kilit = false, zaman = 0;
 let ayar = { oncesi: () => [], mesgul: () => false, yakinda: () => false };
@@ -196,9 +207,10 @@ export async function durumYukle() {
     }
     if (liste.surum !== VT.surum) { hepsiKirli = !baska; return { geri: false, kartlarVar: false, yz, baska }; }
 
-    const [veriAnahtarlar, veriler, kapakAnahtarlar, kapaklar] = await islem("durum", "readonly", (d) => [
+    const [veriAnahtarlar, veriler, kapakAnahtarlar, kapaklar, kartAnahtarlar, kartKayitlari, kartSira] = await islem("durum", "readonly", (d) => [
       d.durum.getAllKeys(aralik("veri:")), d.durum.getAll(aralik("veri:")),
       d.durum.getAllKeys(aralik("kapak:")), d.durum.getAll(aralik("kapak:")),
+      d.durum.getAllKeys(aralik(KART)), d.durum.getAll(aralik(KART)), d.durum.get(KART_SIRA),
     ]);
     const veriMap = new Map(veriAnahtarlar.map((k, i) => [k.slice(5), veriler[i]]));
     const kapakMap = new Map(kapakAnahtarlar.map((k, i) => [k.slice(6), kapaklar[i]]));
@@ -209,8 +221,8 @@ export async function durumYukle() {
     store.belgeler.splice(0, store.belgeler.length, ...liste.belgeler);
     if (Array.isArray(liste.klasorler)) KLASORLER.splice(0, KLASORLER.length, ...liste.klasorler);
     store.kirpintilar.splice(0, store.kirpintilar.length, ...(Array.isArray(kirpintilar) ? kirpintilar : []));
-    const kartlarVar = Array.isArray(kartlar);
-    if (kartlarVar) store.kartlar.splice(0, store.kartlar.length, ...kartlar.filter((k) => k && k.id));
+    const kartlarVar = Array.isArray(kartlar) || Array.isArray(kartSira) || kartAnahtarlar.length > 0;
+    if (kartlarVar) store.kartlar.splice(0, store.kartlar.length, ...kartlariKur(kartAnahtarlar, kartKayitlari, kartSira, kartlar, baska));
     store.derlemeler.splice(0, store.derlemeler.length, ...derlemeTemizle(derlemeler));
     damgaEkle(liste.zaman);
     listeVardi = true;
@@ -219,6 +231,8 @@ export async function durumYukle() {
     // Silinmiş belgelerden kalan veri, kapak ve dosyalar sessizce temizlenir
     const idler = new Set(liste.belgeler.map((b) => b.id));
     setTimeout(() => yetimleriSil(idler, [...veriMap.keys(), ...kapakMap.keys()]), 4000);
+    // Otomatik yedek kayıtlı kitaplıkla başlar (karşılama ve okunamayan kayıtta değil)
+    if (!baska) setTimeout(otoYedekKur, 0);
     return { geri: true, kartlarVar, yz, baska, ornekSurum: ornekSurumu };
   } catch (hata) {
     // Okunamayan kayıt örneklerle ezilmesin: bu oturum yazmaz, uygulama yine açılır
@@ -236,7 +250,7 @@ async function tasi(eski, yz) {
   await islem("durum", "readwrite", (d) => {
     for (const b of belgeler) if (b.veri != null) d.durum.put(b.veri, veriAnahtari(b.id));
     d.durum.put(eski.kirpintilar || [], "kirpintilar");
-    if (kartlarVar) d.durum.put(eski.kartlar, "kartlar");
+    if (kartlarVar) kartlariYaz(d.durum, { hepsi: true, kartlar: eski.kartlar.filter((k) => k && k.id) })();
     return d.durum.put(listeKaydi(belgeler.map(({ veri, ...b }) => b), eski.klasorler || KLASORLER), LISTE);
   });
   listeVardi = true;
@@ -255,6 +269,38 @@ function derlemeTemizle(liste) {
     .map((d) => ({ ...d, girdiler: Array.isArray(d.girdiler) ? d.girdiler.filter((g) => g && g.belgeId && g.izId) : [] }));
 }
 
+// Kartlar kart başına kayıtlı (sıra ayrı anahtarda). Eski tek "kartlar" kaydı varsa (12. turdan önce ya da eski
+// sürüm sonradan yazdıysa) birleştirilir: kart başına kayıtta olmayan kart eklenir, ikisinde de olanda geçmişi
+// uzun olan kalır. Bu sekme yazıyorsa ilk yazmada hepsi kart başına yazılır ve eski kayıt aynı işlemde silinir.
+const kayitliKartlar = new Set();   // kayıtta "kart:<id>" anahtarı olan kartlar
+function kartlariKur(anahtarlar, kayitlar, sira, eski, baska) {
+  const harita = new Map();
+  anahtarlar.forEach((a, i) => {
+    const k = kayitlar[i];
+    kayitliKartlar.add(a.slice(KART.length));
+    if (k && k.id) harita.set(k.id, k);
+  });
+  const sonuc = [];
+  const goruldu = new Set();
+  for (const id of Array.isArray(sira) ? sira : []) {
+    const k = harita.get(id);
+    if (k && !goruldu.has(id)) { sonuc.push(k); goruldu.add(id); }
+  }
+  // Sırada olmayan kayıtlı kart da kaybolmaz: sona eklenir
+  for (const [id, k] of harita) if (!goruldu.has(id)) { sonuc.push(k); goruldu.add(id); }
+  if (!Array.isArray(eski)) return sonuc;
+  const yer = new Map(sonuc.map((k, i) => [k.id, i]));
+  const yeniler = [];
+  for (const k of eski) {
+    if (!k || !k.id) continue;
+    const i = yer.get(k.id);
+    if (i == null) { yer.set(k.id, -1); yeniler.push(k); }
+    else if (i >= 0 && (k.gecmis?.length || 0) > (sonuc[i].gecmis?.length || 0)) sonuc[i] = k;
+  }
+  if (!baska) { kartlarKirli = true; setTimeout(kaydetPlanla, 0); }
+  return [...yeniler, ...sonuc];
+}
+
 async function yetimleriSil(idler, anahtarIdler) {
   if (kilit) return;
   try {
@@ -262,6 +308,8 @@ async function yetimleriSil(idler, anahtarIdler) {
     const guncel = await islem("durum", "readonly", (d) => d.durum.get(LISTE));
     for (const b of guncel?.belgeler || []) idler.add(b.id);
     const anahtarlar = await islem("dosyalar", "readonly", (d) => d.dosyalar.getAllKeys());
+    const oncekiler = await islem("durum", "readonly", (d) => d.durum.getAllKeys(aralik("oncekiDizin:")));
+    anahtarIdler = [...anahtarIdler, ...oncekiler.map((k) => k.slice("oncekiDizin:".length))];
     // Ek dosyalar belgesine göre: belgesi yaşıyorsa kalır
     const dosyaIdler = anahtarlar.map((k) => (ekMi(k) ? ekBelgesi(k) : k));
     // "Geri al" bildirimi açık duran belge de kalır
@@ -283,22 +331,32 @@ export function kayitKur({ oncesi, mesgul, yakinda } = {}) {
     if (id && o?.tur !== "sil") kirli.add(id);
     if (id && o?.tur === "sil") silBekleyen.add(id);
     if (id && o?.tur === "ekle") silBekleyen.delete(id);
-    if (id && o?.tur === "not") degisen.add(id);
+    if (id && o?.tur === "not") { degisen.add(id); goruntuIste(id); }
+    if (o?.tur !== "sayfa" && o?.tur !== "kapak") yedekDegisti = true;
     // Ekran kapanınca ("sayfa") hemen yazılır: kitaplığa dönüp uygulamadan çıkan yazdığını kaybetmesin
     if (o?.tur === "sayfa" && id) hemenKaydet();
     else kaydetPlanla();
   });
-  const icerik = (o) => { if (o?.belgeId) { kirli.add(o.belgeId); degisen.add(o.belgeId); } kaydetPlanla(); };
+  const icerik = (o) => { if (o?.belgeId) { kirli.add(o.belgeId); degisen.add(o.belgeId); goruntuIste(o.belgeId); } yedekDegisti = true; kaydetPlanla(); };
   bus.on("belge:degisti", icerik);
   bus.on("asistan:not", icerik);
-  bus.on("kirpintilar", () => { kirpintilarKirli = true; kaydetPlanla(); });
-  bus.on("kartlar", () => { kartlarKirli = true; kaydetPlanla(); });
-  bus.on("derlemeler", () => { derlemelerKirli = true; kaydetPlanla(); });
+  bus.on("kirpintilar", () => { kirpintilarKirli = true; yedekDegisti = true; kaydetPlanla(); });
+  // Kart başına yazılır: bir cevap yalnız o kartı yazar. Kartı belli olmayan olay bütün kartları yazdırır.
+  bus.on("kartlar", (o) => {
+    const id = o?.kart?.id;
+    if (id && (o.tur === "ekle" || o.tur === "guncelle" || o.tur === "sil")) {
+      kirliKartlar.add(id);
+      if (o.tur !== "guncelle") kartSiraKirli = true;
+    } else kartlarKirli = true;
+    yedekDegisti = true;
+    kaydetPlanla();
+  });
+  bus.on("derlemeler", () => { derlemelerKirli = true; yedekDegisti = true; kaydetPlanla(); });
   bus.on("ayarlar", () => { yzKirli = true; kaydetPlanla(); });
   document.addEventListener("pointerup", kaydetPlanla, { capture: true, passive: true });
   document.addEventListener("input", kaydetPlanla, { capture: true, passive: true });
   // Android Chrome arka plandaki sekmeyi kapatabilir: gizlenince her şey hemen yazılır
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") hemenKaydet({ tam: true, cikis: true }); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") cikisKaydi = hemenKaydet({ tam: true, cikis: true }); });
   addEventListener("pagehide", () => hemenKaydet({ tam: true, cikis: true }));
 }
 
@@ -329,9 +387,20 @@ export function hemenKaydet({ tam = false, cikis = false } = {}) {
   try { acikIdler = ayar.oncesi() || []; } catch { /* açık ekran kendi konumunu yazamadıysa son hâli yeter */ }
   const idler = new Set([...kirli, ...acikIdler]);
   kirli.clear();
-  const hepsi = hepsiKirli, kartY = tam || hepsi || kartlarKirli, kirpY = tam || hepsi || kirpintilarKirli, yzY = tam || hepsi || yzKirli;
+  const hepsi = hepsiKirli, kirpY = tam || hepsi || kirpintilarKirli, yzY = tam || hepsi || yzKirli;
   const derY = tam || hepsi || derlemelerKirli;
-  hepsiKirli = kartlarKirli = kirpintilarKirli = yzKirli = derlemelerKirli = false;
+  // Kartlar gizlenirken de yalnız değişenler yazılır (bin görselli kartı her çıkışta yazmak yarım saniye sürer)
+  const kartHepsi = hepsi || kartlarKirli, kartIdler = kartHepsi ? [] : [...kirliKartlar], siraY = kartHepsi || kartSiraKirli;
+  const kartY = kartHepsi || kartIdler.length > 0 || siraY;
+  hepsiKirli = kartlarKirli = kirpintilarKirli = yzKirli = derlemelerKirli = kartSiraKirli = false;
+  kirliKartlar.clear();
+  // Bugün ilk kez değişen belgenin kayıttaki hâli önce kopyalanır (önceki hâl); o belgenin verisi kopyadan sonra
+  // yazılır. Çıkışta beklenmez: veri önce gider, kopya bir dahaki yazmaya kalır.
+  const kopyalar = new Map();
+  if (!cikis && goruntuBekleyen.size) {
+    for (const id of goruntuBekleyen) kopyalar.set(id, goruntuAl(id));
+    goruntuBekleyen.clear();
+  }
   // İçeriği değişen belge damgalanır: yedekten yüklerken hangi sürümün yeni olduğu buna bakar
   const simdi = Date.now();
   for (const id of degisen) { const b = belgeBul(id); if (b) b.degisim = simdi; }
@@ -339,13 +408,25 @@ export function hemenKaydet({ tam = false, cikis = false } = {}) {
   // Ayrı işlemler: liste önce ve tek başına gider. Büyük bir belgenin ya da kırpıntıların kota hatası
   // ilerlemeyi, yeni belgeleri ve öbür belgelerin verisini götürmez. put kopyayı işlem sırası gelince alır.
   const hizli = cikis && kilitBizde;
-  const yaz = (fn, geri) => denetliYaz(fn, hizli).then(() => true, (hata) => { geri(); return hata; });
+  const yaz = (fn, geri, tamam) => denetliYaz(fn, hizli).then(() => { tamam?.(); return true; }, (hata) => { geri(); return hata; });
   const isler = [yaz((d) => d.put(listeKaydi(), LISTE), () => {})];
-  if (kartY || yzY || derY) isler.push(yaz((d) => {
-    if (kartY) d.put(store.kartlar, "kartlar");
+  let kartSonuc = null;
+  const kartGeri = () => {
+    kartlarKirli ||= kartHepsi;
+    for (const id of kartIdler) kirliKartlar.add(id);
+    kartSiraKirli ||= siraY;
+    yzKirli ||= yzY;
+    derlemelerKirli ||= derY;
+  };
+  const kartIsi = (atla) => yaz((d) => {
+    if (kartY) kartSonuc = kartlariYaz(d, { hepsi: kartHepsi, idler: kartIdler, sira: siraY, atla });
     if (derY) d.put(store.derlemeler, "derlemeler");
     if (yzY) { try { d.put(store.ayarlar.yz, YZ); } catch { /* kopyalanamayan alan */ } }
-  }, () => { kartlarKirli ||= kartY; yzKirli ||= yzY; derlemelerKirli ||= derY; }));
+  }, kartGeri, () => kartSonuc?.());
+  // Bütün kartlar yazılacaksa (göç, toplu değişiklik) ve sayfa gitmiyorsa önce küçük işlemlerle: bin görselli kartın
+  // tek kopyası ekranı saniyelerce tutardı. Son işlem kalanları, sırayı ve silinenleri yazar.
+  const parcali = kartHepsi && !hizli && store.kartlar.length > KART_PARCA * 2;
+  if (kartY || yzY || derY) isler.push(parcali ? kartlariParcaParca().then(kartIsi, (hata) => { kartGeri(); return hata; }) : kartIsi(null));
   // Büyük kopyalar (kırpıntı görselleri, belge verisi) işlem sırası gelince alınır: o arada kalem indiyse
   // yazılmaz, kalem kalkınca yeniden planlanır (gizlenirken beklenmez)
   const kalemInik = () => !tam && ayar.mesgul();
@@ -358,10 +439,11 @@ export function hemenKaydet({ tam = false, cikis = false } = {}) {
       continue;
     }
     if (b?.veri == null) continue;
-    isler.push(yaz((d) => {
+    const veriYaz = () => yaz((d) => {
       if (kalemInik()) return false;
       try { d.put(b.veri, veriAnahtari(id)); } catch (hata) { console.warn("[kenar-notu] Veri yazılamadı:", id, hata); }
-    }, () => kirli.add(id)));
+    }, () => kirli.add(id));
+    isler.push(kopyalar.has(id) ? kopyalar.get(id).then(veriYaz, veriYaz) : veriYaz());
   }
   return Promise.all(isler).then((sonuclar) => {
     const ertelenen = sonuclar.some((s) => s?.kod === "ertele");
@@ -391,6 +473,56 @@ export function ornekVeriSifirla(belge) {
   belge.veri = null;
   veriSilinecek.add(belge.id);
   kirli.add(belge.id);
+}
+
+// Kartları açık bir "durum" işlemine yazar. hepsi: bütün kartlar yazılır, kayıtta kalıp listede olmayanlar ve eski tek
+// kayıt silinir. Değilse yalnız idler: listede varsa yazılır, yoksa silinir. Dönen işlev işlem bitince çağrılır
+// (kayıtlı kart kümesi ancak yazma kesinleşince güncellenir).
+function kartlariYaz(d, { hepsi = false, idler = [], sira = false, kartlar = store.kartlar, atla = null } = {}) {
+  const yazilan = [], silinen = [];
+  if (hepsi) {
+    const canli = new Set();
+    for (const k of kartlar) {
+      if (!k?.id || canli.has(k.id)) continue;
+      if (atla?.has(k.id)) { canli.add(k.id); continue; }
+      d.put(k, kartAnahtari(k.id));
+      canli.add(k.id);
+      yazilan.push(k.id);
+    }
+    for (const id of kayitliKartlar) if (!canli.has(id)) { d.delete(kartAnahtari(id)); silinen.push(id); }
+    d.delete(ESKI_KARTLAR);
+  } else if (idler.length) {
+    const harita = idler.length > 4 ? new Map(kartlar.map((k) => [k?.id, k])) : null;
+    for (const id of idler) {
+      const k = harita ? harita.get(id) : kartlar.find((x) => x?.id === id);
+      if (k) { d.put(k, kartAnahtari(id)); yazilan.push(id); } else { d.delete(kartAnahtari(id)); silinen.push(id); }
+    }
+  }
+  if (hepsi || sira) d.put(kartlar.filter((k) => k?.id).map((k) => k.id), KART_SIRA);
+  return () => {
+    for (const id of yazilan) kayitliKartlar.add(id);
+    for (const id of silinen) kayitliKartlar.delete(id);
+  };
+}
+
+// Bütün kartlar parça parça (her parça ayrı işlem, arada ekran çizilir; kalem yazarken beklenir).
+// Dönen: yazılan kart id'leri. Bu arada silinen kart yazılmaz; değişen kart kendi olayıyla yeniden yazılır.
+const KART_PARCA = 25;
+async function kartlariParcaParca() {
+  const atla = new Set(), kopya = store.kartlar.slice();
+  for (let i = 0; i < kopya.length; i += KART_PARCA) {
+    for (let n = 0; ayar.mesgul() && n < 40; n++) await new Promise((r) => setTimeout(r, 500));
+    const parca = kopya.slice(i, i + KART_PARCA);
+    let yazilan = [];
+    await denetliYaz((d) => {
+      const canli = new Set(store.kartlar.map((k) => k?.id));
+      yazilan = parca.filter((k) => k?.id && canli.has(k.id));
+      for (const k of yazilan) d.put(k, kartAnahtari(k.id));
+    });
+    for (const k of yazilan) { atla.add(k.id); kayitliKartlar.add(k.id); }
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return atla;
 }
 
 // Tek "durum" işlemi; önce liste damgası denetlenir, başka sekme yazdıysa iptal edilir (kod "degisti").
@@ -472,6 +604,203 @@ export function kayitBeklet(d) {
   if (!beklet) kaydetPlanla();
 }
 
+/* ---------- belgenin önceki hâli (OZELLIKLER-8 §3.2) ---------- */
+// Belge bugün ilk kez değişince kayıttaki hâli (son yazılan, yani dünkü ya da son oturumdaki) kopyalanır:
+// belge başına günde en çok bir kez, en çok 7 kopya. Kopya bellekteki değişmiş hâlden değil kayıttan alınır.
+// Kopya işçide alınır (5000 çizgili belgede okuma ve yazma ana iş parçacığını iki saniyeden uzun tutuyordu);
+// o belgenin yeni verisi kopya bitince yazılır. İşçi açılamazsa kopya burada, yine yazmadan önce açılan işlemle alınır
+// (IndexedDB işlemleri açıldıkları sırayla işler). Çok büyük belgede kopya sayısı düşer ya da hiç alınmaz (yedek-isci.js).
+const ikiHane = (n) => String(n).padStart(2, "0");
+const gunAnahtari = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${ikiHane(d.getMonth() + 1)}-${ikiHane(d.getDate())}`; };
+const bugunMu = (t) => !!t && gunAnahtari(t) === gunAnahtari();
+const goruntuBekleyen = new Set();   // ilk değişikliği gelen, kopyası bir sonraki yazmada alınacak belgeler
+const goruntuBakilan = new Set();    // "id|gün": bu oturumda bakıldı
+function goruntuIste(id) {
+  if (kilit || !id) return;
+  const k = id + "|" + gunAnahtari();
+  if (goruntuBakilan.has(k)) return;
+  goruntuBakilan.add(k);
+  goruntuBekleyen.add(id);
+}
+// Dönen söz kopya işlemi bitince (alınsın alınmasın) çözülür, hata fırlatmaz
+async function goruntuAl(id) {
+  const b = belgeBul(id);
+  if (!b || kilit) return false;
+  const is = { id, eskiZaman: Number(b.degisim) || 0, gun: gunAnahtari(), simdi: Date.now() };
+  try {
+    const w = await isciAc();
+    if (w) return (await isciIsi(w, () => w.postMessage({ is: 1, tur: "onceki", ...is }))).sonuc;
+  } catch (hata) { console.warn("[kenar-notu] Önceki hâl işçide alınamadı:", hata); }
+  try { return await oncekiKopyaAl(await vtAc(), is); } catch { return false; }
+}
+
+// Belge menüsü: { liste: [{ anahtar, zaman, alindi, ozet, donus }] en yeni önce, buyuk: kopya alınamayacak kadar büyük }
+// zaman: kopyalanan hâlin son değiştiği an (0: bilinmiyor), alindi: kopyanın alındığı an, donus: geri dönerken saklanan
+export async function oncekiHaller(belgeId) {
+  try {
+    const z = dizinTemizle(await islem("durum", "readonly", (d) => d.durum.get(oncekiDizinAnahtari(belgeId))));
+    z.liste.sort((a, b) => (b.alindi || 0) - (a.alindi || 0));
+    return z;
+  } catch { return { liste: [], buyuk: false }; }
+}
+// Seçilen hâle döner. Önce bellekteki son hâl yazılır, sonra o hâl de kopya olarak saklanır ve seçilen kopya
+// belgenin verisi olur (tek işlem). Dönen: saklanan şimdiki hâlin anahtarı ("Geri al" için; veri yoksa null).
+// Belge açıkken çağrılmamalı (app.js yalnız kitaplıktan çağırır).
+export async function oncekiHaleDon(belgeId, anahtar) {
+  if (kilit || yazarDegil) throw Object.assign(new Error("Kayıt kapalı"), { kod: "kilit" });
+  const b = belgeBul(belgeId);
+  if (!b || typeof anahtar !== "string" || !anahtar.startsWith("onceki:" + belgeId + ":")) throw Object.assign(new Error("Önceki hâl bulunamadı"), { kod: "yok" });
+  if (!(await hemenKaydet())) throw Object.assign(new Error("Kayıt yazılamadı"), { kod: "yazma" });
+  const simdi = Date.now();
+  let hedef = null, donus = null;
+  await islem("durum", "readwrite", (d) => {
+    const ds = d.durum;
+    const qd = ds.get(oncekiDizinAnahtari(belgeId)), qh = ds.get(anahtar), qv = ds.get(veriAnahtari(belgeId));
+    qv.onsuccess = () => {
+      if (qh.result == null) return;
+      hedef = qh.result;
+      const liste = dizinTemizle(qd.result).liste;
+      if (qv.result != null) {
+        const g = { anahtar: oncekiAnahtari(belgeId, simdi), gun: gunAnahtari(simdi), zaman: Number(b.degisim) || 0, alindi: simdi, ozet: ozetCikar(qv.result), donus: true };
+        ds.put(qv.result, g.anahtar);
+        liste.unshift(g);
+        donus = g.anahtar;
+      }
+      ds.put(hedef, veriAnahtari(belgeId));
+      oncekiBuda(ds, belgeId, liste);
+    };
+    return qv;
+  });
+  if (hedef == null) throw Object.assign(new Error("Önceki hâl bulunamadı"), { kod: "yok" });
+  // Bellek de kayıtla aynı olur; bu dönüş bugünün kopyası sayılmaz
+  goruntuBakilan.add(belgeId + "|" + gunAnahtari());
+  b.veri = hedef;
+  bus.emit("belge:degisti", { belgeId });
+  bus.emit("belgeler", { tur: "geri", id: belgeId });
+  return donus;
+}
+
+/* ---------- klasöre otomatik yedek (OZELLIKLER-8 §3.1) ---------- */
+// Kullanıcının seçtiği klasöre (showDirectoryPicker) günde bir .kenar yazılır: kenar-notu-YYYY-AA-GG.kenar,
+// aynı gün yeniden yazılırsa üstüne. Bu adla başlayan en yeni 7 dosya kalır, eskiler silinir; başka dosyaya dokunulmaz.
+// Klasör tutamacı "durum" deposunda; "Örnek verilere dön" ile gider (sıfırlanmış kitaplık bugünkü yedeğin üstüne yazılmasın).
+// Ne zaman: açılıştan sonra (bugün yedek yoksa), açıkken gün değişince ve sayfa gizlenirken (değişiklik varsa ve
+// son yedekten 2 saat geçtiyse; önce kayıt biter). İzin yoksa "yedek:klasor" { tur: "izin-gerek" } olayı:
+// app.js dokunuşla izin isteyen fişi gösterir (tarayıcı izni yalnız dokunuşla verir).
+const KLASOR = "yedekKlasoru";
+const OTO_EN_COK = 7;
+const OTO_AD = /^kenar-notu-\d{4}-\d{2}-\d{2}\.kenar$/;
+let yedekDegisti = false;   // son otomatik yedekten beri kitaplıkta değişiklik oldu mu
+export const klasorDestegi = () => typeof globalThis.showDirectoryPicker === "function";
+async function klasorKaydi() {
+  try { return (await islem("durum", "readonly", (d) => d.durum.get(KLASOR))) || null; } catch { return null; }
+}
+const klasorKaydiYaz = (k) => islem("durum", "readwrite", (d) => d.durum.put(k, KLASOR));
+async function klasorIzni(tutamac) {
+  try { return await tutamac.queryPermission({ mode: "readwrite" }); } catch { return "prompt"; }
+}
+// -> null ya da { ad, son, dosya, hata, izin: "granted" | "prompt" | "denied" }
+export async function yedekKlasoru() {
+  const k = await klasorKaydi();
+  if (!k?.tutamac) return null;
+  return { ad: k.tutamac.name, son: k.son || 0, dosya: k.dosya || "", hata: k.hata || "", izin: await klasorIzni(k.tutamac) };
+}
+// Dokunuşla çağrılır. Vazgeçilirse AbortError fırlar. Seçilince ilk yedek hemen yazılır.
+export async function yedekKlasoruSec({ ilerleme } = {}) {
+  if (yazarDegil) throw Object.assign(new Error("Kitaplık başka pencerede açık"), { kod: "baska" });
+  const tutamac = await globalThis.showDirectoryPicker({ id: "kenar-notu-yedek", mode: "readwrite" });
+  await klasorKaydiYaz({ tutamac, son: 0, dosya: "", hata: "" });
+  bus.emit("yedek:klasor", { tur: "secildi", ad: tutamac.name });
+  return klasoreYedekYaz({ ilerleme });
+}
+// Dokunuşla çağrılır; izin verilirse bugünün yedeği yoksa yazılır
+export async function yedekKlasoruIzinIste() {
+  const k = await klasorKaydi();
+  if (!k?.tutamac) return false;
+  let izin = "denied";
+  try { izin = await k.tutamac.requestPermission({ mode: "readwrite" }); } catch { /* reddedildi */ }
+  if (izin !== "granted") return false;
+  bus.emit("yedek:klasor", { tur: "izin" });
+  if (!bugunMu(k.son) || yedekDegisti) klasoreYedekYaz();
+  return true;
+}
+// Otomatik yedek kapanır; klasördeki dosyalara dokunulmaz
+export async function yedekKlasoruBirak() {
+  await islem("durum", "readwrite", (d) => d.durum.delete(KLASOR));
+  bus.emit("yedek:klasor", { tur: "birakildi" });
+}
+let otoSoz = null;
+export const otoYedekSuruyor = () => !!otoSoz;
+// Aynı anda tek yazma; sürerken çağıran aynı sözü alır. Dönen söz yazıldıysa true.
+export function klasoreYedekYaz({ ilerleme } = {}) {
+  otoSoz ||= klasoreYaz(ilerleme).finally(() => { otoSoz = null; });
+  return otoSoz;
+}
+async function klasoreYaz(ilerleme) {
+  if (yazarDegil || kilit) return false;
+  const k = await klasorKaydi();
+  if (!k?.tutamac) return false;
+  if ((await klasorIzni(k.tutamac)) !== "granted") { bus.emit("yedek:klasor", { tur: "izin-gerek" }); return false; }
+  yedekDegisti = false;
+  bus.emit("yedek:klasor", { tur: "yaziyor" });
+  const ad = `kenar-notu-${gunAnahtari()}.kenar`;
+  try {
+    const blob = await yedekAl({ ilerleme });
+    const fh = await k.tutamac.getFileHandle(ad, { create: true });
+    // createWritable geçici dosyaya yazar, close() ile yerine koyar: yarıda kalırsa eski dosya bozulmaz
+    const w = await fh.createWritable();
+    try { await w.write(blob); await w.close(); }
+    catch (hata) { await w.abort?.().catch(() => {}); throw hata; }
+    await eskiYedekleriSil(k.tutamac, ad);
+    const son = Date.now();
+    await klasorKaydiYaz({ ...k, son, dosya: ad, hata: "" }).catch(() => {});
+    bus.emit("yedek:klasor", { tur: "yazildi", son, dosya: ad, boyut: blob.size });
+    return true;
+  } catch (hata) {
+    yedekDegisti = true;
+    console.warn("[kenar-notu] Klasöre yedek yazılamadı:", hata);
+    const mesaj = hata?.kod === "eksik" || hata?.kod === "buyuk" ? hata.message
+      : hata?.name === "NotAllowedError" ? "Klasöre yazma izni yok."
+        : hata?.name === "NotFoundError" ? "Yedek klasörü bulunamadı; yeniden seç."
+          : hata?.name === "QuotaExceededError" ? "Diskte yer kalmadı."
+            : "Yedek klasöre yazılamadı.";
+    await klasorKaydiYaz({ ...k, hata: mesaj }).catch(() => {});
+    bus.emit("yedek:klasor", { tur: "hata", mesaj });
+    return false;
+  }
+}
+async function eskiYedekleriSil(dizin, yeni) {
+  const adlar = [];
+  try { for await (const [ad, t] of dizin.entries()) if (t.kind === "file" && OTO_AD.test(ad)) adlar.push(ad); }
+  catch { return; }
+  // Tarih adda: ters sıralı ilk 7 en yenileri
+  adlar.sort().reverse();
+  for (const ad of adlar.slice(OTO_EN_COK)) if (ad !== yeni) await dizin.removeEntry(ad).catch(() => {});
+}
+// Kayıt yüklenince bir kez. Klasöre yazamayan tarayıcıda app.js'e hatırlatma sırası gelip gelmediği sorulur.
+let cikisKaydi = Promise.resolve(), otoKuruldu = false;
+function otoYedekKur() {
+  if (otoKuruldu || yazarDegil || kilit) return;
+  otoKuruldu = true;
+  if (!klasorDestegi()) { setTimeout(() => bus.emit("yedek:klasor", { tur: "hatirlat" }), 20000); return; }
+  const dene = async (gizli = false) => {
+    if (otoSoz || kilit) return;
+    const k = await klasorKaydi();
+    if (!k?.tutamac) return;
+    const gunlu = !bugunMu(k.son);
+    if (gizli ? !(yedekDegisti && (gunlu || Date.now() - (k.son || 0) > 2 * 36e5)) : !gunlu) return;
+    klasoreYedekYaz();
+  };
+  // Açılış yükü bitince, boş bir anda
+  setTimeout(() => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => dene(), { timeout: 10000 }) : dene()), 15000);
+  setInterval(() => { if (document.visibilityState === "visible") dene(); }, 30 * 60e3);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { dene(); return; }
+    // Gizlenirken önce kitaplık kaydı biter; yedek ondan sonra işçide hazırlanır
+    cikisKaydi.then(() => dene(true));
+  });
+}
+
 /* ---------- içe aktarma ---------- */
 // İlk 64 KB için FNV-1a; ad ve boyutla birlikte aynı dosyayı tanır
 function ozet(bayt) {
@@ -479,41 +808,59 @@ function ozet(bayt) {
   for (let i = 0; i < bayt.length; i++) { h1 ^= bayt[i]; h1 = Math.imul(h1, 0x01000193); }
   return (h1 >>> 0).toString(36);
 }
-// "zip": içine bakılmadan karar verilemeyen zip (belgeIceAktar bakar: yalnız görsel varsa çizgi roman)
+// Tür içerikten tanınır, uzantı yalnız son çare (OZELLIKLER-8 §3.3): uzantısız ya da yanlış uzantılı dosya da açılır.
+// "zip": içine bakılmadan karar verilemeyen zip (zipTuru bakar)
 const CIZGI_MIME = /^application\/(vnd\.comicbook\+zip|x-cbz)$/i;
 const CBR_HATA = "CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.";
 function turBul(ad, mime, bas) {
   if (bas[0] === 0x25 && bas[1] === 0x50 && bas[2] === 0x44 && bas[3] === 0x46) return "pdf";   // %PDF
-  // RAR ("Rar!") ya da .cbr: açılamaz, nedeni söylenir
+  if (bas[0] === 0x50 && bas[1] === 0x4b && bas[2] === 3 && bas[3] === 4) {
+    // EPUB: zip'in ilk girdisi "mimetype", içeriği application/epub+zip (kurala uyan EPUB'da içine bakmak gerekmez)
+    const bas60 = new TextDecoder("latin1").decode(bas.subarray(30, 90));
+    if (bas60.startsWith("mimetype") && bas60.includes("application/epub+zip")) return "epub";
+    return "zip";
+  }
+  // RAR ("Rar!") ya da .cbr: açılamaz, nedeni söylenir (.cbr adlı ama zip olan dosya yukarıda CBZ diye açılır)
   if ((bas[0] === 0x52 && bas[1] === 0x61 && bas[2] === 0x72 && bas[3] === 0x21) || /\.cbr$/i.test(ad) || /comicbook-rar|x-cbr/i.test(mime || "")) {
     throw Object.assign(new Error(CBR_HATA), { kod: "cbr" });
-  }
-  if (bas[0] === 0x50 && bas[1] === 0x4b && bas[2] === 3 && bas[3] === 4) {
-    // EPUB: zip'in ilk girdisi "mimetype", içeriği application/epub+zip
-    const bas60 = new TextDecoder("latin1").decode(bas.subarray(30, 90));
-    if (bas60.includes("epub")) return "epub";
-    if (/\.epub$/i.test(ad)) return "epub";
-    if (/\.cbz$/i.test(ad) || CIZGI_MIME.test(mime || "")) return "cizgi";
-    return "zip";
   }
   // %PDF başta değilse (önünde çöp bayt olan PDF'ler) ilk 1 KB'ta aranır
   if (new TextDecoder("latin1").decode(bas.subarray(0, 1024)).includes("%PDF-")) return "pdf";
   if (/\.pdf$/i.test(ad) || mime === "application/pdf") return "pdf";
   return null;
 }
-// Zip'in içinde yalnız görsel (ve ComicInfo.xml) varsa çizgi roman sayılır; gizli dosyalar ve __MACOSX atlanır
+// Zip'in içine bakılır: "mimetype" girdisi application/epub+zip ise EPUB, Kenar Notu yedeğinin düzeni (durum.json,
+// dosyalar/, ekler/) ise "yedek", yalnız görsel (ve ComicInfo.xml) varsa çizgi roman (gizli dosyalar ve __MACOSX
+// atlanır), paket dosyası (container.xml ya da .opf) varsa EPUB. Karar verilemezse uzantıya ve türe bakılır.
 const GORSEL_ADI = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
-async function yalnizGorselMi(file) {
-  let yollar = null;
-  try { yollar = (await arsivAc(file))?.yollar() || null; } catch { yollar = null; }
-  if (!yollar && file.size <= 512 * 2 ** 20) {
-    try { const z = await (await jszipYukle()).loadAsync(file); yollar = Object.keys(z.files).filter((y) => !z.files[y].dir); }
-    catch { yollar = null; }
+async function zipTuru(file, ad, mime) {
+  let arsiv = null;
+  try { arsiv = await arsivAc(file); } catch { arsiv = null; }
+  if (!arsiv && file.size <= 512 * 2 ** 20) {
+    try { arsiv = jszipArsivi(await (await jszipYukle()).loadAsync(file)); } catch { arsiv = null; }
   }
-  if (!yollar) return false;
+  const yollar = arsiv?.yollar() || [];
+  if (arsiv?.var("mimetype")) {
+    let tur = "";
+    try { tur = (await (await arsiv.blob("mimetype")).slice(0, 200).text()).trim(); } catch { tur = ""; }
+    if (tur === "application/epub+zip") return "epub";
+  }
+  if (yollar.includes("durum.json") && yollar.every((y) => y === "durum.json" || /^(dosyalar|ekler)\//.test(y))) return "yedek";
   const anlamli = yollar.filter((y) => !/(^|\/)(__MACOSX\/|\.)/.test(y) && !/(^|\/)(Thumbs\.db|desktop\.ini)$/i.test(y));
   const gorsel = anlamli.filter((y) => GORSEL_ADI.test(y));
-  return gorsel.length > 0 && anlamli.every((y) => GORSEL_ADI.test(y) || /(^|\/)ComicInfo\.xml$/i.test(y));
+  if (gorsel.length > 0 && anlamli.every((y) => GORSEL_ADI.test(y) || /(^|\/)ComicInfo\.xml$/i.test(y))) return "cizgi";
+  if (yollar.some((y) => /^META-INF\/container\.xml$/i.test(y) || /\.opf$/i.test(y))) return "epub";
+  if (/\.epub$/i.test(ad) || mime === "application/epub+zip") return "epub";
+  if (/\.cbz$/i.test(ad) || CIZGI_MIME.test(mime || "")) return "cizgi";
+  if (/\.kenar$/i.test(ad) && yollar.includes("durum.json")) return "yedek";
+  return null;
+}
+// Dosyanın türü içeriğinden: "pdf" | "epub" | "cizgi" | "yedek" (.kenar) | null. CBR için kod "cbr" ile hata fırlar.
+export async function dosyaTuru(file) {
+  const ad = String(file?.name || "");
+  const bas = new Uint8Array(await file.slice(0, 65536).arrayBuffer());
+  const tur = turBul(ad, file.type, bas);
+  return tur === "zip" ? zipTuru(file, ad, file.type) : tur;
 }
 const zamanAsimi = (soz, ms) => Promise.race([soz, new Promise((_, h) => setTimeout(() => h(new Error("zaman aşımı")), ms))]);
 
@@ -597,7 +944,9 @@ export async function belgeIceAktar(file, { klasor } = {}) {
   const ad = String(file?.name || "Adsız");
   const bas = new Uint8Array(await file.slice(0, 65536).arrayBuffer());
   let tur = turBul(ad, file.type, bas);
-  if (tur === "zip") tur = (await yalnizGorselMi(file)) ? "cizgi" : null;
+  if (tur === "zip") tur = await zipTuru(file, ad, file.type);
+  // Kenar Notu yedeği (adı ne olursa olsun): app.js yedekten yüklemeyi sorar
+  if (tur === "yedek") throw Object.assign(new Error("Kenar Notu yedeği: " + ad), { kod: "yedek" });
   if (!tur) throw Object.assign(new Error("Desteklenmeyen dosya: " + ad), { kod: "tur" });
   const iz = `${ad}|${file.size}|${ozet(bas)}`;
   const vardi = store.belgeler.find((b) => b.parmakIzi === iz);
@@ -745,7 +1094,8 @@ function yerelTercihleriYaz(o) {
   try { for (const k of YEREL_TERCIHLER) if (typeof o[k] === "string" && o[k].length < 200000) localStorage.setItem("kn-tasarim:" + k, o[k]); } catch { /* yer yok */ }
 }
 
-export async function yedekAl() {
+// ilerleme(oran): 0..1, ekranda "Yedek hazırlanıyor %40" için
+export async function yedekAl({ ilerleme = () => {} } = {}) {
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
   const durum = {
     uygulama: "Kenar Notu", bicim: 1, surum: VT.surum, ornekSurum: ornekSurumu, zaman: Date.now(),
@@ -785,119 +1135,71 @@ export async function yedekAl() {
   // zip64 yazılmaz: 4 GB'ı geçen arşiv bozuk çıkar, baştan söylenir
   const toplam = girdiler.reduce((t, [, b]) => t + b.size, 0);
   if (toplam > YEDEK_SINIR) throw Object.assign(new Error("Kitaplık 4 GB'ı geçiyor; yedek tek dosyada en çok 4 GB olabilir."), { kod: "buyuk" });
-  return zipYaz(girdiler, new TextEncoder().encode(JSON.stringify(durum)));
+  // JSON, CRC ve sıkıştırma işçide (deneme turunda büyük kitaplıkta ekran 10 ile 26 sn kilitleniyordu).
+  // İşçi açılamazsa aynı kod burada çalışır.
+  const w = await isciAc();
+  if (!w) return yedekUret({ durum, girdiler }, ilerleme);
+  // Büyük diziler önce sabitlenir (o arada eklenen kart iki kez girmesin), sonra öğe öğe kopyalanır:
+  // her kopya kısa bir iş, arada ekran çizilir. Sayfa gizliyken beklenmez (zamanlayıcılar yavaşlar).
+  const diziler = Object.fromEntries(PARCALI.map((a) => [a, Array.isArray(durum[a]) ? durum[a].slice() : null]));
+  const bas = { ...durum };
+  for (const a of PARCALI) if (diziler[a]) bas[a] = [];
+  const adet = PARCALI.reduce((t, a) => t + (diziler[a]?.length || 0), 0) || 1;
+  const sonuc = await isciIsi(w, async () => {
+    w.postMessage({ is: 1, tur: "yaz", durum: bas, girdiler });
+    let giden = 0, dilim = performance.now();
+    for (const alan of PARCALI) for (const x of diziler[alan] || []) {
+      try { w.postMessage({ is: 1, tur: "parca", alan, liste: [x] }); }
+      catch { w.postMessage({ is: 1, tur: "parca", alan, liste: [JSON.parse(JSON.stringify(x))] }); }
+      giden++;
+      if (performance.now() - dilim > 12) {
+        ilerleme((0.15 * giden) / adet);
+        if (document.visibilityState !== "hidden") await new Promise((r) => setTimeout(r, 0));
+        dilim = performance.now();
+      }
+    }
+    w.postMessage({ is: 1, tur: "bitir" });
+  }, { ilerleme: (o) => ilerleme(0.15 + o * 0.85) });
+  return sonuc.blob;
 }
 const YEDEK_SINIR = 4 * 2 ** 30 - 64 * 2 ** 20;
 
-/* ---------- zip yazıcı ---------- */
-// Dosyalar sıkıştırılmadan (STORE; PDF, EPUB, ses ve JPEG zaten sıkışık) eklenir ve arşiv Blob'ların
-// kendisinden kurulur: içerik belleğe kopyalanmaz, yalnız CRC için parça parça okunur.
-// durum.json deflate-raw ile sıkışır (tarayıcı desteklemezse saklanır).
-const CRC_TABLO = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
-  return t;
-})();
-function crcEkle(crc, bayt) {
-  let c = crc ^ 0xffffffff;
-  for (let i = 0; i < bayt.length; i++) c = CRC_TABLO[(c ^ bayt[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+/* ---------- yedek işçisi ---------- */
+// Her iş için bir işçi açılır, iş bitince kapanır (büyük metinler bellekte kalmasın).
+// Modül işçisi açılamazsa (eski tarayıcı) ya da 5 sn'de hazır olmazsa null: iş ana iş parçacığında yapılır.
+function isciAc() {
+  return new Promise((tamam) => {
+    let w;
+    try { w = new Worker(new URL("./yedek-isci.js", import.meta.url), { type: "module" }); }
+    catch { tamam(null); return; }
+    const birak = () => { clearTimeout(sure); w.terminate(); tamam(null); };
+    const sure = setTimeout(birak, 5000);
+    w.onmessage = (e) => {
+      if (e.data?.tur !== "hazir") return;
+      clearTimeout(sure);
+      w.onmessage = w.onerror = null;
+      tamam(w);
+    };
+    w.onerror = (e) => { e.preventDefault?.(); birak(); };
+  });
 }
-async function blobCrc(blob) {
-  let crc = 0;
-  const okuyucu = blob.stream().getReader();
-  for (;;) {
-    const { done, value } = await okuyucu.read();
-    if (done) return crc;
-    crc = crcEkle(crc, value);
-  }
-}
-async function zipYaz(girdiler, durumBayt) {
-  const parcalar = [], dizin = [];
-  const kodla = new TextEncoder();
-  const t = new Date();
-  const saat = (t.getHours() << 11) | (t.getMinutes() << 5) | (t.getSeconds() >> 1);
-  const tarih = ((t.getFullYear() - 1980) << 9) | ((t.getMonth() + 1) << 5) | t.getDate();
-  let konum = 0;
-  const ekle = (yol, veri, yontem, crc, ham) => {
-    const ad = kodla.encode(yol);
-    const yerel = new DataView(new ArrayBuffer(30));
-    yerel.setUint32(0, 0x04034b50, true);
-    yerel.setUint16(4, 20, true);
-    yerel.setUint16(6, 0x0800, true);   // UTF-8 ad
-    yerel.setUint16(8, yontem, true);
-    yerel.setUint16(10, saat, true);
-    yerel.setUint16(12, tarih, true);
-    yerel.setUint32(14, crc, true);
-    yerel.setUint32(18, veri.size, true);
-    yerel.setUint32(22, ham, true);
-    yerel.setUint16(26, ad.length, true);
-    parcalar.push(yerel.buffer, ad, veri);
-    const m = new DataView(new ArrayBuffer(46));
-    m.setUint32(0, 0x02014b50, true);
-    m.setUint16(4, 20, true);
-    m.setUint16(6, 20, true);
-    for (let i = 6; i < 28; i++) m.setUint8(i + 2, yerel.getUint8(i));   // bayraktan ad uzunluğuna kadar aynı
-    m.setUint32(42, konum, true);
-    dizin.push(m.buffer, ad);
-    konum += 30 + ad.length + veri.size;
-  };
-  for (const [yol, blob] of girdiler) ekle(yol, blob, 0, await blobCrc(blob), blob.size);
-  const durumCrc = crcEkle(0, durumBayt);
-  let durumVeri = new Blob([durumBayt]), yontem = 0;
-  try {
-    durumVeri = await new Response(durumVeri.stream().pipeThrough(new CompressionStream("deflate-raw"))).blob();
-    yontem = 8;
-  } catch { durumVeri = new Blob([durumBayt]); }
-  ekle("durum.json", durumVeri, yontem, durumCrc, durumBayt.length);
-  const dizinBoyut = dizin.reduce((t, p) => t + p.byteLength, 0);
-  const son = new DataView(new ArrayBuffer(22));
-  son.setUint32(0, 0x06054b50, true);
-  son.setUint16(8, girdiler.length + 1, true);
-  son.setUint16(10, girdiler.length + 1, true);
-  son.setUint32(12, dizinBoyut, true);
-  son.setUint32(16, konum, true);
-  return new Blob([...parcalar, ...dizin, son.buffer], { type: "application/zip" });
+// İşçiyle tek iş: gonder() mesajları yollar. "tamam" ile çözülür, "hata" ya da çöken işçiyle reddedilir.
+function isciIsi(w, gonder, { ilerleme, parca } = {}) {
+  return new Promise((tamam, hata) => {
+    let bitti = false;
+    const son = (fn, x) => { if (bitti) return; bitti = true; w.terminate(); fn(x); };
+    w.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.tur === "ilerleme") ilerleme?.(m.oran);
+      else if (m.tur === "parca") parca?.(m);
+      else if (m.tur === "tamam") son(tamam, m);
+      else if (m.tur === "hata") son(hata, Object.assign(new Error(m.mesaj || "Yedek işçisi hata verdi"), { kod: m.kod || "" }));
+    };
+    w.onerror = (e) => { e.preventDefault?.(); son(hata, Object.assign(new Error("Yedek işçisi durdu"), { kod: "isci" })); };
+    Promise.resolve().then(gonder).catch((x) => son(hata, x));
+  });
 }
 
-// Yedek arşivi dosya belleğe alınmadan okunur: içerik dizini sondan, saklanan (STORE) dosyalar
-// Blob.slice ile dilim olarak gelir. Yalnız durum.json açılır (deflate-raw). Kenar Notu'nun ürettiği
-// biçim içindir (zip64 yok); tanımazsa null döner ve JSZip denenir.
-async function arsivAc(file) {
-  const oku = async (bas, son) => new DataView(await file.slice(bas, son).arrayBuffer());
-  const n = file.size;
-  if (n < 22) return null;
-  const kuyrukBas = Math.max(0, n - 65557);
-  const kuyruk = await oku(kuyrukBas, n);
-  let e = -1;
-  for (let i = kuyruk.byteLength - 22; i >= 0; i--) if (kuyruk.getUint32(i, true) === 0x06054b50) { e = i; break; }
-  if (e < 0) return null;
-  const adet = kuyruk.getUint16(e + 10, true), dizinBoyut = kuyruk.getUint32(e + 12, true), dizinBas = kuyruk.getUint32(e + 16, true);
-  if (adet === 0xffff || dizinBas === 0xffffffff || dizinBas + dizinBoyut > n) return null;
-  const dz = await oku(dizinBas, dizinBas + dizinBoyut);
-  const cozucu = new TextDecoder();
-  const girdiler = new Map();
-  for (let i = 0, p = 0; i < adet; i++) {
-    if (p + 46 > dz.byteLength || dz.getUint32(p, true) !== 0x02014b50) return null;
-    const yontem = dz.getUint16(p + 10, true), boyut = dz.getUint32(p + 20, true);
-    const adUz = dz.getUint16(p + 28, true), ekUz = dz.getUint16(p + 30, true), yorumUz = dz.getUint16(p + 32, true);
-    const yerel = dz.getUint32(p + 42, true);
-    const ad = cozucu.decode(new Uint8Array(dz.buffer, dz.byteOffset + p + 46, adUz));
-    if (!ad.endsWith("/")) girdiler.set(ad, { yontem, boyut, yerel });
-    p += 46 + adUz + ekUz + yorumUz;
-  }
-  const blob = async (yol) => {
-    const g = girdiler.get(yol);
-    const y = await oku(g.yerel, g.yerel + 30);
-    if (y.getUint32(0, true) !== 0x04034b50) throw Object.assign(new Error("Bozuk girdi: " + yol), { kod: "bicim" });
-    const bas = g.yerel + 30 + y.getUint16(26, true) + y.getUint16(28, true);
-    const dilim = file.slice(bas, bas + g.boyut);
-    if (g.yontem === 0) return dilim;
-    if (g.yontem === 8) return new Response(dilim.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
-    throw Object.assign(new Error("Desteklenmeyen sıkıştırma: " + yol), { kod: "bicim" });
-  };
-  return { var: (yol) => girdiler.has(yol), blob, yollar: () => [...girdiler.keys()] };
-}
 function jszipArsivi(zip) {
   return {
     var: (yol) => !!zip.file(yol),
@@ -905,32 +1207,57 @@ function jszipArsivi(zip) {
     yollar: () => Object.keys(zip.files).filter((y) => !zip.files[y].dir),
   };
 }
-// Biçim hatası ile okuma ya da bellek hatası ayrılır (ikincisinde dosya yedek olabilir ama açılamadı)
-const okumaHatasi = (hata) => hata?.name === "NotReadableError" || hata?.name === "NotFoundError" || hata instanceof RangeError || /memory|allocation|bellek/i.test(hata?.message || "");
+const okumaHatasiOlustur = (hata) => Object.assign(new Error("Yedek dosyası okunamadı."), { kod: "okuma", neden: hata });
+// Arşivin içerik dizini burada okunur (dosyalar dilim olarak buradan alınır), durum.json işçide ayrıştırılır
 async function yedekArsivi(file) {
   let arsiv = null;
   try { arsiv = await arsivAc(file); }
   catch (hata) {
-    if (okumaHatasi(hata)) throw Object.assign(new Error("Yedek dosyası okunamadı."), { kod: "okuma", neden: hata });
+    if (okumaHatasi(hata)) throw okumaHatasiOlustur(hata);
     arsiv = null;
   }
-  if (!arsiv) {
-    // Tanınmayan biçim: JSZip bütün dosyayı belleğe alır, büyük dosyada denenmez
-    if (file.size > 512 * 2 ** 20) throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
-    const JSZip = await jszipYukle();
-    try { arsiv = jszipArsivi(await JSZip.loadAsync(file)); }
-    catch (hata) {
-      if (okumaHatasi(hata)) throw Object.assign(new Error("Yedek dosyası okunamadı."), { kod: "okuma", neden: hata });
-      throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
-    }
+  if (arsiv) {
+    const durum = arsiv.var("durum.json") ? await durumOku(file, arsiv) : null;
+    if (!durum || !Array.isArray(durum.belgeler)) throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
+    return { arsiv, durum };
+  }
+  // Tanınmayan biçim: JSZip bütün dosyayı belleğe alır, büyük dosyada denenmez
+  if (file.size > 512 * 2 ** 20) throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
+  const JSZip = await jszipYukle();
+  try { arsiv = jszipArsivi(await JSZip.loadAsync(file)); }
+  catch (hata) {
+    if (okumaHatasi(hata)) throw okumaHatasiOlustur(hata);
+    throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
   }
   let durum = null;
   try { durum = arsiv.var("durum.json") ? JSON.parse(await (await arsiv.blob("durum.json")).text()) : null; }
   catch (hata) {
-    if (okumaHatasi(hata)) throw Object.assign(new Error("Yedek dosyası okunamadı."), { kod: "okuma", neden: hata });
+    if (okumaHatasi(hata)) throw okumaHatasiOlustur(hata);
   }
   if (!durum || !Array.isArray(durum.belgeler)) throw Object.assign(new Error("Bu bir Kenar Notu yedeği değil."), { kod: "bicim" });
   return { arsiv, durum };
+}
+// durum.json işçide ayrıştırılır, büyük diziler parça parça döner. İşçi yoksa burada. Bozuk JSON: null.
+async function durumOku(file, arsiv) {
+  const w = await isciAc();
+  if (!w) {
+    try { return JSON.parse(await (await arsiv.blob("durum.json")).text()); }
+    catch (hata) { if (okumaHatasi(hata)) throw okumaHatasiOlustur(hata); return null; }
+  }
+  const parcalar = Object.fromEntries(PARCALI.map((a) => [a, []]));
+  let m;
+  try {
+    m = await isciIsi(w, () => w.postMessage({ is: 1, tur: "oku", dosya: file }),
+      { parca: (p) => { if (parcalar[p.alan]) for (const x of p.liste) parcalar[p.alan].push(x); } });
+  } catch (hata) {
+    // Çöken işçi çoğunlukla bellek: dosya yedek olabilir ama açılamadı
+    if (hata?.kod === "okuma" || hata?.kod === "isci") throw okumaHatasiOlustur(hata);
+    return null;
+  }
+  const durum = m?.durum;
+  if (!durum || typeof durum !== "object") return null;
+  for (const a of PARCALI) if (Array.isArray(durum[a])) durum[a] = parcalar[a];
+  return durum;
 }
 // Yedekteki sürüm alınır mı: yerelde veri yoksa her zaman; ikisinde de değişim damgası varsa ona,
 // yalnız yedekte varsa yedek alınır (yerel hiç düzenlenmemiş); hiçbirinde yoksa son açılışa bakılır
@@ -994,10 +1321,11 @@ export async function yedekYukle(file) {
 
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
   // Birleşim kopyalar üstünde hazırlanır; canlı durum ancak her şey yazılınca değişir (yarıda kalırsa eskisi durur)
+  // birlestir öğeleri değiştirmez, yerine koyar: dizilerin sığ kopyası yeter (bin görselli kartı kopyalamak saniyeler sürerdi)
   const kopya = (x) => JSON.parse(JSON.stringify(x));
   const belgeler = store.belgeler.map((b) => ({ ...b }));
-  const kirpintilar = kopya(store.kirpintilar), kartlar = kopya(store.kartlar), klasorler = kopya(KLASORLER);
-  const derlemeler = kopya(store.derlemeler || []);
+  const kirpintilar = store.kirpintilar.slice(), kartlar = store.kartlar.slice(), klasorler = KLASORLER.map((k) => ({ ...k }));
+  const derlemeler = (store.derlemeler || []).slice();
   const sonuc = { eklenen: 0, guncellenen: 0, eksik: 0 };
   const dosyaYaz = [], alinan = new Set();
   // Eski yedekten gelen dosyasız belge verisi kendi örnek sürümünü taşır: açılışta app.js örnekse onu yeni düzene çeker
@@ -1083,7 +1411,8 @@ export async function yedekYukle(file) {
         if (b.veri != null) d.durum.put(b.veri, veriAnahtari(b.id));
         if (b.kapakGorsel) d.durum.put(b.kapakGorsel, kapakAnahtari(b.id));
       }
-      d.durum.put(kartlar, "kartlar");
+      // Kartlar kart başına; burada silinmiş ama henüz yazılmamış kart geri gelmesin diye kayıtta kalan fazlası da silinir
+      kartlariYaz(d.durum, { hepsi: true, kartlar });
       d.durum.put(kirpintilar, "kirpintilar");
       d.durum.put(derlemeler, "derlemeler");
       if (yzKopya) d.durum.put(yzKopya, YZ);

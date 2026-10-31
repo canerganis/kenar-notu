@@ -531,6 +531,71 @@ input[type="range"].cetvel { -webkit-appearance: none; appearance: none; display
 .sayfa-menu .renk-nokta i { width: 20px; height: 20px; border-radius: 50%; background: var(--n); box-shadow: inset 0 0 0 1px #00000026; }
 .sayfa-menu .renk-nokta[aria-pressed="true"] i { box-shadow: inset 0 0 0 1px #00000026, 0 0 0 2px var(--sm-zemin), 0 0 0 3.5px var(--sm-yazi); }
 .sayfa-menu .renk-nokta:first-child { margin-left: 4px; }
+/* Sayfadan geniş menü (telefonda seçim menüsü) satıra sarar; yükseklik içerikten */
+.sayfa-menu { flex-wrap: wrap; height: auto; min-height: 44px; }
+
+/* Kement: renk ve kalınlık (OZELLIKLER-8 2.2). Seçim menüsünde renk diski, ikinci menüde palet ızgarası. */
+.sayfa-menu .bicim-dugme { width: 44px; padding: 0; display: grid; place-items: center; }
+.sayfa-menu .bicim-dugme i { width: 20px; height: 20px; border-radius: 50%; background: var(--n);
+  box-shadow: inset 0 0 0 1px #00000026, 0 0 0 2px var(--sm-zemin), 0 0 0 3.5px color-mix(in srgb, var(--sm-yazi) 55%, transparent); }
+.sayfa-menu.bicim { display: grid; grid-template-columns: repeat(6, 36px); padding: 6px; row-gap: 2px; }
+.sayfa-menu.bicim button::before { display: none; }
+.sayfa-menu.bicim .renk-nokta { height: 36px; margin: 0; }
+.sayfa-menu.bicim .bicim-ayrac { grid-column: 1 / -1; height: 1px; margin: 4px 6px; background: color-mix(in srgb, var(--sm-yazi) 18%, transparent); }
+.sayfa-menu.bicim .kalin-dugme { grid-column: span 2; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
+.sayfa-menu.bicim .kalin-dugme i { width: 28px; height: var(--d); border-radius: 99px; background: currentColor; }
+.sayfa-menu.bicim .kalin-dugme[aria-pressed="true"] { background: color-mix(in srgb, var(--sm-yazi) 16%, transparent); }
+.sayfa-menu.bicim .bicim-tamam { grid-column: 1 / -1; height: 40px; }
+
+/* Karta çevir fişi: önizleme, arka yüz, düğmeler */
+.fis.kart-cevir-fis { width: min(320px, calc(100vw - 16px)); min-width: 0; padding: 12px; display: grid; gap: 10px; transform-origin: top center; }
+.kart-cevir-baslik { margin: 0; font: 600 var(--fs-14)/20px var(--f-arayuz); color: var(--ink); }
+.kart-onizleme { display: grid; place-items: center; min-height: 72px; max-height: 180px; overflow: hidden; border-radius: var(--r-sm); background: var(--surface-2);
+  font: 400 var(--fs-13) var(--f-arayuz); color: var(--muted); }
+.kart-onizleme img { display: block; max-width: 100%; max-height: 180px; }
+.kart-arka { width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px; border: 0; border-radius: var(--r-sm); background: var(--surface-2);
+  box-shadow: inset 0 0 0 .5px var(--line-strong); font: 400 var(--fs-14)/20px var(--f-arayuz); color: var(--ink); }
+.kart-arka:focus { outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.kart-cevir-dugmeler { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* PDF iç bağlantıları (OZELLIKLER-8 2.4): mürekkebin üstünde, nesnelerin altında. Görünmez; fareyle üstüne gelince
+   ince bir alt çizgi. Kalem olaylarında hedef olsa da onDown kalemi çizime yollar. */
+.baglanti-katman { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.baglanti { position: absolute; left: calc(var(--x) * var(--k) * 1px); top: calc(var(--y) * var(--k) * 1px);
+  width: calc(var(--w) * var(--k) * 1px); height: calc(var(--h) * var(--k) * 1px); pointer-events: auto; cursor: pointer; border-radius: 2px; }
+@media (hover: hover) and (pointer: fine) { .baglanti:hover { box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--accent, #1F3A68) 70%, transparent); background: #1F3A6810; } }
+.baglanti[aria-expanded="true"] { background: #1F3A6818; box-shadow: inset 0 0 0 1px #1F3A6840; }
+.fis.baglanti-fis { min-width: 0; width: min(232px, calc(100vw - 16px)); padding: 10px; display: grid; gap: 8px; transform-origin: top center; }
+.baglanti-onizleme { position: relative; justify-self: center; width: 150px; border-radius: 2px; background: #fff; overflow: hidden;
+  box-shadow: 0 0 0 .5px #1C1B1924, 0 1px 2px #1C1B191A, 0 6px 12px -8px #1C1B1940; }
+.baglanti-onizleme canvas { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 160ms; }
+.baglanti-onizleme canvas.hazir { opacity: 1; }
+.baglanti-isaret { position: absolute; left: 0; right: 0; top: calc(var(--oran) * 100%); height: 2px; background: var(--kurdele); opacity: .8; }
+.baglanti-dugmeler { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.baglanti-no { margin-right: auto; padding-left: 4px; font: 400 var(--fs-13) var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
+.baglanti-baslik { margin: 0; padding: 0 4px; font: 600 var(--fs-13)/18px var(--f-arayuz); color: var(--ink-2); }
+.baglanti-adres { margin: 0; padding: 0 4px; font: 400 var(--fs-13)/18px var(--f-olcu); color: var(--ink); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* Bağlantıdan dönüş kurdelesi: masanın sol kenarında, kırlangıç kuyruklu (yer imi kurdelesinin rengi) */
+.geri-kurdele { position: absolute; left: 0; top: 46%; z-index: var(--z-arac); display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 20px 0 10px;
+  background: var(--kurdele); color: #FFF7EC; font: 500 var(--fs-13)/1 var(--f-arayuz); font-variant-numeric: tabular-nums;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 50%, 100% 100%, 0 100%); filter: drop-shadow(0 2px 3px #1C1B1940); }
+.geri-kurdele .i { width: 18px; height: 18px; }
+.geri-kurdele.yeni { transform-origin: left; animation: geri-kurdele-in 320ms var(--egri-kagit); }
+@keyframes geri-kurdele-in { from { transform: scaleX(0); } }
+[data-arac-konum="sol"] .geri-kurdele { left: 76px; }
+
+/* Sayfalar paneli: PDF'in içindekileri varsa iki sekme */
+.sol-sekmeler { display: flex; align-items: flex-end; gap: 2px; align-self: stretch; margin-left: -10px; }
+.sol-sekmeler .sekme, .sol-sekmeler .sekme[aria-selected="true"] { height: 56px; }
+.icindekiler { flex: 1; overflow-y: auto; padding: 4px 8px 24px; overscroll-behavior: contain; }
+.icindekiler-satir { display: flex; align-items: baseline; gap: 12px; width: 100%; min-height: 40px; padding: 10px 10px 10px calc(12px + var(--derinlik, 0) * 14px);
+  border-radius: var(--r-sm); text-align: left; color: var(--ink); font: 400 var(--fs-14)/20px var(--f-arayuz); }
+.icindekiler-satir[style*="--derinlik:0"] { font-weight: 500; }
+.icindekiler-satir:disabled { color: var(--muted); }
+@media (hover: hover) and (pointer: fine) { .icindekiler-satir:not(:disabled):hover { background: color-mix(in srgb, var(--ink) 5%, transparent); } }
+.icindekiler-ad { flex: 1; min-width: 0; }
+.icindekiler-no { flex: none; font: 400 var(--fs-12, 12px) var(--f-olcu); font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* Metin kutusu */
 .metin-kutusu { position: absolute; left: calc(var(--x) * var(--k) * 1px); top: calc(var(--y) * var(--k) * 1px); min-width: calc(120px * var(--k));

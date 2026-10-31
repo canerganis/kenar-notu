@@ -129,6 +129,8 @@
   color: #24407A; font: 500 21px/32px var(--f-el); }
 .alinti__not::placeholder { color: #24407A59; font: 500 19px/32px var(--f-el); }
 .alinti__not:focus { outline: none; }
+/* Notta $...$ varsa çizilmiş hâli alanın altında (alan yazı olarak kalır) */
+.alinti__not-formul { margin: 2px 0 0; color: var(--ink-2); font: 400 15px/1.5 var(--f-okuma); overflow-wrap: anywhere; }
 .alinti .iz-eylemler .simge-dugme { color: #4D4842; }
 :root[data-not-yazi="duz"] .alinti__not { font: 400 15px/32px var(--f-arayuz); }
 @media (max-width: 599px) { .cep-defter__yaprak { padding-right: 16px; } .cep-defter__bant { right: 20px; } .cep-defter__eylem { margin-right: 20px; } .alinti { grid-template-columns: 52px 1fr; } .alinti .iz-eylemler { grid-column: 2; } }
@@ -315,6 +317,27 @@
   .cep-defter__ust p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cep-defter__eylem { gap: 0; margin-right: 28px; }
   .cep-defter__eylem .hayalet { padding-inline: 10px; }
+  /* Dar ekranda Markdown ve PDF "Aktar" fişinin içinde */
+  .cep-defter__eylem .genis-eylem { display: none; }
 }
+/* Hakkında (hakkinda.js): Ayarlar > Yardım'dan; pencere ya da alt çekmece */
+.hakkinda-pencere { width: min(560px, calc(100vw - 48px)); overflow-y: auto; }
+.hakkinda-pencere .ayarlar-ust { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-inline: 0; }
+.hakkinda-cekmece .hakkinda { padding: 0 16px 24px; }
+.hakkinda-ust { margin: 16px 0 12px; }
+.hakkinda-ad { font: 500 var(--fs-22, 22px)/28px var(--f-baslik, var(--f-okuma)); color: var(--ink); }
+.hakkinda-surum { font: 400 var(--fs-12, 12px)/16px var(--f-olcu); color: var(--muted); letter-spacing: .04em; }
+.hakkinda-ozet { margin-top: 8px; font: 400 15px/1.5 var(--f-okuma); color: var(--ink-2); }
+.hakkinda-baglantilar { display: grid; gap: 2px; margin: 0 -10px; }
+.hakkinda-baglantilar a { text-decoration: none; }
+.hakkinda-liste { margin: 0; padding: 0; list-style: none; }
+.hakkinda-lisans { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0;
+  border-bottom: .5px solid var(--line); font: 400 var(--fs-14, 14px)/20px var(--f-arayuz); color: var(--ink); }
+.hakkinda-lisans a { color: var(--accent); text-decoration: none; }
+.hakkinda-lisans small { color: var(--muted); font: 400 var(--fs-12, 12px)/16px var(--f-olcu); }
+.hakkinda-ne { display: block; }
+.hakkinda-lisans__ad { flex: none; max-width: 50%; text-align: right; color: var(--ink-2); font: 400 var(--fs-12, 12px)/16px var(--f-olcu); }
+.hakkinda-not { margin-top: 12px; font: 400 var(--fs-13, 13px)/18px var(--f-arayuz); color: var(--muted); }
+
 /* Cep defterinin kâğıdı her temada açık: boş durumun düğmesi de mürekkep siyahı kalır */
 .cep-defter .izler-bos__dugme { background: #1C1B19; color: #FDFCF9; box-shadow: none; }
