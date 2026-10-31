@@ -13,6 +13,7 @@
 //             "kirpintilar", "yz" (yapay zekâ ayarları, anahtarlar dahil; yedeğe girmez)
 //             "onceki:<id>:<zaman>" -> belgenin önceki hâli (veri kopyası); "oncekiDizin:<id>" -> { liste: [{ anahtar, gun, zaman, alindi, ozet, boyut, donus }], buyuk }
 //             "yedekKlasoru" -> otomatik yedek klasörü: { tutamac (FileSystemDirectoryHandle), son, dosya, hata }
+//             "kitapKlasoru" -> kitap klasörü (13. tur, yalnız okunur): { tutamac, bilinen: ["yol/ad|boyut"], son, izinFisiKapali }
 //             "derlemeler"   -> İzlerim'de birleştirilen defterler: [{ id, ad, olusturma, girdiler: [{ belgeId, izId }] }]
 //   Belge kaydında dil (10. tur): belge.dil kısa dil kodu ("en"; null: bakıldı, bulunamadı), belge.dilElle kullanıcı seçtiyse true.
 //   Çeviri önbelleği ve paketleri ceviri.js'in kendi veritabanında ("kenar-notu-ceviri"); yedeğe girmez.
@@ -1205,6 +1206,33 @@ async function dosyaliBelgeYaz(belge, blob, kapakGorsel) {
   kaliciIste();
   store.belgeler.unshift(belge);
   bus.emit("belgeler", { tur: "ekle", belge });
+}
+
+/* ---------- kitap klasörü (13. tur) ---------- */
+// Bilgisayardaki kitap klasörünün tutamacı (kitap-klasoru.js tarar). Klasöre hiç yazılmaz, izin yalnız "read".
+// bilinen: kullanıcıya listede gösterilmiş ya da fişi kapatılmış dosyalar ("yol/ad|boyut"); yeni kitap fişi bunları saymaz.
+// Kayıt "Örnek verilere dön" ile gider, yedeğe girmez (tutamaç başka cihazda anlamsız).
+const KITAP_KLASORU = "kitapKlasoru";
+export async function kitapKlasoruOku() {
+  try { return (await islem("durum", "readonly", (d) => d.durum.get(KITAP_KLASORU))) || null; } catch { return null; }
+}
+export const kitapKlasoruYaz = (k) => islem("durum", "readwrite", (d) => d.durum.put(k, KITAP_KLASORU));
+export const kitapKlasoruSil = () => islem("durum", "readwrite", (d) => d.durum.delete(KITAP_KLASORU));
+// İçe aktarmanın tanıdığı imza (boyut + ilk 64 KB özeti); kitaplıktakiler parmakIzi'nden ("ad|boyut|özet") okunur
+export async function dosyaImzasi(file) {
+  return `${file.size}|${ozet(new Uint8Array(await file.slice(0, 65536).arrayBuffer()))}`;
+}
+// Kitaplıktaki dosyalı belgelerin imzaları: { imza: "boyut|özet", adBoyut: "ad|boyut", boyutlar }
+export function kitaplikImzalari() {
+  const imza = new Set(), adBoyut = new Set(), boyutlar = new Set();
+  for (const b of store.belgeler) {
+    const m = /^(.*)\|(\d+)\|([0-9a-z]+)$/.exec(String(b.parmakIzi || ""));
+    if (!m) continue;
+    imza.add(`${m[2]}|${m[3]}`);
+    adBoyut.add(`${m[1]}|${m[2]}`);
+    boyutlar.add(Number(m[2]));
+  }
+  return { imza, adBoyut, boyutlar };
 }
 
 // Örnek çizgi roman (cizgi-ornek.js üretir): içe aktarılmış CBZ gibi dosyasıyla saklanır (dosya: true),

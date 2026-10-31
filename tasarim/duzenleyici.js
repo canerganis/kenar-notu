@@ -72,6 +72,11 @@ let kalemAlgilandi = false;
 
 const svgDen = (s) => { const t = document.createElement("template"); t.innerHTML = s; return t.content.firstElementChild; };
 const etiket = (metin) => h("span", { class: "t-etiket" }, metin);
+// Görünüm (bilgi çipi, ⋯ menüsü, Koltuk çubuğu, Ctrl+K). Simge: ekran çerçevesi içinde sayfa ya da çift
+const GORUNUMLER = [["genislik", "Genişlik", "Sayfa ekranın genişliğine sığar"], ["sayfa", "Sayfa", "Bütün sayfa ekrana sığar"], ["cift", "Çift sayfa", "İki sayfa yan yana, kitap gibi"]];
+const GORUNUM_ADI = Object.fromEntries(GORUNUMLER.map(([id, ad]) => [id, ad]));
+const GORUNUM_YOL = { genislik: "M3.5 4.5h17v15h-17ZM6.5 4.5v15M17.5 4.5v15M9 9h6M9 12h6M9 15h4", sayfa: "M3.5 4.5h17v15h-17ZM9 7h6v10H9Z", cift: "M3.5 4.5h17v15h-17ZM6 7h6v10H6ZM12 7h6v10h-6Z" };
+const gorunumSvg = (g, cls = "") => svgDen(`<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${GORUNUM_YOL[g]}"/></svg>`);
 const mmYaz = (mm) => (Math.round(mm * 10) / 10).toLocaleString("tr") + " mm";
 // Sayfa rengi ayarı "oto" | "beyaz" | "sepya" | "koyu" | "tahta". Masa'da "oto" hep beyaz çözülür (sayfaCoz("masa")):
 // tema değişince PDF yeniden çizilmez, mürekkep renkleri değişmez. Önbellek anahtarları çözülmüş değeri kullanır.
@@ -529,6 +534,7 @@ function kur(kap, belge, sayfa, mod, gomulu, pdf, ek = null) {
   baglamCiz();
   sayfaNoGuncelle(true);
   yuzdeYaz(false);
+  gorunumDugmeGuncelle();
   geriAlDurumu();
   bantKartlariniEsle({ sessiz: true });
   izEslePlanla();   // kayıtlı izlerin imzası alınır (değiştirilmez)
@@ -628,7 +634,9 @@ function arayuzKur() {
   D.masa = h("div", { class: "masa" }, D.sutun);
   D.cipNo = h("button", { class: "no", "aria-label": "Sayfaya git", onclick: (e) => sayfayaGitFisi(e.currentTarget, "cip") }, "s. 1 / 1");
   D.cipYuzde = h("button", { class: "yuzde", "aria-label": "Genişliğe sığdır", onclick: () => sigdir() }, "%100");
-  D.cip = h("div", { class: "bilgi-cip" }, D.cipNo, h("span", { class: "ayrac" }), D.cipYuzde);
+  // Yüzde tek dokunuşla seçili görünüme sığdırır; yanındaki simge görünümü seçtirir (Genişlik, Sayfa, Çift sayfa)
+  D.cipGorunum = h("button", { class: "gorunum", "aria-haspopup": "menu", "aria-label": "Görünüm", onclick: (e) => gorunumFisi(e.currentTarget) });
+  D.cip = h("div", { class: "bilgi-cip" }, D.cipNo, h("span", { class: "ayrac" }), D.cipYuzde, D.cipGorunum);
   D.masaKap = h("div", { class: "masa-kap" }, D.masa, aracCubuguKur(), D.cip);
 
   // Paneller (3.22)
@@ -907,7 +915,8 @@ function sayfaKur(veri) {
   veri.gorseller ||= [];
   const S = { veri, cizildi: {}, canli: null, canliAnahtar: null, dpr: 1, gorunur: false, h: sayfaYuksekligi(veri) };
   S.kenarKap = h("div", { class: "kenar-kap" }, h("div", { class: "kenar" }));
-  S.tutamak = h("button", { class: "kenar-tutamak", onclick: () => { ilkIpucuKapat("kenar"); kenarDegistir(S, !S.veri.kenar); } }, icon("pilcrow"));
+  // Çift sayfada kenar gizlidir: tutamak hep açar (tek sayfaya geçip), kapatmaz
+  S.tutamak = h("button", { class: "kenar-tutamak", onclick: () => { ilkIpucuKapat("kenar"); kenarDegistir(S, D.cift || !S.veri.kenar); } }, icon("pilcrow"));
   S.sayfaCv = h("canvas", { width: 0, height: 0 });
   S.sayfaEl = h("div", { class: "sayfa" }, S.sayfaCv);
   S.gorselKatman = h("div", { class: "gorsel-katman" });   // sayfa ile mürekkep arası: kalem görselin üstüne yazar
@@ -945,7 +954,10 @@ function exLibrisKoy(S) {
 function araEkleKur() {
   const el = h("div", { class: "ara-ekle" });
   el.append(h("button", { "aria-label": "Araya sayfa ekle", onclick: (e) => {
-    const onceki = el.previousElementSibling, i = D.sayfalar.findIndex((S) => S.kap === onceki);
+    // Çift sayfada önceki kardeş satırdır (.yayilim): satırın son sayfasından sonraya eklenir
+    let onceki = el.previousElementSibling;
+    if (onceki?.classList.contains("yayilim")) onceki = [...onceki.querySelectorAll(".sayfa-kap")].pop();
+    const i = D.sayfalar.findIndex((S) => S.kap === onceki);
     yelpazeAc(e.currentTarget, i + 1);
   } }, h("span", {}, icon("arti"))));
   return el;
@@ -971,8 +983,15 @@ function sayfalariKur({ yeniId: dogan = null } = {}) {
     return S;
   });
   for (const S of eski.values()) { D.io?.unobserve(S.kap); tuvalleriBosalt(S); }
+  // Çift sayfada sayfalar satırlara (.yayilim) girer; satır konumsuzdur, offsetTop yine .masa'ya göredir
+  D.cift = etkinGorunum() === "cift";
+  D.satirlar = D.cift ? satirlariHesapla() : null;
+  D.sutun.classList.toggle("cift", D.cift);
+  // classList.remove sınıf yokken de özniteliği yeniden yazar (300 sayfada stil geçersizleşir): yalnız gerekince
+  D.sayfalar.forEach((S, i) => { S.satirNo = i; const c = S.kap.classList; if (c.contains("cift-sol") || c.contains("cift-sag")) c.remove("cift-sol", "cift-sag"); kenarSinifi(S); });
   const parcalar = [];
-  D.sayfalar.forEach((S) => parcalar.push(S.kap, araEkleKur()));
+  if (D.cift) D.satirlar.forEach((satir, no) => { for (const i of satir) D.sayfalar[i].satirNo = no; parcalar.push(yayilimKur(satir), araEkleKur()); });
+  else D.sayfalar.forEach((S) => parcalar.push(S.kap, araEkleKur()));
   D.sutun.replaceChildren(...parcalar);
   D.masa.scrollTop = st; D.masa.scrollLeft = sl;
   for (const S of D.sayfalar) {
@@ -991,6 +1010,41 @@ function sayfalariKur({ yeniId: dogan = null } = {}) {
     }
   }
   sayfaNoGuncelle(true);
+}
+
+// Çift sayfanın satırları: [[0], [1, 2], [3, 4], ...] (sayfa sıraları). Kitap gibi: PDF'te tek numaralı sayfa sağdadır,
+// kapak tek başına sağda durur, sonra 2-3, 4-5. Defterde kapak yok: 1-2, 3-4 (ilk açılan çift dolu olsun, defter
+// sayfasının numarası basılı değil). Yatay sayfa (genişliği yüksekliğinden büyük) satırda tek başına, ortada.
+const yatayMi = (S) => S.h < PW;
+const solMu = (i) => (etiketNo(i) + (D.belge.tur === "defter" ? 1 : 0)) % 2 === 0;
+function satirlariHesapla() {
+  const n = D.sayfalar.length, satirlar = [];
+  for (let i = 0; i < n;) {
+    if (i + 1 < n && solMu(i) && !yatayMi(D.sayfalar[i]) && !yatayMi(D.sayfalar[i + 1])) { satirlar.push([i, i + 1]); i += 2; }
+    else { satirlar.push([i]); i++; }
+  }
+  return satirlar;
+}
+// Satır öğesi: çiftte iki sayfa bitişik (cilt yeri gölgesi CSS'te), tek dikey sayfa kendi yanında, öbür yanı boş
+function yayilimKur(satir) {
+  const [a, b] = satir.map((i) => D.sayfalar[i]);
+  if (b) {
+    a.kap.classList.add("cift-sol");
+    b.kap.classList.add("cift-sag");
+    return h("div", { class: "yayilim" }, a.kap, b.kap);
+  }
+  if (yatayMi(a)) return h("div", { class: "yayilim yatay" }, a.kap);
+  const bos = h("div", { class: "yayilim-bos", "aria-hidden": "true" });
+  return h("div", { class: "yayilim tek" }, ...(solMu(satir[0]) ? [a.kap, bos] : [bos, a.kap]));
+}
+const satirBasi = (i) => (D.cift && D.sayfalar[i] ? D.satirlar[D.sayfalar[i].satirNo][0] : i);
+const satirSonu = (i) => (D.cift && D.sayfalar[i] ? D.satirlar[D.sayfalar[i].satirNo].at(-1) : i);
+// Kenar alanı çift sayfada görünmez (veri durur): kenar sayfanın sağına dikili, sol sayfada cilt yerine düşerdi
+function kenarSinifi(S) {
+  const ac = !!S.veri.kenar && !D.cift;
+  if (S.kap.classList.contains("kenarli") === ac) return;
+  S.kap.classList.toggle("kenarli", ac);
+  S.canliAnahtar = null;   // mürekkep anahtarı .kenarli'yi zaten içerir; metin kutusu sınırı veriye bağlı kalır
 }
 
 // Tuval bütçesi (TASARIM 7.9): iki kenar da 4096 cihaz pikselini, alan 16 milyon pikseli geçmez.
@@ -1368,7 +1422,11 @@ function pdfBoyutlariUygula() {
     degisti = true;
   }
   if (!degisti) return;
+  // Çift sayfada yatay sayfalar ancak şimdi bilinir: eşleşme değiştiyse satırlar yeniden kurulur
+  if (D.cift && JSON.stringify(satirlariHesapla()) !== JSON.stringify(D.satirlar)) sayfalariKur();
   capaUygula(capa);
+  // Sayfayı ve çifti sığdırmak sayfa yüksekliğine bağlı: gerçek boyutlar gelince ölçek bir kez düzelir
+  if (D.veri.sigdir !== false && etkinGorunum() !== "genislik") sigdirGerekirse(false);
   gorunenleriCiz();
   if (!D.panelSol.hidden) solPanelCiz();
 }
@@ -1509,7 +1567,10 @@ function komutlariKur() {
     { id: "masa-notlu-pdf", ad: "Notlu PDF olarak dışa aktar", es: "pdf paylaş indir kaydet dışa aktar", ikon: "disa-aktar", baglam: "masa", kosul: acik, calistir: () => D === d && disaAktar({}) },
     { id: "masa-yer-imi", ad: "Bu sayfaya yer imi koy", es: "yer imi işaret kurdele", ikon: "yer-imi", baglam: "masa", kosul: acik, calistir: () => D === d && yerImiDegistir() },
     { id: "masa-ses", ad: "Ses kaydı", es: "ses kayıt mikrofon ders", ikon: "ses", baglam: "masa", kosul: acik, calistir: () => D === d && sesCubukDegistir() },
-    { id: "masa-sigdir", ad: "Sayfayı genişliğe sığdır", es: "yakınlaştırma ölçek sığdır", ikon: "izgara", baglam: "masa", kosul: acik, calistir: () => D === d && sigdir() },
+    // Görünüm komutları Koltuk'ta da çalışır (baglam "pdf": PDF ve defter, iki mod)
+    { id: "masa-sigdir", ad: "Görünüm: genişliğe sığdır", es: "yakınlaştırma ölçek sığdır genişlik görünüm", ikon: "olcu-genis", baglam: "pdf", kosul: () => D === d, calistir: () => D === d && gorunumSec("genislik") },
+    { id: "masa-gorunum-sayfa", ad: "Görünüm: sayfayı sığdır", es: "bütün sayfa ekrana sığdır tek sayfa görünüm ölçek", ikon: "olcu-orta", baglam: "pdf", kosul: () => D === d, calistir: () => D === d && gorunumSec("sayfa") },
+    { id: "masa-gorunum-cift", ad: "Görünüm: çift sayfa", es: "iki sayfa yan yana kitap yayılım görünüm", ikon: "okuma", baglam: "pdf", kosul: () => D === d && ciftSunulur(), calistir: () => D === d && gorunumSec("cift") },
   ];
   for (const k of liste) { try { D.temizlik.push(ORTAK.komutEkle(k)); } catch { /* komut listesi yok */ } }
 }
@@ -1739,19 +1800,100 @@ function sayfaDegisti(S) {
 // =====================================================================
 // ÖLÇEK, KAYDIRMA, KONUM
 // =====================================================================
+// Görünüm (belge başına, D.veri.gorunum): "genislik" genişliğe sığdırır (eski kayıtlarda alan yok, bu sayılır),
+// "sayfa" bütün sayfayı görünen alana sığdırır, "cift" sayfaları kitap gibi ikişer yan yana koyar ve çifti sığdırır.
+// D.veri.sigdir === false elle ölçektir (iki parmak, Ctrl+tekerlek): düzen kalır, ölçek D.veri.k olur.
+const CIFT_EN_AZ = 960;   // çift sayfa için masanın en az genişliği (CSS px); ayrıca yatay olmalı
+const gorunumSecili = () => (D.veri.gorunum === "sayfa" || D.veri.gorunum === "cift" ? D.veri.gorunum : "genislik");
+// Çift sayfa yalnız geniş ve yatay masada (yatay tablet, masaüstü): dikeyde, dar pencerede, telefonda ve yan bölmede yok
+function ciftSunulur() {
+  if (!D || D.gomulu || telefon()) return false;
+  const w = D.masaKap.clientWidth || innerWidth, hh = D.masaKap.clientHeight || innerHeight;
+  return w >= CIFT_EN_AZ && w > hh;
+}
+// Seçili görünüm ekrana uymuyorsa (çift ama dar ekran) tek sayfa sığdırılır; genişleyince seçim kendiliğinden döner
+const etkinGorunum = () => { const g = gorunumSecili(); return g === "cift" && !ciftSunulur() ? "sayfa" : g; };
+// Sayfa altında örtülen pay: alttaki araç çubuğu ve kısa bir boşluk (bilgi çipi köşede, sayfayı örtmez)
+function altBosluk() {
+  if (D.okuma) return 20;
+  return (!D.gomulu && konum() === "alt" ? 84 : 0) + 20;
+}
+// Sığdırılan sayfanın yüksekliği (sayfa birimi): okunan sayfa. Çiftte satırın büyüğü; yatay sayfa ölçü olmaz,
+// yerine en yakın dikey sayfa alınır (yatay sayfa satırda tek başına, çiftin yüksekliğine zaten sığar)
+function olcuYuksekligi(g) {
+  const n = D.veri.sayfalar.length;
+  if (!n) return PH;
+  const yuk = (j) => D.sayfalar[j]?.h ?? sayfaYuksekligi(D.veri.sayfalar[j]);
+  const i = sinirla(D.gecerli >= 0 ? D.gecerli : D.veri.konum?.sayfa || 0, 0, n - 1);
+  if (g !== "cift") return yuk(i);
+  const satir = D.cift && D.sayfalar[i] ? D.satirlar[D.sayfalar[i].satirNo] : [i, i + 1].filter((j) => j < n);
+  let H = Math.max(...satir.map(yuk));
+  for (let a = 1; H < PW && a < n; a++) for (const j of [i - a, i + a]) if (j >= 0 && j < n && yuk(j) >= PW) { H = yuk(j); break; }
+  return H < PW ? PH : H;
+}
 function sigdirK() {
   let w = D.masa.clientWidth || D.masaKap.clientWidth;   // kaydırma çubuğu hariç
   if (!w) w = window.innerWidth - (D.panelSol.hidden ? 0 : 216) - (D.panelSag.hidden ? 0 : 340);
   // Sütunun yan boşlukları CSS'ten okunur: dar masada 24px, araç çubuğu yandayken o tarafta 88px
   const cs = getComputedStyle(D.sutun), pay = (parseFloat(cs.paddingLeft) || 56) + (parseFloat(cs.paddingRight) || 56);
-  const kenarVar = D.veri.sayfalar.some((s) => s.kenar);
+  const g = etkinGorunum();
+  const kenarVar = g !== "cift" && D.veri.sayfalar.some((s) => s.kenar);
   // 1px pay: alt piksel yuvarlaması yatay kaydırma çubuğu çıkarmasın
-  return kSinirla(Math.min(1.25, (w - pay - 1) / (kenarVar ? TW : PW)));
+  const enK = (w - pay - 1) / (g === "cift" ? 2 * PW : kenarVar ? TW : PW);
+  if (g === "genislik") return kSinirla(Math.min(1.25, enK));
+  // Sayfa ve çift: üst çubuk, araç çubuğu, ses şeridi (ustBosluk) ve alttaki çubuk arasında kalan yüksekliğe de sığar
+  const hh = (D.masa.clientHeight || D.masaKap.clientHeight || innerHeight) - ustBosluk() - altBosluk();
+  return kSinirla(Math.min(1.25, enK, (hh - 1) / olcuYuksekligi(g)));
 }
 function sigdirGerekirse(animasyon) {
+  if (yerlesimGerekirse()) return;
   if (D.veri.sigdir === false) return;
   const yk = sigdirK();
   if (Math.abs(yk - D.k) > 0.002) olcekUygula(yk, { animasyon });
+}
+// Ekran daralınca ya da genişleyince (döndürme, panel, asistan) çift düzen açılır ya da kapanır; okunan sayfa yerinde kalır
+function yerlesimGerekirse() {
+  if (!D.sayfalar.length || !!D.cift === (etkinGorunum() === "cift")) return false;
+  gorunumUygula();
+  return true;
+}
+// Görünümü uygular: düzen (tek sütun ya da çift satırlar), ölçek ve kaydırma. Okunan sayfa (hedef verilmezse
+// satırın ilk sayfası) yerinde kalır: sığdırılmış sayfa ve çiftte sayfanın başı üst çubukların altına gelir,
+// genişlikte ve elle ölçekte üst çizgideki satır aynı kalır.
+function gorunumUygula({ animasyon = false, hedef = null } = {}) {
+  if (!D?.sayfalar.length) return;
+  if (!hedef) sayfaNoGuncelle(true);
+  const S = hedef || D.sayfalar[satirBasi(Math.max(0, D.gecerli))];
+  const g = etkinGorunum(), sigdirli = D.veri.sigdir !== false;
+  const mr = D.masa.getBoundingClientRect(), ey = mr.top + ustBosluk(), r0 = S.kap.getBoundingClientRect();
+  const v = sigdirli && g !== "genislik" ? 0 : (ey - r0.top) / D.k;
+  const ciftOldu = !!D.cift !== (g === "cift");
+  // Kenar ipucu eski ölçekte piksel konumludur ve tutamağı gösterir: görünüm değişince kalkar (çiftte kenar da yok)
+  ilkIpucuKapat("kenar");
+  if (ciftOldu) sayfalariKur();
+  const yk = sigdirli ? sigdirK() : D.k;
+  // Yatayda satırın ortası masanın ortasına: çiftte cilt yeri, tek sayfada sayfanın ortası
+  const u = S.kap.classList.contains("cift-sol") ? PW : S.kap.classList.contains("cift-sag") ? 0 : (S.kap.classList.contains("kenarli") ? TW : PW) / 2;
+  olcekUygula(yk, { capa: { S, u, v, ex: mr.left + mr.width / 2, ey }, animasyon: animasyon && !ciftOldu, onceRect: r0 });
+  if (ciftOldu) bekciPlanla();
+  gorunumDugmeGuncelle();
+}
+// Kullanıcının seçimi: elle ölçekten çıkılır, seçim belgeye yazılır
+function gorunumSec(g) {
+  if (!D || !GORUNUM_ADI[g] || (g === "cift" && telefon())) return;
+  fisKapat(true);
+  D.veri.gorunum = g;
+  D.veri.sigdir = true;
+  D.veri.k = null;
+  D.asistanOnce = null;
+  if (g === "cift" && !ciftSunulur()) bildir("Çift sayfa yatay ve geniş ekranda açılır. Şimdilik sayfa sığdırıldı.");
+  gorunumUygula({ animasyon: true });
+}
+// Kenar alanı çift sayfada görünmez: kenara gitmek isteyen (tutamak, kenardaki not) sayfayı sığdırmaya geçer
+function tekSayfayaGec(S) {
+  D.veri.gorunum = "sayfa";
+  gorunumUygula({ hedef: S });
+  bildir("Kenar alanı tek sayfada açılır: Sayfa görünümüne geçildi.");
 }
 // Asistan yanda açılıp kapanınca: .calisma sağdan --sag-panel kadar daralır (CSS), sayfa yeni genişliğe sığar.
 // Ekranın 42% çizgisindeki satır yerinde kalır. Elle yakınlaştırılmışsa ve sayfa sığmıyorsa geçici sığdırılır,
@@ -1767,6 +1909,7 @@ function asistanYeri(acik) {
   uyandir();   // çip bir an görünür, 2 sn sonra söner (asistan yandayken tamamen: kenar notunu örtmesin)
   // Dikeyde asistan alttan çekmecedir (--sag-panel 0): masa daralmaz, ölçeğe dokunulmaz
   if (D.masa.clientWidth === onceW && !D.asistanOnce) return;
+  if (D.veri.sigdir !== false && yerlesimGerekirse()) return;   // daralan masada çift düzen tek sayfaya döndü (ya da tersi)
   if (capa) { const mr = D.masa.getBoundingClientRect(); capa.ex = mr.left + mr.width / 2; }   // yeni masanın ortası
   let yk = null;
   if (D.veri.sigdir !== false) yk = sigdirK();
@@ -1781,9 +1924,12 @@ function asistanYeri(acik) {
   olcekUygula(yk, { capa, onceRect, animasyon: true });
   if (D.asistanOnce && acik) D.veri.k = D.asistanOnce.k;   // kayıtlı ölçek kullanıcınınki kalır
 }
+// Bilgi çipindeki yüzde ve Ctrl+0: seçili görünüme döner (elle ölçekten çıkar). Genişlikte bugünkü gibi
+// ekranın ortası yerinde kalır; sayfa ve çiftte bütün sayfa (çift) görünsün diye sayfa başı üste gelir.
 function sigdir() {
   D.veri.sigdir = true;
   D.veri.k = null;
+  if (etkinGorunum() !== "genislik" || D.cift) { gorunumUygula({ animasyon: true }); return; }
   const yk = sigdirK();
   if (Math.abs(yk - D.k) > 0.002) olcekUygula(yk, { animasyon: true });
   else yuzdeYaz(true);
@@ -1791,14 +1937,17 @@ function sigdir() {
 
 // Ekranda bir noktanın altındaki sayfa ve sayfa içi konumu
 function capaAl(ex, ey) {
-  let en = null, enUzak = Infinity;
-  // Uzun belgede aramaya noktanın yakınından başlanır (sayfalar sırayla dizili)
+  let en = null, enUzak = Infinity, enYan = Infinity;
+  // Uzun belgede aramaya noktanın yakınından başlanır (sayfalar sırayla dizili; çift sayfada bir satırda iki sayfa,
+  // ikisinin üstü aynı: dikey uzaklık eşitse yatayda yakın olan seçilir)
   const ilk = D.sayfalar.length > 40 ? Math.max(0, yakinSayfa(ey) - 2) : 0;
   for (const S of D.sayfalar.slice(ilk)) {
     const r = S.kap.getBoundingClientRect();
+    if (en && r.top > ey + enUzak) break;   // aşağıdakiler daha uzak
     const d = ey < r.top ? r.top - ey : ey > r.bottom ? ey - r.bottom : 0;
-    if (d < enUzak) { enUzak = d; en = { S, r }; }
-    if (d === 0) break;
+    const dx = ex < r.left ? r.left - ex : ex > r.right ? ex - r.right : 0;
+    if (d < enUzak || (d === enUzak && dx < enYan)) { enUzak = d; enYan = dx; en = { S, r }; }
+    if (d === 0 && dx === 0) break;
   }
   if (!en) return null;
   return { S: en.S, u: (ex - en.r.left) / D.k, v: sinirla((ey - en.r.top) / D.k, -200, en.S.h + 200), ex, ey };
@@ -1913,7 +2062,7 @@ function sayfayaGit(i, { yumusak = true } = {}) {
 }
 // Sayfadaki bir alanı ekranın üst yarısına getirir ve çevresine kalem halkası çizer (6.5)
 async function hedefeGit(S, r, { halka = true } = {}) {
-  if (r.x + r.w / 2 > PW && !S.veri.kenar) { kenarDegistir(S, true); await new Promise((c) => setTimeout(c, 440)); if (!D) return; }
+  if (r.x + r.w / 2 > PW && (!S.veri.kenar || D.cift)) { kenarDegistir(S, true); await new Promise((c) => setTimeout(c, 440)); if (!D) return; }
   const m = D.masa, k = D.k;
   const top = S.kap.offsetTop + (r.y + r.h / 2) * k - m.clientHeight * 0.42;
   const left = S.kap.offsetLeft + (r.x + r.w / 2) * k - m.clientWidth / 2;
@@ -1963,21 +2112,24 @@ function sayfaNoGuncelle(zorla = false) {
     const j = (alt + ust) >> 1;
     if (D.sayfalar[j].kap.offsetTop - 20 <= orta) { i = j; alt = j + 1; } else ust = j - 1;
   }
+  // Çift sayfada geçerli sayfa satırın ilkidir (soldaki); yazıda ikisi birden: "s. 2-3 / 10"
+  i = satirBasi(i);
+  const son = satirSonu(i);
   const n = D.sayfalar.length;
-  if (i === D.gecerli && !zorla && D.sayfaSay === n) return;
-  D.gecerli = i; D.sayfaSay = n;
-  if (i === n - 1 && n > 1 && D.belge.tur === "pdf" && !D.gomulu && !D.belge.odunc?.bitti) {
+  if (i === D.gecerli && !zorla && D.sayfaSay === n && D.sayfaSon === son) return;
+  D.gecerli = i; D.sayfaSay = n; D.sayfaSon = son;
+  if (son === n - 1 && n > 1 && D.belge.tur === "pdf" && !D.gomulu && !D.belge.odunc?.bitti) {
     try { ORTAK.okumaBitti?.(D.belge.id); } catch { /* ortak.js eski */ }
   }
-  const no = etiketNo(i), toplam = toplamNo(), metin = `s. ${no} / ${toplam}`;
+  const no = etiketNo(i), toplam = toplamNo(), metin = `s. ${no}${son > i ? "-" + etiketNo(son) : ""} / ${toplam}`;
   D.sayfaDugme.textContent = metin;
   D.cipNo.textContent = metin;
-  D.cipNo.setAttribute("aria-label", `Sayfa ${no} / ${toplam}. Sayfaya git`);
+  D.cipNo.setAttribute("aria-label", `Sayfa ${no}${son > i ? " ve " + etiketNo(son) : ""} / ${toplam}. Sayfaya git`);
   const S = D.sayfalar[i];
   D.ust.yerImi.setAttribute("aria-pressed", String(!!S.veri.yerImi));
   D.ust.yerImi.setAttribute("aria-label", S.veri.yerImi ? "Yer imini kaldır" : "Yer imi ekle");
   if (!D.panelSol.hidden) for (const x of D.sayfalar) if (x.kucukBtn) {
-    if (x === S) x.kucukBtn.setAttribute("aria-current", "page"); else x.kucukBtn.removeAttribute("aria-current");
+    if (x === S || x === D.sayfalar[son]) x.kucukBtn.setAttribute("aria-current", "page"); else x.kucukBtn.removeAttribute("aria-current");
   }
 }
 
@@ -2385,7 +2537,9 @@ function hover(e) {
     yakinTemizle();
     if (S) {
       const r = S.kap.getBoundingClientRect(), u = (e.clientX - r.left) / D.k;
-      if (u > PW * 0.88 && !S.veri.kenar) { S.tutamak.classList.add("yakin"); D.yakinTutamak = S.tutamak; }
+      // Çiftin sol sayfasında tutamak dış kenarda (solda)
+      const solda = S.kap.classList.contains("cift-sol");
+      if ((solda ? u < PW * 0.12 : u > PW * 0.88) && (!S.veri.kenar || D.cift)) { S.tutamak.classList.add("yakin"); D.yakinTutamak = S.tutamak; }
     }
     const ara = t.closest?.(".ara-ekle");
     if (ara) { ara.classList.add("yakin"); D.yakinAra = ara; }
@@ -3498,6 +3652,8 @@ const geriAlBildir = (metin) => bildir(metin, { etiket: "Geri al", calistir: () 
 // KENAR ALANI (3.15, imza 6.1)
 // =====================================================================
 function kenarDegistir(S, ac) {
+  // Çift sayfada kenar görünmez: açmak isteyen önce sayfa görünümüne geçer (kenar notu tek sayfanın işi)
+  if (ac && D.cift) tekSayfayaGec(S);
   if (!!S.veri.kenar === ac) return;
   const anim = !hareketAz() && S.gorunur;
   sayfaMenusuKapat();
@@ -3522,7 +3678,7 @@ function kenarDegistir(S, ac) {
 function kenarUygula(S, ac, anim) {
   const once = S.kap.getBoundingClientRect();
   S.veri.kenar = ac;
-  S.kap.classList.toggle("kenarli", ac);
+  S.kap.classList.toggle("kenarli", ac && !D.cift);
   tutamakGuncelle(S);
   S.nesneler.querySelectorAll(".metin-kutusu").forEach((m) => m.style.setProperty("--sinir", ac ? TW : PW));
   S.canliAnahtar = null;
@@ -3551,11 +3707,11 @@ function tumKenarlar(ac) {
   for (const S of D.sayfalar) {
     if (!!S.veri.kenar === ac) continue;
     S.veri.kenar = ac;
-    S.kap.classList.toggle("kenarli", ac);
+    S.kap.classList.toggle("kenarli", ac && !D.cift);   // çift sayfada kenar görünmez, veri yine yazılır
     tutamakGuncelle(S);
     S.canliAnahtar = null;
     S.nesneler.querySelectorAll(".metin-kutusu").forEach((m) => m.style.setProperty("--sinir", ac ? TW : PW));
-    if (ac && S.gorunur && !hareketAz()) animasyonBitince(S.kenarKap, "aciliyor", 480);
+    if (ac && S.gorunur && !hareketAz() && !D.cift) animasyonBitince(S.kenarKap, "aciliyor", 480);
   }
   const yeniK = D.veri.sigdir !== false ? sigdirK() : D.k;
   if (capa) capa.u = PW / 2;
@@ -3617,6 +3773,8 @@ function okumaModu(ac) {
   D.masaKap.classList.toggle("okuma-modu", ac);
   balonKapat(); fisKapat(); secimKaldir(); odagiBirak(); silgiImleciGizle();
   if (ac && dar()) { panelDegistir("sol", false); panelDegistir("sag", false); }
+  // Koltuk ile Masa arasında örtülen pay değişir (çubuklar): sığdırılmış sayfa ya da çift yeni alana oturur, okunan sayfa kalır
+  if (D.sayfalar.length && D.veri.sigdir !== false && etkinGorunum() !== "genislik") gorunumUygula();
 }
 // Okuma modunda sayfaya dokunuş üst çubuğu getirir, 3 saniye sonra yeniden çekilir
 function cubukGoster() {
@@ -3913,6 +4071,33 @@ function sayfayaGitFisi(acan, nereden) {
   girdi.focus({ preventScroll: true });
 }
 
+// Görünüm fişi: üç seçenek, seçili olanın yanında tik. Çift sayfa telefonda yok; dar ekranda seçilebilir ama
+// geniş ve yatay ekrana gelene kadar sayfa sığdırılır (satırda yazar).
+function gorunumFisi(acan) {
+  if (D.fis?.acan === acan) { fisKapat(); return; }
+  const secili = telefon() && gorunumSecili() === "cift" ? "sayfa" : gorunumSecili(), dar = !ciftSunulur();
+  const satir = ([id, ad, aciklama]) => h("button", { class: "fis-satir secenek gorunum-satir", type: "button", role: "menuitemradio", "aria-checked": String(secili === id),
+    onclick: () => gorunumSec(id) },
+  gorunumSvg(id, "i-20"),
+  h("span", {}, ad, h("small", {}, id !== "cift" || !dar ? aciklama : secili === "cift" ? "Ekran dar: şimdilik tek sayfa" : "Yatay ve geniş ekranda açılır")),
+  secili === id ? icon("tik", "i-20") : h("span"));
+  const fis = h("div", { class: "fis gorunum-fis", role: "menu", "aria-label": "Görünüm" },
+    h("div", { class: "fis-baslik" }, "Görünüm"),
+    ...GORUNUMLER.filter(([id]) => id !== "cift" || !telefon()).map(satir));
+  fisAc(fis, acan, acan.getBoundingClientRect().top < innerHeight / 2 ? "sag" : "ust");
+}
+function gorunumDugmeGuncelle() {
+  if (!D?.cipGorunum) return;
+  const g = etkinGorunum(), ad = GORUNUM_ADI[g];
+  for (const b of [D.cipGorunum, D.koltukGorunum]) {
+    if (!b) continue;
+    if (b.dataset.gorunum !== g) { b.dataset.gorunum = g; b.replaceChildren(gorunumSvg(g, b === D.cipGorunum ? "i-20" : "")); }
+    b.setAttribute("aria-label", "Görünüm: " + ad);
+    b.title = "Görünüm: " + ad;
+  }
+  D.cipYuzde.setAttribute("aria-label", g === "cift" ? "Çift sayfayı sığdır" : g === "sayfa" ? "Sayfayı sığdır" : "Genişliğe sığdır");
+}
+
 function dahaMenusu(acan) {
   if (D.fis?.acan === acan) { fisKapat(); return; }
   const fis = h("div", { class: "fis daha-menu", role: "menu", "aria-label": "Diğer", "data-baslik": D.belge.ad });
@@ -3952,6 +4137,9 @@ function dahaMenusu(acan) {
     ...(samsungMu() ? [satir("gonder", "Samsung Notes'a gönder", () => disaAktar({ samsung: true }))]
       : typeof navigator.share === "function" ? [satir("paylas", "Paylaş", () => disaAktar({}), "Notlu PDF, paylaş menüsüyle")] : []),
     h("div", { class: "fis-hedera" }, svgDen('<svg viewBox="0 0 28 16" aria-hidden="true"><use href="#i-hedera"/></svg>')),
+    etiket("Görünüm"),
+    parca(GORUNUMLER.filter(([id]) => id !== "cift" || !telefon()).map(([id, ad]) => [id, ad]),
+      telefon() && gorunumSecili() === "cift" ? "sayfa" : gorunumSecili(), gorunumSec),
     etiket("Sayfa rengi"),
     h("div", { class: "kagit-diskler" },
       disk("oto", "Oto", "linear-gradient(135deg, #FDFBF6 50%, #24211E 50%)", "#8A7F70", "Masa'da beyaz, okurken temaya uyar"),
@@ -4506,7 +4694,7 @@ function sayfaBasligi(S) {
 // İLK KULLANIM İPUÇLARI (3.25)
 // =====================================================================
 function ilkIpucuKenar() {
-  if (ipucuGosterildi("kenar") || D.okuma || D.belge.tur === "defter") return;
+  if (ipucuGosterildi("kenar") || D.okuma || D.cift || D.belge.tur === "defter") return;
   const S = D.sayfalar[Math.max(0, D.gecerli)];
   // Kenar zaten açıksa ipucu boşuna: kullanıcı alanı görüyor (bir sonraki kapalı kenarda gösterilir)
   if (!S || S.veri.kenar) return;
@@ -4606,8 +4794,8 @@ function onKey(e) {
       if (D.okuma) return okumaModu(false);
       return;
     case "Delete": case "Backspace": if (D.secim) { e.preventDefault(); secimSil(); } return;
-    case "PageDown": case " ": return kaydir(ekranAdimi());
-    case "PageUp": return kaydir(-ekranAdimi());
+    case "PageDown": case " ": e.preventDefault(); if (satirAdimi(1, 220)) return; return kaydir(ekranAdimi());
+    case "PageUp": e.preventDefault(); if (satirAdimi(-1, 220)) return; return kaydir(-ekranAdimi());
     case "ArrowDown": return kaydir(80);
     case "ArrowUp": return kaydir(-80);
     case "Home": e.preventDefault(); return sayfayaGit(0);
@@ -4674,7 +4862,7 @@ function koltukGir(anim) {
     if (!m) { if (anim) koltukCubuk(true); return; }
     try {
       D.koltuk = m.koltukKur(D.kok, koltukSecenekleri()) || null;
-      if (D.koltuk) { D.kok.classList.add("koltuk-bagli"); if (anim) D.koltuk.cubuk?.(true); }
+      if (D.koltuk) { D.kok.classList.add("koltuk-bagli"); gorunumDugmeGuncelle(); if (anim) D.koltuk.cubuk?.(true); }
     } catch (hata) {
       console.warn("[kenar-notu] koltukKur çalışmadı, masanın çubuğu kullanılıyor:", hata);
       D.koltuk = null;
@@ -4684,6 +4872,7 @@ function koltukGir(anim) {
 function koltukCik() {
   try { D.koltuk?.kalemKapat?.(); D.koltuk?.kapat?.(); } catch { /* boş */ }
   D.koltuk = null;
+  D.koltukGorunum = null;
   zamanIptal(D.cubukZ);
   D.kok.classList.remove("koltuk-bagli", "cubuk-gorunur");
   kalemUcuKapat();
@@ -4703,8 +4892,29 @@ function koltukDokun(e) {
 }
 function koltukCevir(yon) {
   const m = D.masa, dy = m.clientHeight * 0.85;
+  // Sayfa ve çift görünümünde bir sayfa (çift) çevrilir; okuma hızı çevrilen sayfa sayısıyla ölçülür
+  const adim = satirAdimi(yon, 320);
+  if (adim) { if (yon > 0) koltukOlc(adim * Math.max(1, D.sayfalar[Math.max(0, D.gecerli)]?.kap.offsetHeight || 1)); return; }
   if (yon > 0) koltukOlc(dy);
   kaydirAnim(m.scrollTop + yon * dy, m.scrollLeft, 320);
+}
+// Sığdırılmış sayfada ve çiftte çevirme bir satır (sayfa ya da çift) ilerler, satırın başı üst çubukların altına gelir.
+// Satır görünen alana sığmıyorsa (elle yakınlaştırılmış, genişlik görünümü) false: ekran ekran kaydırılır.
+// Dönen değer: çevrilen sayfa sayısı (okuma hızı için).
+function satirAdimi(yon, sure = 420) {
+  if (etkinGorunum() === "genislik" && !D.cift) return 0;
+  const m = D.masa, i = Math.max(0, D.gecerli), S = D.sayfalar[i];
+  if (!S) return 0;
+  const satirEl = D.cift ? S.kap.parentElement : S.kap;
+  if (satirEl.offsetHeight > m.clientHeight - ustBosluk() - altBosluk() + 2) return 0;
+  const satirlar = D.cift ? D.satirlar : null, no = D.cift ? S.satirNo : i, son = D.cift ? satirlar.length - 1 : D.sayfalar.length - 1;
+  const bas = (x) => (D.cift ? satirlar[x][0] : x);
+  // Geri giderken satırın ortasındaysak önce satırın başına dönülür
+  let hedef = yon < 0 && m.scrollTop > S.kap.offsetTop - ustBosluk() + 4 ? no : sinirla(no + yon, 0, son);
+  if (hedef === no && yon > 0) return 0;   // son satır: kalan boşluk ekran ekran kayar
+  const H = D.sayfalar[bas(hedef)];
+  kaydirAnim(H.kap.offsetTop - ustBosluk(), m.scrollLeft, sure);
+  return D.cift ? satirlar[no].length : 1;
 }
 // Çubuklar 4 sn etkileşim olmazsa çekilir; odak çubuktaysa ya da fiş açıksa beklenir
 function koltukCubuk(goster = !D.kok.classList.contains("cubuk-gorunur")) {
@@ -4760,7 +4970,9 @@ function koltukSecenekleri() {
     cevir: koltukCevir,
     modDegistir: modSec,
     geri: () => bus.emit("git", { ekran: "kitaplik" }),
-    araclar: [ud("Sayfalar", "sayfalar", () => panelDegistir("sol"))],
+    araclar: [
+      D.koltukGorunum = h("button", { class: "ikon-dugme", "aria-haspopup": "menu", "aria-label": "Görünüm", onclick: (e) => gorunumFisi(e.currentTarget) }),
+      ud("Sayfalar", "sayfalar", () => panelDegistir("sol"))],
     // Dokunma bölgeleri yalnız masada; bant, not ve rozet kendi dokunuşunu alır. Kalem sayfa çevirmez (yazar);
     // kalem havada görüldükten sonra 600 ms parmak da çevirmez (avuç içi)
     sahne: D.masaKap,
@@ -6380,6 +6592,8 @@ function sesDugmeGuncelle() {
     if (!D) return;
     const el = D.sesCubuk?.el || D.kok.querySelector(".ses-serit, .ses-cubuk, [data-ses-serit]");
     D.sesSeritH = acik && el ? el.offsetHeight : 0;   // araç çubuğunu CSS iter (--ses-serit); burada yalnız sayfaya gitme payı
+    // Sayfayı ve çifti sığdırmada şerit de örten paydır: açılıp kapanınca sayfa yeniden sığar
+    if (D.sayfalar.length && D.veri.sigdir !== false && etkinGorunum() !== "genislik") sigdirGerekirse(true);
   });
 }
 function sesKapat(d) {

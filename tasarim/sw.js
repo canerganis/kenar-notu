@@ -1,7 +1,7 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "6.1.1";
+const VERSION = "6.2.0";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
 // Çeviri motoru (lib/ceviri, wasm 5 MB): kabuğa girmez, ilk kullanımda alınır; sürüm artınca yeniden inmesin diye ayrı önbellekte
@@ -18,7 +18,7 @@ const KABUK = [
   "./tasarim.css", "./duzenleyici.css", "./okuma.css", "./koltuk.css", "./tekrar.css", "./asistan.css", "./arama.css", "./ses.css", "./izler.css", "./cizgi.css",
   "./app.js", "./ortak.js", "./kalem.js", "./sayfalar.js",
   "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./tekrar.js", "./asistan.js",
-  "./kayit.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
+  "./kayit.js", "./kitap-klasoru.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
   "./arama.js", "./ses.js", "./izler.js", "./cizgi.js", "./cizgi-belge.js", "./cizgi-ornek.js",
   "./cekmece.js", "./rehber.js", "./anki.js", "./yedek-isci.js",
   "./ceviri.js", "./ceviri-isci.js",

@@ -1233,3 +1233,42 @@ body:has(.duzenleyici[data-arac-konum="alt"]) .geri-fis { bottom: calc(92px + en
 /* Masa'da kalem (ya da çizen parmak) temastayken çekmece ve asistan canlanmaz (TASARIM-4 2.5 madde 6, kabul 5).
    Kabuğun :root[data-kalem="temas"] kuralının Masa karşılığı: kökte ek öznitelik yazılmaz, mevcut body.yaziyor kullanılır. */
 body.yaziyor :is(.alt-cekmece, .alt-cekmece-perde, .asistan, .geri-fis) { transition: none !important; animation: none !important; }
+
+/* =====================================================================
+   13. tur · Görünüm: genişliğe sığdır, sayfayı sığdır, çift sayfa (duzenleyici.js gorunumUygula)
+   ===================================================================== */
+/* Çift sayfa: satır (.yayilim) iki sayfayı bitişik taşır. Konumsuzdur: sayfaların offsetTop'u yine .masa'ya göre.
+   Tek kalan dikey sayfa kitaptaki yerinde (kapak sağda, artan son sayfa solda), öbür yanı boş; yatay sayfa ortada. */
+.yayilim { display: flex; flex: none; align-items: flex-start; }
+.yayilim-bos { flex: none; width: calc(800px * var(--k)); }
+.sutun.cift .ara-ekle { width: calc(1600px * var(--k)); }
+/* Cilt yeri (çizgi roman yayılımıyla aynı dil, TASARIM-3 9.1): iç köşeler düz, ortaya doğru koyulaşan gölge.
+   Gölge kâğıdın üstünde, mürekkebin altında (.sayfa içinde); sağ sayfanın kendi gölgesi sol sayfaya düşmez. */
+.sayfa-kap { --cilt-golge: #1C1B1930; }
+.sayfa-kap[data-sayfa="koyu"] { --cilt-golge: #00000073; }
+.sayfa-kap.cift-sol .sayfa { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.sayfa-kap.cift-sag .sayfa { border-top-left-radius: 0; border-bottom-left-radius: 0; clip-path: inset(-80px -80px -80px 0); }
+.sayfa-kap:is(.cift-sol, .cift-sag) .sayfa::after { content: ""; position: absolute; top: 0; bottom: 0; width: calc(36px * var(--k)); pointer-events: none; }
+.sayfa-kap.cift-sol .sayfa::after { right: 0; background: linear-gradient(90deg, transparent, var(--cilt-golge)); }
+.sayfa-kap.cift-sag .sayfa::after { left: 0; background: linear-gradient(270deg, transparent, var(--cilt-golge)); }
+/* Kenar alanı çift sayfada gizli (veri durur). Sol sayfanın tutamağı dış kenarda: dokunma alanı cilde ve sağ sayfaya düşmez */
+.sutun.cift .kenar-tutamak { transition: translate var(--sure-kisa) var(--egri-kagit); }
+.sayfa-kap.cift-sol .kenar-tutamak { left: -4px; border-radius: 2px 0 0 2px; }
+.sayfa-kap.cift-sol .kenar-tutamak::before { left: auto; right: 0; }
+.sayfa-kap.cift-sol .kenar-tutamak.yakin { translate: -4px 0; }
+@media (hover: hover) and (pointer: fine) { .sayfa-kap.cift-sol .kenar-tutamak:hover { translate: -4px 0; } }
+.sayfa-kap.cift-sol .kenar-tutamak.gizli-not::after { left: auto; right: 8px; }
+
+/* Bilgi çipinde görünüm düğmesi: yüzdenin yanında, seçili görünümün simgesi. Sayfa yazısı ("s. 48-49 / 312") tek satır kalır */
+.bilgi-cip .no { white-space: nowrap; }
+.bilgi-cip .gorunum { display: grid; place-items: center; width: 44px; padding: 0; color: var(--ink-2); }
+.bilgi-cip .gorunum .i { width: 20px; height: 20px; }
+.bilgi-cip .gorunum[aria-expanded="true"] { color: var(--accent); }
+@media (hover: hover) and (pointer: fine) { .bilgi-cip .gorunum:hover { color: var(--ink); } }
+
+/* Görünüm fişi: üç seçenek satırı, simge + ad + kısa açıklama + tik */
+.fis.gorunum-fis { width: 300px; min-width: 0; }
+.gorunum-satir { min-height: 56px; }
+.gorunum-satir .i { grid-row: auto; }
+.gorunum-satir > span small { display: block; font-weight: 400; }
+.gorunum-satir[aria-checked="true"] > .i:first-child { color: var(--accent); }

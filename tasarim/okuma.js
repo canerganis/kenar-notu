@@ -293,6 +293,10 @@ const dar = () => matchMedia("(max-width: 999px)").matches;
 const kabaIsaretci = () => matchMedia("(pointer: coarse)").matches;
 // Telefon düzeni (TASARIM-4 2.1): 600 px altı ya da yatay telefon. Paneller alt çekmece, çubuk iki kat.
 const telefon = () => matchMedia("(max-width: 599px), (max-height: 499px) and (orientation: landscape)").matches;
+// Sayfa düzeni (13. tur): okurun genel seçimi, store.ayarlar.sayfaDuzeni "tek" | "yan". Yan yana yalnız Koltuk'ta ve geniş
+// yatay ekranda olur (yanUygun); dar ekranda, dikeyde ve telefonda kendiliğinden tek sayfa, genişleyince seçim geri gelir.
+const sayfaDuzeni = () => (store.ayarlar.sayfaDuzeni === "yan" ? "yan" : "tek");
+const DUZENLER = [{ deger: "tek", ikon: "olcu-orta", ad: "Tek" }, { deger: "yan", ikon: "yan-yana", ad: "Yan yana" }];
 // iPhone ve iPad (iPadOS kendini Macintosh diye tanıtır). Sistem seçim balonu seçimin yanında açılır: menü şeride iner.
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 // S Pen'in yan tuşu silgidir; başka kalemde (Apple Pencil) silgi kalem tepsisinden seçilir
@@ -525,6 +529,7 @@ export function kapat() {
   s.iptal.abort();
   s.ro?.disconnect();
   s.mo?.disconnect();
+  s.yan?.mo.disconnect();
   for (const z of s.zamanlar) clearTimeout(z);
   for (const r of Object.values(s.raf)) cancelAnimationFrame(r);
   for (const f of s.bus) f();
@@ -537,9 +542,9 @@ export function kapat() {
     s.meta.content = (t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches) ? "#221E18" : "#FAF6EE";
   }
   s.kap.replaceChildren();
-  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede", "ceviriyle", "parmak-kalem");
+  s.kap.classList.remove("okuma-ekrani", "okuma-modu", "cubuk-gorunur", "tema-acik", "tema-koyu", "yaziyor", "tema-gecisi", "mod-gecisi", "kalem-yakin", "kalem-kosede", "ceviriyle", "parmak-kalem", "iki-sayfa");
   for (const r of VURGULAR) s.kap.style.removeProperty("--v-" + r.id);
-  for (const ad of ["--aa-kay", "--sutun-x", "--sutun-g"]) s.kap.style.removeProperty(ad);
+  for (const ad of ["--aa-kay", "--sutun-x", "--sutun-g", "--yan-x"]) s.kap.style.removeProperty(ad);
   delete s.kap.dataset.sayfa;
   delete s.kap.dataset.arac;
   delete s.kap.dataset.mod;
@@ -870,7 +875,7 @@ function sayfaUygula(id, { gecis = true } = {}) {
   kap.classList.toggle("tema-koyu", KOYU_SAYFA.has(id));
   kap.classList.toggle("tema-acik", !KOYU_SAYFA.has(id));
   if (S.meta) S.meta.content = SAYFA_META[id];
-  if (S.yer) { canliBoyutla(); karolariGuncelle(true); tuvalleriTazele(true); }
+  if (S.yer) { canliBoyutla(); karolariGuncelle(true); tuvalleriTazele(true); yanKirlet(); }
 }
 function sayfaSec(id, { tema = false } = {}) {
   if (!tema) tercih.temaId = null;
@@ -956,9 +961,9 @@ const kUst = () => KOLTUK_UST_T + guvenliAlan().ust;
 const kAlt = () => KOLTUK_ALT_T + guvenliAlan().alt;
 const KAYAN_CEVIRME = 300;   // bundan çok paragraflı kitapta sayfa çevirme kaymasız, yalnız solma (koltukCevir)
 // cubuk: çubuklar açıkken pencere opak çubukların altına daralır (yalnız maske; metin kaymaz, çevirme
-// çubuksuz pencereye göre yapılır).
-function koltukSinir(cubuk = false) {
-  const kay = S.el.kaydir, st = kay.scrollTop, H = kay.clientHeight, lh = S.yer.lh;
+// çubuksuz pencereye göre yapılır). st: pencerenin kaydırma değeri (yan yana görünümde kopya sayfanınki de olur).
+function koltukSinir(cubuk = false, st = S.el.kaydir.scrollTop) {
+  const kay = S.el.kaydir, H = kay.clientHeight, lh = S.yer.lh;
   let UST_K = kUst(), ALT_K = kAlt();
   if (cubuk) {
     const ust = S.kap.querySelector(".koltuk-ust"), alt = S.kap.querySelector(".koltuk-alt");
@@ -978,6 +983,7 @@ const kesim = (r) => (r.grup ? { ust: r.grup[0], alt: r.grup[1], blok: true } : 
 const koltukSinirCubuklu = () => koltukSinir(S.kap.classList.contains("cubuk-gorunur"));
 function koltukMaske(sinir) {
   if (!S?.yer || S.mod !== "koltuk") return;
+  if (S.yan) yanMaske();
   const s = sinir || koltukSinirCubuklu(), kay = S.el.kaydir;
   const u = s.ust.toFixed(1) + "px", a = (s.H - s.alt).toFixed(1) + "px";
   if (S.kMaske === u + a) return;
@@ -996,7 +1002,9 @@ function ustPay() {
   if (!S || S.okumaModu || !S.cubukH) return UST;
   return UST + 12 + S.cubukH + 8;
 }
-function konumAl(y = S.el.kaydir.scrollTop + ustPay()) {
+// Yan yana görünümde canlı sayfa sağdayken de okunan yer soldaki sayfadır (yayılımın başı)
+const okumaSt = () => (S.yan?.sag ? S.yan.bas : S.el.kaydir.scrollTop);
+function konumAl(y = okumaSt() + ustPay()) {
   const { pUst, pAlt } = S.yer;
   let lo = 0, hi = P.length - 1;
   while (lo < hi) { const m = (lo + hi) >> 1; if (pAlt[m] <= y) lo = m + 1; else hi = m; }
@@ -1008,6 +1016,7 @@ function konumY(k) {
 }
 function konumaGit(k) {
   const kay = S.el.kaydir;
+  if (S.yan?.sag) yanSola();   // gidilen yer soldaki sayfaya
   kay.scrollTop = k ? Math.max(0, konumY(k)) : 0;
   // Konumun satırı tam görünen ilk satır olur: Koltuk'ta sayfa başlığının bandının, Masa'da araç çubuğunun altında
   if (k && S.yer) {
@@ -1024,6 +1033,7 @@ function yerlesimDegisti() {
   if (!S) return;
   const ilk = !S.yer;
   const k = S.veri.konum || (S.yer ? konumAl() : null);
+  yanDurumu();   // yan yana mı tek mi: sütun genişliği buna bağlı, ölçümden önce
   tuvalleriYerlestir(false);   // satır kırılımları değiştiyse açık boşluklar yeni satır başlarına
   yerlesimOlc();
   S.cubukH = S.el.cubuk?.offsetHeight || 0;
@@ -1031,6 +1041,10 @@ function yerlesimDegisti() {
   // Sütunun kenarları: Koltuk'un sayfa başlığı, ilerleme çizgisi ve sayfa kenarı sütuna hizalanır
   S.kap.style.setProperty("--sutun-x", S.yer.sol.toFixed(1) + "px");
   S.kap.style.setProperty("--sutun-g", (S.yer.s * BIRIM).toFixed(1) + "px");
+  if (S.yan) {
+    S.kap.style.setProperty("--yan-x", S.yer.sol.toFixed(1) + "px");   // sütunun yarımdaki yeri, iki sayfada aynı
+    S.yan.son = S.yer.ust + S.el.sutun.offsetHeight;   // metnin sonu (altındaki boşluk sağ sayfa canlı olabilsin diye)
+  }
   S.okumaR = S.el.okuma.getBoundingClientRect();
   if (S.el.kurdele) kurdeleKur();   // yazı boyutu değişince kurdele satırıyla gider
   if (ilk) {
@@ -1073,14 +1087,17 @@ function durumGuncelle() {
   if (kay.scrollHeight !== S.yer.kayYuk) { planla("yerlesim", yerlesimDegisti); return; }
   // Önce bütün ölçüler, sonra yazılar: yazıdan sonra okunan her ölçü yerleşimi yeniden zorlar
   // (7500 paragraflı kitapta her biri 5 ile 25 ms, sayfa çevirme başına üç kez)
-  const st = kay.scrollTop, H = kay.clientHeight;
+  // Yan yana: okunan yer soldaki sayfa (st), kitabın sonu ve yer imi iki sayfaya birden bakar (sagSt: sağ sayfa)
+  if (S.yan?.sag && Math.abs(kay.scrollTop - S.yan.canliSt) > 1) yanSola();   // dışarıdan kaydırıldı (arama, cetvel)
+  const st = okumaSt(), H = kay.clientHeight;
+  const sagSt = S.yan ? (S.yan.sag ? S.yan.canliSt : sonrakiSayfa(st)) : st;
   const k = konumAl(st + ustPay());
   const p = P[k.p], bolum = BOLUMLER[p.b], sonBolum = bolum.i === BOLUMLER.length - 1;
   const okunan = okunanKelime(k);
-  const sonda = st + H >= S.yer.kayYuk - 4;
-  const oduncGorunur = !!S.koltuk && sonBolum && st + H > S.el.odunc.offsetTop + S.el.sutun.offsetTop + 40;
+  const sonda = sagSt + H >= (S.yan ? S.yan.son + 160 : S.yer.kayYuk) - 4;   // okuma.css: metnin altında 160px
+  const oduncGorunur = !!S.koltuk && sonBolum && sagSt + H > S.el.odunc.offsetTop + S.el.sutun.offsetTop + 40;
   const sinir = S.koltuk ? koltukSinirCubuklu() : null;
-  const yerImli = gorunenYerImleri(st, H).length > 0;
+  const yerImli = gorunenYerImleri(st, sagSt + H - st).length > 0;
   const oran = sonda ? 1 : okunan / TOPLAM;
   const kalanKelime = bolum.onceki + bolum.kelime - okunan;
   metinYaz(S.el.durumBolum, bolum.baslik);
@@ -1105,6 +1122,7 @@ function durumGuncelle() {
     S.kKonum = { oran, bolumAd: bolum.ad, kelimeKalanBolum: Math.max(0, kalanKelime), kelimeKalanKitap: Math.max(0, TOPLAM - okunan) };
     hizOlc(okunan, st, H);
     S.koltuk.guncelle();
+    if (S.yan) yanGuncelle();   // öbür sayfanın kopyası: gerekirse kurulur (yazılardan sonra; ölçümü kendi kabında)
     koltukMaske(sinir);
   }
   yerImiDurumu(yerImli);
@@ -1170,6 +1188,7 @@ function durumYukle(d) {
   kenarNotlariniCiz();
   S.goruntu = null;
   karolariGuncelle(true);
+  yanKirlet();
   panelYenile();
 }
 function geriAl() {
@@ -1279,6 +1298,7 @@ function secimAraligi(r) {
 // Çakışırsa alttaki 8px aşağı iner.
 const OLUK = 232;
 function olukVar() {
+  if (S.yan) return false;   // yan yana: sayfaların arasında not sütunu yok, dar ekrandaki gibi işaret ya da şerit
   const ic = S.el.ic, sutun = S.el.sutun;
   const sag = ic.clientWidth - (sutun.offsetLeft + sutun.offsetWidth);   // sütunun sağından iç kenara (dolgu dahil)
   return sag >= OLUK + 8;
@@ -1503,7 +1523,8 @@ function menuKapat() {
 }
 
 function vurguMenusuAc(v, mark) {
-  const isaretler = [...S.el.sutun.querySelectorAll(`mark[data-v="${v.id}"]`)];
+  // Yan yana görünümde vurgu kopya sayfada olabilir: dikdörtgenler dokunulan işaretin sütunundan
+  const isaretler = [...(mark?.closest(".okuma-sutun") || S.el.sutun).querySelectorAll(`mark[data-v="${v.id}"]`)];
   const rects = isaretler.flatMap((m) => [...m.getClientRects()]).filter((q) => q.width > 0);
   secimMenusuAc({ tur: "vurgu", v, rects: rects.length ? rects : [...mark.getClientRects()] });
 }
@@ -2497,6 +2518,15 @@ function aaAc() {
         h("div", { class: "aa-bolum" }, etiket("Boyut"),
           h("div", { class: "cetvel-satir aa-boyut" }, h("span", { class: "aa-harf kucuk", "aria-hidden": "true" }, "A"), kaydirici, h("span", { class: "aa-harf buyuk", "aria-hidden": "true" }, "A"))),
         h("div", { class: "aa-bolum" }, etiket("Satır aralığı"), cipler(SATIRLAR, tercih.satir, (d) => degistir({ satir: d }), "Satır aralığı")),
+        // Sayfa düzeni (13. tur): okurun genel ayarı; uygulanamıyorsa nedeni altında
+        h("div", { class: "aa-bolum aa-duzen" }, etiket("Sayfa"),
+          cipler(DUZENLER, sayfaDuzeni(), (d) => {
+            ayarla({ sayfaDuzeni: d });   // "ayarlar" olayı yerleşimi planlar; açıklama yerleşimden sonra tazelenir
+            ciz();
+            requestAnimationFrame(() => requestAnimationFrame(() => { if (S?.katman?.el === balon) ciz(); }));
+          }, "Sayfa düzeni"),
+          sayfaDuzeni() === "yan" && !S.yan ? h("small", { class: "aa-not" },
+            S.mod !== "koltuk" ? "İki sayfa yan yana Koltuk'ta görünür." : "Bu ekranda tek sayfa. Yatay ve geniş ekranda iki sayfa olur.") : null),
         aaCeviriBolumu(),
         // Okurken: okuma cetveli (TASARIM-4 4.5) ve dar ekranda notların yeri (2.6)
         h("div", { class: "aa-bolum aa-okurken" }, etiket("Okurken"),
@@ -2531,7 +2561,8 @@ function aaKaydir(balon) {
   if (!S) return;
   const ic = S.el.ic, once = S.aaKay || 0;
   let dx = 0;
-  if (balon?.isConnected && !matchMedia("(orientation: portrait)").matches) {
+  // Yan yana görünümde balon sağ sayfanın üstündedir, soldaki sayfa okunur: sütun kaymaz
+  if (balon?.isConnected && !S.yan && !matchMedia("(orientation: portrait)").matches) {
     const bR = balon.getBoundingClientRect(), sR = S.el.sutun.getBoundingClientRect(), oR = S.el.okuma.getBoundingClientRect();
     const sol = sR.left + once, sag = sR.right + once;   // kaymamış sütunun kenarları
     if (bR.bottom > oR.top && bR.left < sag + 24) dx = sinirla(Math.ceil(sag + 24 - bR.left), 0, Math.max(0, Math.floor(sol - oR.left - 16)));
@@ -2815,7 +2846,7 @@ function koltukAc({ ilk = false } = {}) {
     araclar: [el.kAra, el.kIcindekiler, el.kAa, el.kDisa, el.kDaha],
     altAraclar: [el.tIcindekiler, el.tAra, el.tIzler, el.tKalem],
     anahtarDaha: true,   // telefonda mod anahtarı ⋯ içinde
-    sahne: el.kaydir,
+    sahne: el.okuma,   // kaydırıcı ve yan yana görünümde kopya sayfa birlikte
     izler: () => izOranlari(),
     izeGit: (id) => { const z = S?.veri.izler.find((x) => x.id === id); if (z) izeGit(z); },
     izAtla: (yon) => izAtla(yon),
@@ -2852,31 +2883,54 @@ function cevirPerdesi() {
   if (!S.el.cevirPerde?.isConnected) {
     S.el.cevirPerde = h("div", { class: "cevir-perde", "aria-hidden": "true",
       style: "position:absolute;inset:0;z-index:0;pointer-events:none;background:var(--zemin);opacity:0" });
-    S.el.kaydir.after(S.el.cevirPerde);   // kaydırıcının üstünde, sayfa kenarı ve çubukların altında
+    // kaydırıcının (yan yana görünümde kopya sayfanın ve cilt yerinin) üstünde, sayfa kenarı ve çubukların altında
+    (S.el.cilt || S.el.kaydir).after(S.el.cevirPerde);
   }
   return S.el.cevirPerde;
+}
+// st'de başlayan sayfadan sonraki ve önceki sayfanın kaydırma değeri (sınırlanmamış). İleride yeni sayfa gizlenen ilk
+// satırdan başlar; geride önceki sayfa şimdiki ilk satırın üstünde biter.
+function sonrakiSayfa(st) {
+  const H = S.el.kaydir.clientHeight;
+  let hedef = st + H - kUst() - kAlt();
+  if (S.yer) {
+    hedef = st + koltukSinir(false, st).alt - kUst();
+    if (hedef <= st + S.yer.lh) hedef = st + H - kUst() - kAlt();
+  }
+  return Math.round(hedef);
+}
+function oncekiSayfa(st) {
+  const H = S.el.kaydir.clientHeight;
+  let hedef = st - (H - kUst() - kAlt());
+  if (S.yer) {
+    // Önceki sayfa şimdiki ilk satırda biter; üst kenarda kesilen satır aşağı, blok (başlık) yukarı oturur
+    const y = st + koltukSinir(false, st).ust - (H - kAlt() - kUst()), r = kesim(satirAl(y));
+    hedef = (y - r.ust > 0.5 && !r.blok ? r.alt : r.ust) - kUst();
+    if (hedef >= st) hedef = y - kUst();
+  }
+  return Math.round(hedef);
 }
 function koltukCevir(yon) {
   const kay = S.el.kaydir;
   menuKapat();
   katmanKapat();
   islakAktar();
-  const st = kay.scrollTop, H = kay.clientHeight;
-  let hedef = st + yon * (H - kUst() - kAlt());
-  if (S.yer) {
-    const s = koltukSinir();
-    if (yon > 0) hedef = st + s.alt - kUst();
-    else {
-      // Önceki sayfa şimdiki ilk satırda biter; üst kenarda kesilen satır aşağı, blok (başlık) yukarı oturur
-      const y = st + s.ust - (H - kAlt() - kUst()), r = kesim(satirAl(y));
-      hedef = (y - r.ust > 0.5 && !r.blok ? r.alt : r.ust) - kUst();
-      if (hedef >= st) hedef = y - kUst();
-    }
-    if (yon > 0 && hedef <= st + S.yer.lh) hedef = st + H - kUst() - kAlt();
-  }
-  hedef = sinirla(Math.round(hedef), 0, kay.scrollHeight - H);
+  const H = kay.clientHeight, ust = kay.scrollHeight - H;
+  let st = kay.scrollTop, hedef;
+  if (S.yan) {
+    // Yan yana: iki sayfa birden. Metnin altında bir ekranlık boşluk var (okuma.css): son yayılımın sağ sayfası boş da
+    // olsa kaydırıcı oraya iner; yeni sol sayfa boş kalacaksa çevrilmez.
+    st = S.yan.bas;
+    if (yon > 0) {
+      const b = sonrakiSayfa(sonrakiSayfa(st));
+      hedef = yanDolu(b) ? b : st;
+    } else hedef = st <= 0 ? 0 : oncekiSayfa(oncekiSayfa(st));
+  } else hedef = yon > 0 ? sonrakiSayfa(st) : oncekiSayfa(st);
+  hedef = sinirla(hedef, 0, ust);
   if (hedef === st) return;
+  if (S.yan) { yanSola(); S.yan.bas = hedef; }
   kay.scrollTop = hedef;
+  if (S.yan) yanGuncelle();   // sağ sayfa aynı karede
   koltukMaske();   // kaydırma olayını beklemeden: yeni sayfa ilk karede doğru kenarlarla
   cetvelIlkSatir();   // okuma cetveli yeni sayfanın ilk satırına
   if (hareketAz()) return;
@@ -2887,8 +2941,316 @@ function koltukCevir(yon) {
   // Kayma yalnız kısa kitapta: uzun kitapta bütün metin katmanı her çevirmede baştan boyanıyordu
   // (1500 paragrafta yavaş tablette çevirme başına yaklaşık 200 ms). Solma tek başına ucuz.
   if (P.length <= KAYAN_CEVIRME) {
-    S.cevirAnim.push(S.el.ic.animate([{ transform: `translateX(${yon * 14}px)` }, { transform: "translateX(0)" }], { ...zaman, composite: "add" }));
+    const kayma = [{ transform: `translateX(${yon * 14}px)` }, { transform: "translateX(0)" }];
+    S.cevirAnim.push(S.el.ic.animate(kayma, { ...zaman, composite: "add" }));
+    if (S.yan?.goster) S.cevirAnim.push(S.yan.goster.kok.animate(kayma, { ...zaman, composite: "add" }));
   }
+}
+
+// ---------- iki sayfa yan yana (13. tur) ----------
+// Koltuk'ta metin tek bir dikey şerittir; sayfa, şeridin maskeli bir penceresidir (koltukSinir). Yan yana görünümde
+// canlı şerit (kaydırıcı) ekranın bir yarısını, şeridin bir sonraki penceresinin kopyası (.yan-sayfa) öbür yarısını
+// gösterir: iki sütun aynı genişlikte olduğu için kopyanın satırları canlıyla aynı kırılır. Gerçek çok sütunlu sayfalama
+// (CSS columns) bütün dikey ölçüleri (konum, vurgu, mürekkep, Active Canvas, izler, cetvel) bozardı; kopya bunlara dokunmaz.
+// Kopya yalnız o pencereye değen öğelerden kurulur (ikili aramayla), uzun kitapta da birkaç düzine öğe.
+// Okur öbür sayfaya yöneldiğinde (fare ya da kalem üstüne gelince, parmak basınca) canlı şerit o yarıya geçer, kopya
+// bu yarıya: seçim, vurgu, kalem, Active Canvas ve uzun basış her iki sayfada da canlı metinde çalışır. Geçiş görünmez:
+// sütun yalnız göreli konumla (left) kayar, metin yeniden dizilmez.
+// S.yan: { el: kopyanın kabı, bas: soldaki sayfanın kaydırması, sag: canlı sayfa sağda mı, canliSt, yarim: yarım genişlik,
+//   klonlar: Map(kaydırma -> { kok, st }) bu yayılımın en çok iki kopyası, goster: görünen kopya, kirli: metin değişti }
+const YAN_PAY = 48;   // yan yana sayfanın iki yan boşluğu (okuma.css .yan-yana .okuma-ic): dış kenar ve cilt yerinin yarısı
+function yanUygun() {
+  if (sayfaDuzeni() !== "yan" || S.mod !== "koltuk" || telefon()) return false;
+  // Genişlik çalışma alanından: yan yana görünümde paneller sayfaların üstüne açılır (okuma.css), açık panel düzeni bozmaz
+  const W = S.el.okuma.parentElement.clientWidth, H = S.el.okuma.clientHeight;
+  if (W < 900 || W < H * 1.15) return false;   // dikey, kare ya da dar pencere: tek sayfa
+  const em = parseFloat(getComputedStyle(S.el.ic).fontSize) || 19;
+  return W / 2 - 2 * YAN_PAY >= 40 * 0.505 * em;   // her sayfada en az 40 harflik satır (okuma.css --harf)
+}
+function yanDurumu() {
+  S.duzen = sayfaDuzeni();
+  const acik = yanUygun();
+  if (acik && S.yan) {
+    S.yan.sag = false;
+    S.el.sutun.style.left = "";
+    S.el.okuma.dataset.yan = "sol";
+    S.yan.yarim = S.el.okuma.clientWidth / 2;
+    S.yan.kirli = true;
+    return;
+  }
+  if (!acik) { yanKapat(); return; }
+  S.kap.classList.add("iki-sayfa");
+  const el = h("div", { class: "yan-sayfa", "aria-hidden": "true" });
+  el.addEventListener("click", yanTiklandi, { signal: S.sinyal });
+  S.el.cilt = h("div", { class: "yan-cilt", "aria-hidden": "true" });
+  S.el.kaydir.after(el, S.el.cilt);   // çevirme perdesinin altında (cevirPerdesi)
+  S.el.okuma.dataset.yan = "sol";
+  S.yan = { el, bas: S.el.kaydir.scrollTop, sag: false, canliSt: 0, yarim: S.el.okuma.clientWidth / 2, klonlar: new Map(), goster: null, kirli: true,
+    mo: new MutationObserver(() => yanKirlet()) };
+  // Canlı metin değişince (vurgu, arama, not, çeviri satırı, Active Canvas) kopya yeniden kurulur
+  S.yan.mo.observe(S.el.sutun, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+}
+// st'de başlayan sayfada metin var mı (ilk satırı metnin sonundan önce mi)
+const yanDolu = (st) => st + kUst() < S.yan.son;
+function yanKapat() {
+  const y = S.yan;
+  if (!y) return;
+  y.mo.disconnect();
+  y.el.remove();
+  S.el.cilt?.remove();
+  S.el.cilt = null;
+  S.el.sutun.style.left = "";
+  delete S.el.okuma.dataset.yan;
+  S.kap.classList.remove("iki-sayfa");
+  S.kap.style.removeProperty("--yan-x");
+  S.yan = null;
+}
+function yanKirlet() {
+  if (!S?.yan || S.yan.kirli) return;
+  S.yan.kirli = true;
+  planla("yan", yanGuncelle);
+}
+// Canlı sayfa sola (kaydırmaya dokunmaz; çağıran kaydırır) ya da sağa geçer
+function yanSola() {
+  if (!S.yan?.sag) return;
+  S.yan.sag = false;
+  S.el.sutun.style.left = "";
+  S.el.okuma.dataset.yan = "sol";
+  yanSutunTasindi();
+}
+function yanSaga() {
+  const y = S.yan, kay = S.el.kaydir;
+  if (!y || y.sag || !S.yer) return false;
+  const st2 = y.sagSt ?? sonrakiSayfa(y.bas);
+  if (st2 > kay.scrollHeight - kay.clientHeight) return false;   // sağ sayfa kitabın sonundan öte: kaydırıcı oraya inemez
+  y.sag = true;
+  y.canliSt = st2;
+  S.el.sutun.style.left = y.yarim.toFixed(2) + "px";
+  S.el.okuma.dataset.yan = "sag";
+  yanSutunTasindi();
+  kay.scrollTop = st2;
+  yanGuncelle();
+  koltukMaske();
+  return true;
+}
+function yanSolaDon() {
+  const y = S.yan;
+  if (!y?.sag) return false;
+  yanSola();
+  S.el.kaydir.scrollTop = y.bas;
+  yanGuncelle();
+  koltukMaske();
+  return true;
+}
+// Sütun yalnız yatayda kaydı: dikey ölçüler aynı, yatay olanlar (mürekkep, izler, kurdele) yeni sola göre
+function yanSutunTasindi() {
+  if (!S.yer) return;
+  S.yer = { ...S.yer, sol: S.el.sutun.offsetLeft };   // yeni nesne: izlerin yerleşim önbelleği de tazelenir
+  S.goruntu = null;
+  karolariGuncelle(true);
+  if (S.el.kurdele) kurdeleKur();
+}
+
+// Görünmesi gereken kopyayı gösterir; yoksa kurar. Canlı sayfa soldayken kopya sonraki sayfadır, sağdayken soldaki.
+function yanGuncelle() {
+  const y = S?.yan;
+  if (!y || !S.yer) return;
+  const kay = S.el.kaydir;
+  if (y.sag && Math.abs(kay.scrollTop - y.canliSt) > 1) yanSola();
+  if (!y.sag) y.bas = kay.scrollTop;
+  const sonraki = y.sag ? y.canliSt : sonrakiSayfa(y.bas), st = y.sag ? y.bas : sonraki;
+  y.sagSt = sonraki;
+  // Metin değiştiyse eski kopyalar atılır; yenisi kurulduktan sonra (önce sökmek kurulumun ölçümünü zorlardı)
+  const eski = y.kirli ? [...y.klonlar.values()] : [];
+  if (y.kirli) { y.klonlar.clear(); y.kirli = false; }
+  let k = y.klonlar.get(st);
+  if (!k) { k = yanKlonla(st); y.klonlar.set(st, k); }
+  for (const x of eski) x.kok.remove();
+  if (y.goster !== k) {
+    // Bekleyen kopyalar görünmez ama dizili kalır (visibility): görünür olunca yeniden dizilmez, yalnız boyanır
+    for (const x of y.klonlar.values()) x.kok.classList.toggle("bekle", x !== k);
+    y.goster = k;
+    y.maske = "";
+  }
+  yanMaske();
+  if (!y.hazirlik) { y.hazirlik = true; bosta(yanHazirla, 1500); }
+}
+// Boşta: bir sonraki yayılımın sağ sayfası önceden kurulur (çevirme yalnız görünürlüğü değiştirir); bu yayılıma ve
+// sonrakine ait olmayan kopyalar atılır. Kalem değince sol sayfanın kopyası da hazır olsun diye o da kurulur.
+function yanHazirla() {
+  const y = S?.yan;
+  if (!y) return;
+  y.hazirlik = 0;
+  if (y.kirli || !y.goster || !S.yer || S.aktif) return;
+  const b = sonrakiSayfa(y.sagSt), ileri = yanDolu(b) ? sonrakiSayfa(b) : null;
+  // Her boş anda bir kopya (uzun görev olmasın); eksik kaldıysa bir sonraki boş ana. Önce kurulur, sonra atılır.
+  const st = [ileri, y.sag ? null : y.bas].find((x) => x != null && !y.klonlar.has(x));
+  if (st != null) {
+    const k = yanKlonla(st);
+    k.kok.classList.add("bekle");
+    y.klonlar.set(st, k);
+    y.hazirlik = true;
+    bosta(yanHazirla, 1500);
+  }
+  const tut = new Set([y.bas, y.sagSt, ileri]);
+  for (const [a, x] of y.klonlar) if (!tut.has(a)) { x.kok.remove(); y.klonlar.delete(a); }
+}
+// Kopyanın penceresi: canlı sayfanınki gibi satır sınırına oturur (çubuklar açıkken onların altına daralır)
+function yanMaske() {
+  const y = S.yan;
+  if (!y?.goster) return;
+  const s = koltukSinir(S.kap.classList.contains("cubuk-gorunur"), y.goster.st);
+  const u = s.ust.toFixed(1) + "px", a = (s.H - s.alt).toFixed(1) + "px";
+  if (y.maske === u + a) return;
+  y.maske = u + a;
+  y.el.style.setProperty("--sayfa-ust", u);
+  y.el.style.setProperty("--sayfa-alt", a);
+}
+
+// İçerik y'si [y0, y1] aralığına değen akış öğeleri, bölümleriyle: [{ kap: bölüm | null (kitap sonu), ogeler }].
+// Bölümler ve bölümün çocukları üstten alta sıralı: ikili arama. Aralıktan önceki bir kardeş de alınır (".sahne + p"
+// gibi kardeş seçicileri ve paragraf girintisi kopyada da aynı kalsın). dy: ekran y'sinden içerik y'sine.
+function yanBloklari(y0, y1, dy) {
+  const kaplar = S.yanKaplar ||= [...S.el.sutun.children].filter((e) => e.matches("section.bolum, .kitap-sonu"));
+  const ust = (e) => e.getBoundingClientRect().top + dy, alt = (e) => e.getBoundingClientRect().bottom + dy;
+  let lo = 0, hi = kaplar.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (alt(kaplar[m]) < y0) lo = m + 1; else hi = m; }
+  const sonuc = [];
+  for (let i = lo; i < kaplar.length && ust(kaplar[i]) <= y1; i++) {
+    const kap = kaplar[i];
+    if (!kap.matches("section")) { sonuc.push({ kap: null, ogeler: [kap] }); continue; }
+    const c = kap.children, n = c.length;
+    if (!n) continue;
+    let a = 0, b = n - 1;
+    while (a < b) { const m = (a + b) >> 1; if (alt(c[m]) < y0) a = m + 1; else b = m; }
+    a = Math.max(0, a - 1);
+    let z = a;
+    while (z < n - 1 && ust(c[z + 1]) <= y1) z++;
+    sonuc.push({ kap, ogeler: Array.prototype.slice.call(c, a, z + 1) });
+  }
+  return sonuc;
+}
+// st'de başlayan pencerenin kopyası. Koordinatlar canlıyla aynıdır: sütunun başında bir boşluk ilk öğeyi asıl içerik
+// y'sine indirir, kap -st kadar kayar. Mürekkep karoları ve Active Canvas kendi tuvallerine yeniden çizilir.
+function yanKlonla(st) {
+  const sutun = S.el.sutun, H = S.el.kaydir.clientHeight, lh = S.yer.lh;
+  const sR = sutun.getBoundingClientRect(), dy = S.yer.ust - sR.top;
+  const sutun2 = sutun.cloneNode(false);
+  sutun2.removeAttribute("aria-label");
+  sutun2.style.left = "";
+  const bosluk = h("div", { class: "yan-bosluk" });
+  sutun2.append(bosluk);
+  let ilk = null, ilkAsil = null;
+  for (const { kap, ogeler } of yanBloklari(st - lh, st + H + lh, dy)) {
+    const hedef = kap ? sutun2.appendChild(kap.cloneNode(false)) : sutun2;
+    for (const o of ogeler) {
+      const k = o.cloneNode(true);
+      k.__asil = o;   // kopyadaki düğmenin tıklaması asıl öğeye gider (yanTiklandi)
+      hedef.append(k);
+      if (!ilk) { ilk = k; ilkAsil = o; }
+    }
+  }
+  for (const o of [S.el.yerImleri, S.el.kenarNotlari]) { const k = o.cloneNode(true); k.__asil = o; sutun2.append(k); }   // sütuna göre mutlak
+  for (const e of sutun2.querySelectorAll("[id]")) e.removeAttribute("id");
+  for (const e of sutun2.querySelectorAll("button, a, [tabindex]")) e.tabIndex = -1;
+  const kok = h("div", { class: "okuma-ic yan-ic" + (S.el.ic.classList.contains("oluklu") ? " oluklu" : "") });
+  kok.style.cssText = S.el.ic.style.cssText;   // yazı ailesi, boyut, satır, ölçü
+  kok.style.transform = `translateY(${-st}px)`;
+  const mur = h("div", { class: "murekkep-katman" });
+  kok.append(sutun2, mur);
+  S.yan.el.append(kok);
+  // Boşluk önce asıl y'ye, sonra ölçülen farkla düzeltilir (bölüm başında kenar payı birleşmesi). Kap contain: strict,
+  // ölçüm yalnız kopyayı dizer.
+  if (ilk) {
+    const asilY = ilkAsil.getBoundingClientRect().top - sR.top;
+    bosluk.style.height = Math.max(0, asilY).toFixed(2) + "px";
+    const fark = ilk.getBoundingClientRect().top - sutun2.getBoundingClientRect().top - asilY;
+    if (Math.abs(fark) > 0.05) bosluk.style.height = Math.max(0, asilY - fark).toFixed(2) + "px";
+  }
+  // Mürekkep: canlı karo çizimi canlı sütunun soluna göre; kopyanın sütunu başka yerdeyse katman o kadar kayar
+  const g = gorunenCizgiler(st - KARO, st + H + KARO);
+  if (g.length) {
+    mur.style.cssText = `left:${(sutun2.offsetLeft - S.yer.sol).toFixed(1)}px;right:auto;width:${S.yer.icGen}px`;
+    for (let i = Math.max(0, Math.floor(st / KARO)); i <= Math.floor((st + H) / KARO); i++) {
+      if (!g.some((c) => karoKesisir(c.kutu, i))) continue;
+      const cv = h("canvas");
+      mur.append(cv);
+      karoCiz(i, cv);
+    }
+  }
+  for (const t of sutun2.querySelectorAll(".tuval:not(.kucuk)")) {
+    const r = S.tv.get(t.dataset.t), cv = t.querySelector(".tuval-cv");
+    if (r && cv) tuvalCiz({ t: r.t, el: t, cv, boyut: "" });
+  }
+  return { kok, st };
+}
+
+// Okur öbür sayfaya yöneldi: fare ya da kalem üstünde gezinince, parmak basınca canlı sayfa o yarıya geçer.
+// Seçim, menü, balon, çizim sürerken geçilmez. Kopyadaki vurgu ve düğmeye basış geçirmez: tıklaması karşılanır.
+function yanIsaretci(e) {
+  const y = S?.yan;
+  if (!y || !S.yer) return;
+  if (e.type === "pointerdown" && e.pointerType === "touch" && e.isPrimary) S.yanDokunus = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
+  if (e.type === "pointermove" && (e.buttons || e.pointerType === "touch")) return;
+  const R = S.okumaR || S.el.okuma.getBoundingClientRect(), sag = e.clientX >= R.left + R.width / 2;
+  if (sag === y.sag) return;
+  const sec = document.getSelection();
+  if (S.aktif || S.menu || S.katman || S.tepsi || S.uzun || S.parmak || (sec && !sec.isCollapsed)) return;
+  const kopyada = y.el.contains(e.target);
+  // Basış yalnız kopyanın metnindeyse geçirir (köşe, cetvel tutamağı, kalem ucu kendi işini görür)
+  if (e.type === "pointerdown" && (!kopyada || e.target.closest?.("[data-v], button, a"))) return;
+  if (!(sag ? yanSaga() : yanSolaDon())) return;
+  if (e.type !== "pointerdown" || !kopyada) return;
+  // Basış kopyaya düşmüştü: canlı metne aktarılır (uzun basış anlamı, kalem, iki parmakla geri al). Sonraki hareketler
+  // dokunuşun örtük yakalamasından çıkıp canlı metne gider.
+  try { e.target.releasePointerCapture?.(e.pointerId); } catch { /* yakalama yok */ }
+  const hedef = document.elementFromPoint(e.clientX, e.clientY);
+  if (hedef && S.el.kaydir.contains(hedef)) {
+    isaretciBasti(new Proxy(e, { get: (o, k) => (k === "target" ? hedef : typeof o[k] === "function" ? o[k].bind(o) : o[k]) }));
+  }
+}
+// Yan yana sayfa kaymaz, çevrilir: parmağın hızlı kaydırması (yatay ya da dikey) ve tekerlek bir yayılım çevirir
+function yanKaydirma(e) {
+  const d = S?.yanDokunus;
+  if (!d || e.pointerId !== d.id) return;
+  S.yanDokunus = null;
+  if (!S.yan || e.type !== "pointerup" || S.parmakKalem || S.aktif || S.katman || S.menu) return;
+  const dx = e.clientX - d.x, dy = e.clientY - d.y;
+  if (performance.now() - d.t > 700 || Math.max(Math.abs(dx), Math.abs(dy)) < 48) return;
+  const sec = document.getSelection();
+  if (sec && !sec.isCollapsed) return;
+  koltukCevir(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : -1) : (dy < 0 ? 1 : -1));
+}
+function yanTekerlek(e) {
+  if (!S?.yan || e.ctrlKey || S.katman) return;
+  const t = performance.now();
+  if (t - (S.yanTekZ || 0) > 220) S.yanJest = { d: 0, cevrildi: false };   // aralıksız gelen olaylar tek jest: bir çevirme
+  S.yanTekZ = t;
+  const j = S.yanJest;
+  if (j.cevrildi) return;
+  j.d += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+  if (Math.abs(j.d) < 40) return;
+  j.cevrildi = true;
+  koltukCevir(Math.sign(j.d));
+}
+// Kopyadaki vurgu, not ve düğme: vurgu menüsü ve not balonu kopyanın yerinde açılır, düğme asıl öğesine tıklanır
+function yanTiklandi(e) {
+  if (!S || S.arac !== "okuma" || performance.now() - S.sonCizimZ < 400) return;
+  const el = e.target.closest?.("[data-v], button, a");
+  if (!el) return;
+  const v = el.dataset.v && vurguBul(el.dataset.v);
+  if (v) {
+    if (el.matches("mark") && !(v.not && v.not.trim())) vurguMenusuAc(v, el);
+    else notBalonuAc(v, { kaynak: el });
+    return;
+  }
+  // Kopyadan asıl öğeye: en yakın kopyalanmış atanın asıl öğesinden aynı çocuk sırasıyla inilir
+  const yol = [];
+  let k = el;
+  while (k && !k.__asil) { const p = k.parentElement; if (!p) return; yol.push(Array.prototype.indexOf.call(p.children, k)); k = p; }
+  let a = k?.__asil;
+  for (let i = yol.length - 1; i >= 0 && a; i--) a = a.children[yol[i]];
+  a?.click();
 }
 // Kaldığın yer (TASARIM-4 3.4): içindekilerden ya da cetvelden uzağa atlayınca altta 4 sn "Kaldığın yer" ve "Dön".
 // Atlamadan önce çağrılır, dönen işlev atlamadan sonra.
@@ -3107,7 +3469,7 @@ function silgiBalonu(balon) {
     h("div", { class: "balon-alt" }, onayliDugme("Bütün çizimleri sil", () => {
       if (!S.veri.cizgiler.length) { katmanKapat(); return; }
       islem(() => { S.veri.cizgiler = []; });
-      S.goruntu = null; karolariGuncelle(true); katmanKapat();
+      S.goruntu = null; karolariGuncelle(true); yanKirlet(); katmanKapat();
       toast("Çizimler silindi", { etiket: "Geri al", calistir: () => S && geriAl() });
     })));
 }
@@ -3176,10 +3538,12 @@ function cizgiyiKarolaraEkle(g) {
     if (cv) karoCiz(i, cv, [g]);
   }
   karolariGuncelle(false);
+  yanKirlet();   // yan yana: öbür sayfanın kopyası da mürekkebi göstersin
 }
 function karolariYenile(kutular) {
   for (const [i, cv] of S.karolar) if (kutular.some((k) => karoKesisir(k, i))) karoCiz(i, cv);
   karolariGuncelle(false);
+  yanKirlet();
 }
 
 function canliBoyutla() {
@@ -3214,6 +3578,14 @@ function olaylariBagla() {
   // kaymaz (touch-action), yoksa S Pen'in ilk çizgisi kaydırmaya gider.
   S.el.okuma.addEventListener("pointermove", kalemHavada, { passive: true, signal: sinyal });
   S.el.okuma.addEventListener("pointerleave", (e) => { if (e.pointerType === "pen") havaBitti(); }, { signal: sinyal });
+  // Yan yana (13. tur): canlı sayfa okurun yöneldiği yarıya geçer; kaydırma jesti ve tekerlek sayfa çevirir.
+  // Yakalama evresinde: kopya sayfaya düşen basış, ekranın kendi dinleyicilerinden önce canlı metne aktarılır.
+  S.el.okuma.addEventListener("pointerdown", yanIsaretci, { capture: true, signal: sinyal });
+  S.el.okuma.addEventListener("pointermove", yanIsaretci, { capture: true, passive: true, signal: sinyal });
+  S.el.okuma.addEventListener("pointerup", yanKaydirma, { capture: true, signal: sinyal });
+  S.el.okuma.addEventListener("pointercancel", yanKaydirma, { capture: true, signal: sinyal });
+  S.el.okuma.addEventListener("wheel", yanTekerlek, { passive: true, signal: sinyal });
+  S.bus.push(bus.on("ayarlar", () => { if (S && S.duzen !== sayfaDuzeni()) planla("yerlesim", yerlesimDegisti); }));
   // Kalemle uzun basış Android bağlam menüsünü, seçim balonunu ve büyüteci açmaz (S Pen 4)
   S.el.okuma.addEventListener("contextmenu", (e) => {
     if (S && (S.sonIsaretci === "pen" || performance.now() - S.sonKalemZ < 800)) e.preventDefault();
@@ -5175,7 +5547,7 @@ function kenarIsaretleri() {
     const m = S.el.sutun.querySelector(`mark[data-v="${v.id}"]`);
     const r = m && m.getClientRects()[0];
     if (!r) continue;
-    const b = h("button", { type: "button", class: "kenar-isaret", "data-dokunma-yok": "", "aria-label": "Not: " + v.not.trim().slice(0, 40),
+    const b = h("button", { type: "button", class: "kenar-isaret", "data-dokunma-yok": "", "data-v": v.id, "aria-label": "Not: " + v.not.trim().slice(0, 40),
       style: `top:${(r.top - sR.top + r.height / 2 - 8).toFixed(1)}px;--v:${vurguRengi(v.renk)}` });
     b.addEventListener("click", () => notBalonuAc(v, { kaynak: m }));
     kap.append(b);
@@ -5190,7 +5562,7 @@ function satirAltiNotlar(goster) {
   for (const v of [...notlu].reverse()) {
     const p = S.pEl[v.son.p];
     if (!p) continue;
-    const el = h("button", { type: "button", class: "satir-alti-not", "data-dokunma-yok": "", style: `--v:${vurguRengi(v.renk)}`, "aria-label": "Kenar notu: " + v.not.trim() }, v.not.trim());
+    const el = h("button", { type: "button", class: "satir-alti-not", "data-dokunma-yok": "", "data-v": v.id, style: `--v:${vurguRengi(v.renk)}`, "aria-label": "Kenar notu: " + v.not.trim() }, v.not.trim());
     el.addEventListener("click", () => notBalonuAc(v, { kaynak: el }));
     (S.co?.bloklar.get(v.son.p)?.el || p).after(el);
   }
@@ -5368,6 +5740,7 @@ function aramaSekmesi(govde) {
 // ---------- gezinme ve kalem halkası (6.5) ----------
 function kaydirGit(hedef, sonra) {
   const kay = S.el.kaydir;
+  if (S.yan?.sag) yanSola();   // gidilen yer soldaki sayfaya
   hedef = sinirla(hedef, 0, kay.scrollHeight - kay.clientHeight);
   cancelAnimationFrame(S.raf.kaydir);
   if (hareketAz() || Math.abs(hedef - kay.scrollTop) < 2) { kay.scrollTop = hedef; if (sonra) requestAnimationFrame(() => S && sonra()); return; }

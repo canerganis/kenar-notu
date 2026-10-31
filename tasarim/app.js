@@ -864,6 +864,8 @@ function kitaplikKur({ gizli = false } = {}) {
         K.basAyarlar,
         h("div", { class: "araclar" }, K.arama, K.siralama, K.duzen, K.yeni)),
       K.suzgec,
+      // Kitap klasöründe yeni kitap fişi (kitap-klasoru.js doldurur)
+      K.klasorFisi = h("div", { class: "klasor-fisi-yeri", hidden: true }),
       h("div", { class: "oxford", "aria-hidden": "true" }),
       K.sonuclar));
   K.icerik.addEventListener("scroll", () => { if (aktifFis && !aktifFis.el.classList.contains("ayarlar-fis")) fisKapat(); }, { passive: true });
@@ -1617,6 +1619,10 @@ function yeniMenusu(klavye) {
   // Dosya açmak ilk satır (TASARIM-4 3.1); alt satır platforma göre başka yolu söyler
   fisAc(K.yeni, [
     fisSatir("pdf", "Dosya aç", `PDF, EPUB, CBZ ya da .kenar yedeği. ${dosyaIpucu()}`, () => { fisKapat(true); dosyaSec(); }),
+    // Klasör seçici olmayan tarayıcıda (Android, iOS) görünmez; orada "Dosya aç" çoklu seçer
+    kayit.klasorDestegi() ? fisSatir("klasor", "Bilgisayardaki kitaplar",
+      kitapKlasoruAdi ? `${kitapKlasoruAdi} klasöründe yeni kitaplara bak` : "Bir klasör seç; içindeki PDF, EPUB ve CBZ’ler listelenir",
+      () => { fisKapat(true); kitapKlasoruAc(); }) : null,
     fisSatir("yeni-defter", "Yeni defter", "Boş, çizgili, kareli, noktalı ya da Cornell", () => { fisKapat(true); yeniDefterPenceresi(); }),
   ], { hiza: "alt-sag", etiket: "Yeni", klavye, kapaninca: () => K.yeni.setAttribute("aria-expanded", "false") });
 }
@@ -1703,6 +1709,35 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
   return sonuclar.map((s) => s.b);
 }
 const kapakBul = (id) => (K.sonuclar ? $(`.belge[data-id="${CSS.escape(id)}"] :is(a.kapak-sahne, a.kapak) > *`, K.sonuclar) : null);
+
+// Kitap klasörü (13. tur, kitap-klasoru.js): bilgisayardaki klasörden toplu içe aktarma. Modül ilk gerektiğinde yüklenir.
+let kitapKlasoruSoz = null, kitapKlasoruAdi = null;
+const kitapKlasoruModulu = () => (kitapKlasoruSoz ||= import("./kitap-klasoru.js").then((m) => {
+  m.baglan({ pencereKur, boyutMetni, neZaman, iceAktar: klasordenAl, belgeAc: (b) => belgeAcIstegi(b, kapakBul(b.id)),
+    bitince: (n) => { if (n) depoUyarisiBirKez(); }, fisKabi: () => K.klasorFisi });
+  return m;
+}).catch((hata) => { kitapKlasoruSoz = null; throw hata; }));
+const kitapKlasoruHatasi = (hata) => { console.warn("[kenar-notu] Kitap klasörü açılamadı:", hata); toast("Kitap klasörü açılamadı."); };
+// Dokunuşla çağrılır: kayıtlı klasör varsa ona bakılır, yoksa seçici açılır
+function kitapKlasoruAc() { kitapKlasoruModulu().then((m) => m.ac()).catch(kitapKlasoruHatasi); }
+function kitapKlasoruSec() { kitapKlasoruModulu().then((m) => m.sec()).catch(kitapKlasoruHatasi); }
+bus.on("kitap-klasoru", (o) => { if (o?.tur === "birakildi") kitapKlasoruAdi = null; else if (o?.ad) kitapKlasoruAdi = o.ad; });
+// Klasörden tek dosya: Dosya aç ile aynı kayıt yolu ve aynı dizgi kartı; hata fırlatır (liste satırında gösterilir)
+async function klasordenAl(f) {
+  const tur = tahminiTur(f), klasor = secimKlasoru();
+  const yer = { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz)$/i, "") || "Adsız", klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
+  dizgiler.unshift(yer);
+  kitaplikYenile();
+  const once = new Set(store.belgeler.map((b) => b.id));
+  try {
+    const b = await kayit.belgeIceAktar(f, { klasor });
+    return { b, vardi: once.has(b.id) };
+  } finally {
+    const j = dizgiler.indexOf(yer);
+    if (j >= 0) dizgiler.splice(j, 1);
+    kitaplikYenile();
+  }
+}
 
 // Dizgi kartı: kapak gelene kadar kurşun harf satırları ve camda çalışan iz
 function dizgiKapak(d, mini = false) {
@@ -2042,6 +2077,15 @@ function dosyaBirakma() {
     e.preventDefault();
     sayac = 0;
     K.birak.hidden = true;
+    // Klasör bırakıldıysa (13. tur) içindeki kitaplar listeyle sunulur. Girdi ve tutamaç olay içinde alınır
+    // (olaydan sonra DataTransfer boşalır); getAsFileSystemHandle yalnız Chromium'da, webkitGetAsEntry her yerde.
+    const ogeler = [...(e.dataTransfer.items || [])].filter((o) => o.kind === "file");
+    const girdiler = ogeler.map((o) => { try { return o.webkitGetAsEntry?.() || null; } catch { return null; } });
+    if (girdiler.some((g) => g?.isDirectory)) {
+      const tutamaclar = ogeler.map((o) => { try { return o.getAsFileSystemHandle?.() ?? null; } catch { return null; } });
+      kitapKlasoruModulu().then((m) => m.birakilanlar({ girdiler, tutamaclar: tutamaclar.every(Boolean) ? tutamaclar : [] })).catch(kitapKlasoruHatasi);
+      return;
+    }
     const dosyalar = [...(e.dataTransfer.files || [])];
     if (!dosyalar.length) return;
     // .kenar yedeği bırakılırsa yedekten yükleme sorulur; tür adından tanınmazsa içeriğinden
@@ -2184,6 +2228,9 @@ function ayarlarAc({ acan = null, bolum = null } = {}) {
   yedekAl.addEventListener("click", () => yedekAlIstegi(yedekAl));
   const yedekYukle = h("button", { class: "metin-dugme", type: "button", onclick: () => yedekSec() }, "Yedekten yükle");
   const otoYedek = otoYedekDenetimi();
+  // Kitap klasörü (13. tur): modül tembel yüklenir, durum sonradan yazılır
+  const kitapKlasoruD = kayit.klasorDestegi() ? h("div", { class: "oto-yedek kitap-klasoru-ayar" }) : null;
+  if (kitapKlasoruD) kitapKlasoruModulu().then((m) => m.ayarDenetimi(kitapKlasoruD)).catch(() => kitapKlasoruD.remove());
   const sifirEtiket = h("span", {}, "Örnek verilere dön");
   const sifir = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
     h("span", {}, sifirEtiket, h("small", {}, "Çizimler, notlar, içe aktarılan dosyalar silinir; API anahtarları kalır")));
@@ -2216,6 +2263,7 @@ function ayarlarAc({ acan = null, bolum = null } = {}) {
         h("p", { class: "spen-ipucu" }, kalemIpucu))]],
     ["okuma", "Okuma", [sonBelge.el, h("span", { class: "t-etiket" }, "Küçük sürprizler"), exGoster.el, odunc.el, mum.el]],
     ["ceviri", "Çeviri ve yapay zekâ", [cvSatir, yzSatir]],
+    ...(kitapKlasoruD ? [["klasor", "Kitap klasörü", [kitapKlasoruD]]] : []),
     ["yedek", "Yedek ve depolama", [depoUyarisi(), h("div", { class: "ayar-yedek" }, depoGostergesi(), sonYedek,
       h("div", { class: "ayar-yedek__dugmeler" }, yedekAl, yedekYukle)), otoYedek.el, kurulumD, h("div", { class: "fis-ayrac" }), sifir, temiz]],
     ["exlibris", "Ex libris", [exDuz.el, exDisa.el]],
@@ -3540,6 +3588,8 @@ function komutlarKur() {
     { id: "git-tekrar", grup: "git", ad: "Tekrar", es: "kart çalış leitner", ikon: "tekrar", alt: () => { const n = bugunTekrar().length; return n ? `${n} kart` : ""; }, calistir: git("tekrar") },
     { id: "ayarlar", grup: "git", ad: "Ayarlar", es: "tercihler seçenekler", ikon: "ayarlar", calistir: () => ayarlarAc() },
     { id: "dosya-ac", ad: "Dosya aç", es: "içe aktar pdf epub cbz ekle kitap", ikon: "pdf", calistir: () => dosyaSec() },
+    { id: "kitap-klasoru", ad: "Kitap klasörü", es: "bilgisayardaki kitaplar klasör tara içe aktar pdf epub cbz", ikon: "klasor",
+      kosul: () => kayit.klasorDestegi(), alt: () => kitapKlasoruAdi || "", calistir: () => kitapKlasoruAc() },
     { id: "yeni-defter", ad: "Yeni defter", es: "defter not defteri kâğıt", ikon: "yeni-defter", calistir: () => yeniDefterPenceresi() },
     { id: "yedekle", ad: "Yedekle", es: "yedek kenar dışa aktar", ikon: "yedekle", calistir: () => yedekAlIstegi() },
     { id: "yedekten-yukle", ad: "Yedekten yükle", es: "geri yükle kenar", ikon: "yedekle", calistir: () => yedekSec() },
@@ -3915,7 +3965,10 @@ function karsilamaAc() {
   const bosD = secenek("yeni-defter", "Boş başla", "Yalnız boş bir defter. Kendi PDF, EPUB ve CBZ dosyalarını içe aktarırsın.", () => {
     bosBasla();
     klasorlerCiz();
-    setTimeout(() => toast("Boş bir defter hazır. Yeni düğmesinden PDF, EPUB ya da CBZ içe aktarabilirsin."), 400);
+    // Klasör seçebilen tarayıcıda bilgisayardaki kitaplar da önerilir (seçici dokunuşla açılır)
+    setTimeout(() => (kayit.klasorDestegi()
+      ? toast("Boş bir defter hazır. Bilgisayardaki kitaplarını bir klasörden toplu alabilirsin.", { etiket: "Klasör seç", calistir: () => kitapKlasoruSec() })
+      : toast("Boş bir defter hazır. Yeni düğmesinden PDF, EPUB ya da CBZ içe aktarabilirsin.")), 400);
   });
   // Alt satır platforma göre (TASARIM-4 1.2): telefonda çoğu kişinin kalemi yok, masaüstünde satır yok
   const ipucu = { spen: "S Pen yazar, parmak kaydırır. Ayarlar’dan değişir.", pencil: "Apple Pencil yazar, parmak kaydırır. Ayarlar’dan değişir.",
@@ -4059,6 +4112,16 @@ if (!karsilama && store.ayarlar.sonBelgeyleBasla && konumuOku().ekran === "kitap
 }
 // Önceki turlarda alınmış EPUB'ların dili (çeviri düğmeleri için) boşta tamamlanır
 setTimeout(eskiDilleriTamamla, 6000);
+// Kitap klasörü (13. tur): kayıt varsa açılış yükü ve belge verileri bittikten sonra boş bir anda bakılır.
+// İzin varsa sessizce taranır (yeni kitap varsa kitaplıkta fiş); izin yoksa istenmez, dokunuşla isteyen fiş çıkar.
+if (!karsilama && kayit.klasorDestegi()) {
+  kayit.veriBekle().then(() => setTimeout(() => bosta(async () => {
+    const k = await kayit.kitapKlasoruOku();
+    if (!k?.tutamac) return;
+    kitapKlasoruAdi = k.tutamac.name;
+    try { await (await kitapKlasoruModulu()).acilisTaramasi(); } catch (hata) { console.warn("[kenar-notu] Kitap klasörüne bakılamadı:", hata); }
+  }, { timeout: 8000 }), 5000));
+}
 // İçe aktarırken kapağı çıkmamış belgeler sırayla tamamlanır (açılışı yavaşlatmadan)
 setTimeout(async () => {
   for (const b of store.belgeler.filter((x) => x.dosya && !x.kapakGorsel && !x.kapakDenendi)) {
