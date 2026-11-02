@@ -14,6 +14,17 @@
 //                { tur: "donus", id, anahtar, simdi, gun, zaman }          seçilen önceki hâle dönülür
 //   işçi -> ana  { tur: "hazir" } (açılışta), { tur: "ilerleme", oran: 0..1 },
 //                { tur: "parca", alan, liste } (okurken), { tur: "tamam", blob | durum | tanimadi }, { tur: "hata", kod, mesaj }
+//   7.0 şifreli yedek (TASARIM-5 10.5): { tur: "bitir", parola? } parola varsa dönen blob şifrelidir;
+//                { tur: "oku", dosya, parola? } şifreli dosyada parola yoksa { tur: "hata", kod: "parola" }, yanlışsa "parola-yanlis".
+//
+// Şifreli biçim (uzantı yine .kenar): ilk 8 bayt ASCII "KNSIFRE1", 16 bayt tuz, 12 bayt IV, sonra AES-GCM 256 şifreli
+// metin (16 baytlık doğrulama etiketi sonunda). Şifrelenen içerik yukarıdaki zip arşivinin baytlarıdır.
+// Anahtar: PBKDF2-SHA256, 310000 tur, tuzla; parola NFC'ye çevrilip UTF-8 olarak girer. Parola hiçbir yere yazılmaz.
+//   sifreliMi(blob) -> Promise<bool>, sifrele(blob, parola) -> Promise<Blob>, sifreCoz(blob, parola) -> Promise<Blob>
+//   Hata kodları (hata.kod): "parola" (parola verilmedi), "parola-yanlis" (yanlış parola ya da bozuk dosya),
+//   "sifre-yok" (crypto.subtle yok: güvensiz bağlam, http://192.168...), "bicim" (şifreli değil ya da kısa).
+// Dil: hata iletileri Türkçe kaynak metindir ve burada çevrilmez (işçide localStorage yok, seçilen dili bilemez).
+// kayit.js iletiyi ana iş parçacığında t() ile çevirir; sözlükteki anahtarları değiştirirsen dil/en-kayit-arama.js'i de güncelle.
 
 /* ---------- CRC-32 ---------- */
 // Sekizli tablo (slicing-by-8): bayt bayt tablodan dört beş kat hızlı
@@ -181,6 +192,52 @@ export async function yedekOku(file) {
   }
 }
 
+/* ---------- şifreli yedek (TASARIM-5 10.5) ---------- */
+export const SIFRE_IMZA = "KNSIFRE1";
+export const SIFRE_TUZ = 16, SIFRE_IV = 12, SIFRE_TUR = 310000, SIFRE_ETIKET = 16;
+const SIFRE_BAS = SIFRE_IMZA.length + SIFRE_TUZ + SIFRE_IV;
+const sifreHatasi = (kod, mesaj) => Object.assign(new Error(mesaj), { kod });
+function subtleAl() {
+  const s = globalThis.crypto?.subtle;
+  if (!s || typeof s.deriveKey !== "function") throw sifreHatasi("sifre-yok", "Şifreleme bu bağlantıda kullanılamıyor (güvenli bağlam gerekir).");
+  return s;
+}
+async function sifreAnahtari(parola, tuz, kullanim) {
+  const s = subtleAl();
+  const ham = await s.importKey("raw", new TextEncoder().encode(String(parola).normalize("NFC")), "PBKDF2", false, ["deriveKey"]);
+  return s.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt: tuz, iterations: SIFRE_TUR }, ham, { name: "AES-GCM", length: 256 }, false, [kullanim]);
+}
+export async function sifreliMi(blob) {
+  if (!blob || typeof blob.slice !== "function" || blob.size < SIFRE_BAS + SIFRE_ETIKET) return false;
+  const b = new Uint8Array(await blob.slice(0, SIFRE_IMZA.length).arrayBuffer());
+  for (let i = 0; i < SIFRE_IMZA.length; i++) if (b[i] !== SIFRE_IMZA.charCodeAt(i)) return false;
+  return true;
+}
+export async function sifrele(blob, parola) {
+  if (!parola) throw sifreHatasi("parola", "Parola gerekli.");
+  const s = subtleAl();
+  const tuz = crypto.getRandomValues(new Uint8Array(SIFRE_TUZ)), iv = crypto.getRandomValues(new Uint8Array(SIFRE_IV));
+  const anahtar = await sifreAnahtari(parola, tuz, "encrypt");
+  const sifreli = await s.encrypt({ name: "AES-GCM", iv }, anahtar, await blob.arrayBuffer());
+  return new Blob([new TextEncoder().encode(SIFRE_IMZA), tuz, iv, sifreli], { type: "application/octet-stream" });
+}
+export async function sifreCoz(blob, parola) {
+  if (!(await sifreliMi(blob))) throw sifreHatasi("bicim", "Bu dosya şifreli bir Kenar Notu yedeği değil.");
+  if (!parola) throw sifreHatasi("parola", "Bu yedek parolalı.");
+  const s = subtleAl();
+  const bas = new Uint8Array(await blob.slice(0, SIFRE_BAS).arrayBuffer());
+  const tuz = bas.slice(SIFRE_IMZA.length, SIFRE_IMZA.length + SIFRE_TUZ), iv = bas.slice(SIFRE_IMZA.length + SIFRE_TUZ, SIFRE_BAS);
+  const anahtar = await sifreAnahtari(parola, tuz, "decrypt");
+  let acik;
+  // AES-GCM etiketi tutmazsa (yanlış parola ya da bozulmuş dosya) OperationError gelir
+  try { acik = await s.decrypt({ name: "AES-GCM", iv }, anahtar, await blob.slice(SIFRE_BAS).arrayBuffer()); }
+  catch (hata) {
+    if (okumaHatasi(hata)) throw sifreHatasi("okuma", "Yedek dosyası okunamadı.");
+    throw sifreHatasi("parola-yanlis", "Parola yanlış.");
+  }
+  return new Blob([acik], { type: "application/zip" });
+}
+
 /* ---------- belgenin önceki hâli (OZELLIKLER-8 §3.2) ---------- */
 // Kayıttaki veri (veri:<id>) onceki:<id>:<zaman> anahtarına kopyalanır, oncekiDizin:<id> listesi güncellenir.
 // Büyük belgede okuma ve yazma saniyeler sürer: kayit.js bunu işçide yaptırır, o belgenin yazması kopya bitince gider.
@@ -309,9 +366,15 @@ if (isciMi) {
           son = oran;
           gonder({ is, tur: "ilerleme", oran });
         });
-        gonder({ is, tur: "tamam", blob });
+        // Parola verildiyse arşiv şifrelenir (şifreleme tek adım: ilerleme %100'de kısa bekler)
+        gonder({ is, tur: "tamam", blob: m.parola ? await sifrele(blob, m.parola) : blob });
       } else if (m.tur === "oku") {
-        const s = await yedekOku(m.dosya);
+        let dosya = m.dosya;
+        if (await sifreliMi(dosya)) {
+          if (!m.parola) { gonder({ is, tur: "hata", kod: "parola", mesaj: "Bu yedek parolalı." }); return; }
+          dosya = await sifreCoz(dosya, m.parola);
+        }
+        const s = await yedekOku(dosya);
         if (!s.durum || typeof s.durum !== "object") { gonder({ is, tur: "tamam", tanimadi: !!s.tanimadi, durum: null }); return; }
         const durum = s.durum;
         // Ayrıştırılan büyük diziler parça parça döner; her parça ana tarafta ayrı bir iş olur

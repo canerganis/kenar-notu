@@ -1,12 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs>
-<linearGradient id="z" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8E2A38"/><stop offset="1" stop-color="#5A1520"/></linearGradient>
-<linearGradient id="k" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBF7EF"/><stop offset="1" stop-color="#F1E9DA"/></linearGradient>
-<linearGradient id="c" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#E4D8C2"/><stop offset="1" stop-color="#CDBD9F"/></linearGradient>
-<filter id="g" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2A0A10" flood-opacity=".25"/><feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#2A0A10" flood-opacity=".35"/></filter>
-</defs><rect width="512" height="512" fill="url(#z)"/><g transform="translate(256 256) scale(0.88) translate(-256 -256)"><g filter="url(#g)">
-<path d="M116 90Q116 80 126 80H326L396 150V422Q396 432 386 432H126Q116 432 116 422Z" fill="url(#k)"/>
-<path d="M326 80V138Q326 150 338 150H396Z" fill="url(#c)"/>
-<path d="M164 80V432" stroke="#A3313F" stroke-width="10"/>
-<path d="M151 102h8M151 124h8M151 146h8M151 168h8M151 190h8M151 212h8M151 234h8M151 256h8M151 278h8M151 300h8M151 322h8M151 344h8M151 366h8M151 388h8M151 410h8" stroke="#A3313F" stroke-opacity=".6" stroke-width="3"/>
-<g fill="#1B2A4A"><path d="M341.4 150.7L342.4 146.3L343 141.9L343.7 137.7L344.1 133.6L344.2 129.5L343.8 125.6L343.2 121.7L342.1 118.1L340.8 114.5L339.1 111.2L337 108L334.7 105.1L332 102.4L329.1 100L325.9 97.8L322.5 96L318.9 94.5L315.1 93.3L311.1 92.4L307 91.9L302.8 91.7L298.5 91.9L293.8 92.4L289.3 93.5L284.9 94.9L280.7 96.8L276.8 99.1L273.2 101.8L269.9 104.7L266.8 108L264 111.5L261.5 115.1L259.2 119L257.1 123L255.2 127.2L253.5 131.4L252 135.8L250.6 140.3L249.4 144.9L248.3 149.5L247.4 154.2L246.5 159L245.7 163.8L245 168.7L243.9 178.4L242.8 188.1L241.8 197.8L240.8 207.6L239.8 217.4L238.9 227.1L238 236.8L237.2 246.5L236.4 256L235.7 265.4L235 274.7L234.4 283.7L233.7 292.6L233.1 301.2L232.6 309.5L232 317.5L231.5 325.2L230.9 332.5L230.4 339.5L229.8 345.9L229.3 352L228.7 357.4L228.1 362L227.4 366.4L226.6 370.5L225.7 374.3L224.6 377.9L223.5 381.2L222.3 384.3L221 387.1L219.7 389.7L218.3 392L216.8 394.1L215.3 395.9L213.7 397.5L212.1 398.9L210.4 400.2L208.7 401.3L206.8 402.2L204.8 402.9L202.7 403.5L200.4 403.9L198 404L195.4 404L193 403.8L190.8 403.4L188.7 403L186.8 402.3L185.1 401.6L183.5 400.8L182.1 399.9L180.8 398.9L179.6 397.8L178.5 396.6L177.6 395.3L176.8 393.9L176 392.4L175.5 390.8L175 389.1L174.7 387.3L174.5 385.4L174.5 383.4L174.9 381.5L175.5 379.5L176.2 377.5L177.2 375.5A3.5 3.5 0 0 1 170.8 372.5L170.8 372.5L169.8 374.8L168.8 377.3L168.1 379.8L167.6 382.2L167 384.7L166.5 387.2L166.3 389.7L166.4 392.2L166.6 394.7L167.2 397.3L167.9 399.7L168.9 402.2L170.2 404.6L171.7 406.8L173.5 409L175.5 411.1L177.8 413L180.3 414.7L183.1 416.3L186 417.7L189.2 418.9L192.6 420L196.5 420.8L200.4 421.2L204.3 421.4L208.1 421.1L212 420.5L215.7 419.5L219.4 418.2L223 416.5L226.5 414.5L229.8 412.1L232.9 409.4L235.9 406.5L238.8 403.2L241.4 399.7L244 396L246.3 391.9L248.5 387.7L250.6 383.1L252.5 378.4L254.2 373.4L255.8 368.1L257.3 362.6L258.6 356.6L259.9 350.3L261.2 343.6L262.5 336.5L263.8 329L265 321.2L266.2 313.1L267.3 304.6L268.4 295.9L269.5 287L270.5 277.8L271.4 268.5L272.3 259L273.1 249.4L273.8 239.7L274.5 229.9L275.1 220L275.6 210.2L276 200.3L276.4 190.5L276.7 180.8L277 171.3L277.2 167L277.4 162.7L277.7 158.5L278.1 154.5L278.6 150.5L279.1 146.8L279.7 143.1L280.4 139.7L281.2 136.4L282.1 133.3L283.1 130.5L284.2 127.9L285.3 125.5L286.6 123.3L287.9 121.3L289.3 119.5L290.8 117.9L292.5 116.4L294.3 115.1L296.4 114L298.8 113L301.5 112.1L304.2 111.5L306.8 111.1L309.3 110.9L311.8 111L314.2 111.2L316.4 111.7L318.6 112.3L320.7 113.2L322.7 114.3L324.7 115.5L326.5 117L328.2 118.7L329.8 120.6L331.2 122.8L332.5 125.2L333.6 127.9L334.6 130.8L335.3 134L335.8 137.5L336 141.2L335.5 145.1L334.6 149.3A3.5 3.5 0 0 1 341.4 150.7Z"/><circle cx="333" cy="146" r="13"/><circle cx="179" cy="378" r="13"/></g>
-</g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- Kenar Notu, "Yazan K" (TASARIM-5 7.2). Gövde: sayfa kenarı. Üst kol: kalem. Alt kol: ışıklı mürekkep izi. 512 ızgara. -->
+<!-- Maskable: köşesiz zemin, işaret merkez etrafında 0.8 ölçekte; güvenli alan merkezden 204,8 birimlik daire -->
+<title>Kenar Notu</title>
+<defs>
+  <!-- Gece zemini 160°, üstte iris ışığı, sağ altta mürekkebin ışığı -->
+  <linearGradient id="kn-zemin" x1=".32" y1="0" x2=".68" y2="1"><stop offset="0" stop-color="#17153A"/><stop offset="1" stop-color="#0B0C11"/></linearGradient>
+  <radialGradient id="kn-tepe" cx=".18" cy="-.04" r=".62"><stop offset="0" stop-color="#8B7CFF" stop-opacity=".16"/><stop offset="1" stop-color="#8B7CFF" stop-opacity="0"/></radialGradient>
+  <radialGradient id="kn-isik" cx=".7" cy=".72" r=".5"><stop offset="0" stop-color="#5B4CF0" stop-opacity=".22"/><stop offset="1" stop-color="#5B4CF0" stop-opacity="0"/></radialGradient>
+  <!-- Kalem kendi ekseninde: (0,0) üst uç, +x uca doğru; gövde 40 kalın, uç 52 birimde daralır -->
+  <g id="kn-kalem-sekil"><path d="M0 -20H164.25V20H0A20 20 0 0 1 0 -20Z"/><path d="M170.25 -17C194.17 -17 208.25 -7.82 222.25 0C208.25 7.82 194.17 17 170.25 17Z"/></g>
+  <!-- Mürekkep izi: 38 birimden 14 birime incelen kaligrafik vuruş -->
+  <path id="kn-iz-yol" d="M196.57 284.5C200.47 286.72 211.96 292.73 219.97 297.87C227.99 303.01 236.33 309.07 244.69 315.34C253.04 321.6 261.58 328.55 270.1 335.46C278.62 342.36 287.24 349.71 295.82 356.78C304.39 363.85 313.01 371.13 321.55 377.89C330.09 384.66 338.62 391.39 347.05 397.37C355.48 403.36 367.94 411.08 372.12 413.82A7 7 0 0 0 379.88 402.18C376.23 399.11 365.4 390.45 357.99 383.8C350.57 377.16 343.03 369.79 335.41 362.31C327.79 354.83 320.07 346.83 312.29 338.94C304.51 331.04 296.65 322.84 288.74 314.95C280.82 307.05 272.85 299.06 264.81 291.57C256.76 284.08 248.69 276.69 240.46 270.02C232.23 263.34 219.6 254.59 215.43 251.5A19 19 0 0 0 196.57 284.5Z"/>
+  <linearGradient id="kn-govde" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD8FF"/></linearGradient>
+  <linearGradient id="kn-kalem" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="-20"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F4F3FF"/><stop offset="1" stop-color="#CFCAF7"/></linearGradient>
+  <linearGradient id="kn-iz" gradientUnits="userSpaceOnUse" x1="206" y1="268" x2="376" y2="408"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#38C6F0"/></linearGradient>
+  <filter id="kn-isima" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="kn-golge" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#05060A" flood-opacity=".55"/></filter>
+  <!-- Dolma kalem ucu: 6 birimlik yarık ve 7 yarıçaplı nefes deliği zemini gösterir -->
+  <mask id="kn-yarik" maskUnits="userSpaceOnUse" x="-40" y="-40" width="320" height="80"><rect x="-40" y="-40" width="320" height="80" fill="#fff"/><g fill="#000"><path d="M188.25 -3H224.25V3H188.25Z"/><circle cx="188.25" cy="0" r="7"/></g></mask>
+  <!-- İz kalemin çevresinde 5 birim açılır: kalem kâğıda değmeden önceki an -->
+  <mask id="kn-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(364 112) rotate(137.55)" fill="#000" stroke="#000" stroke-width="10" stroke-linejoin="round"><use href="#kn-kalem-sekil"/></g></mask>
+</defs>
+<rect width="512" height="512" fill="url(#kn-zemin)"/>
+<rect width="512" height="512" fill="url(#kn-tepe)"/>
+<rect width="512" height="512" fill="url(#kn-isik)"/>
+<g transform="translate(51.2 51.2) scale(0.8)">
+<use href="#kn-iz-yol" fill="url(#kn-iz)" opacity=".45" filter="url(#kn-isima)"/>
+<g filter="url(#kn-golge)">
+  <rect x="136" y="104" width="40" height="304" rx="20" fill="url(#kn-govde)"/>
+  <g transform="translate(364 112) rotate(137.55)" fill="url(#kn-kalem)" mask="url(#kn-yarik)"><use href="#kn-kalem-sekil"/></g>
+  <use href="#kn-iz-yol" fill="url(#kn-iz)" mask="url(#kn-iz-maske)"/>
+</g>
+</g>
+</svg>

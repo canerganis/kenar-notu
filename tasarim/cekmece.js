@@ -10,6 +10,7 @@
 // Kapanış: perde, Escape, kapat düğmesi, Android geri hareketi (geçmişe bir adım itilir), aşağı fırlatma.
 
 import { h, icon, odakla, hareketAz } from "./ortak.js";
+import { t } from "./dil.js";
 
 const CEKMECE_MEDYA = matchMedia("(max-width: 599px), (max-width: 999px) and (orientation: portrait)");
 export const cekmeceMi = () => CEKMECE_MEDYA.matches;
@@ -24,8 +25,8 @@ let sayac = 0;
 export function altCekmece({ baslik = "", govde, duraklar = ["yarim", "tam"], ilk, modal = true, sinif = "", acan = document.activeElement, kapaninca } = {}) {
   const id = "cekmece-" + (++sayac);
   const baslikEl = h("h2", { id: id + "-b", tabindex: "-1" }, baslik);
-  const kapatD = h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat" }, icon("kapat"));
-  const tutamak = h("div", { class: "cekmece-tutamak", role: "button", tabindex: "0", "aria-label": "Çekmeceyi büyüt" });
+  const kapatD = h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat") }, icon("kapat"));
+  const tutamak = h("div", { class: "cekmece-tutamak", role: "button", tabindex: "0", "aria-label": t("Çekmeceyi büyüt") });
   const bas = h("header", { class: "cekmece-bas" }, baslikEl, kapatD);
   const govdeEl = h("div", { class: "cekmece-govde" });
   if (govde) govdeEl.append(...[govde].flat().filter(Boolean));
@@ -53,7 +54,7 @@ export function altCekmece({ baslik = "", govde, duraklar = ["yarim", "tam"], il
     perde.dataset.durak = ad;
     if (ad === "icerik") kok.style.setProperty("--icerik-yuk", `${yuk() - durakKonum("icerik")}px`);
     kok.style.setProperty("--surukle", "0px");
-    tutamak.setAttribute("aria-label", ad === "tam" ? "Çekmeceyi küçült" : "Çekmeceyi büyüt");
+    tutamak.setAttribute("aria-label", ad === "tam" ? t("Çekmeceyi küçült") : t("Çekmeceyi büyüt"));
   };
 
   // Modal: uygulamanın geri kalanı inert

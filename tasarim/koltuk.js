@@ -29,6 +29,7 @@
 // Dönen nesnede izleriYenile(): izler değişince çentikleri yeniden çizer.
 
 import { h, icon, bus, store, ayarla, hareketAz } from "./ortak.js";
+import { t, ingilizceMi } from "./dil.js";
 
 const KALEM_AVUC = 600;   // kalem görüldükten (temas ya da hava) sonra bu kadar ms dokunuş sayfa çevirmez (S Pen 3)
 
@@ -74,13 +75,16 @@ export function sureHtml(miktar, birim = "kelime") {
   const v = hiz(birim);
   if (!v) return null;
   const dk = Math.max(1, Math.round(miktar / v / 60));
-  return dk < 60 ? `<b>${dk}</b> dk` : `<b>${Math.floor(dk / 60)}</b> sa <b>${dk % 60}</b> dk`;
+  return dk < 60 ? t("<b>{dk}</b> dk", { dk }) : t("<b>{sa}</b> sa <b>{dk}</b> dk", { sa: Math.floor(dk / 60), dk: dk % 60 });
 }
+// Yüzde: Türkçede "%34", İngilizcede "34%"
+const yuzdeMetni = (n) => (ingilizceMi ? n + "%" : "%" + n);
 
 // ---------- okuma ritmi ----------
 const gunAnahtari = (t = new Date()) => `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-const GUN_KISA = ["Pz", "Pt", "Sa", "Ça", "Pe", "Cu", "Ct"];
-const GUN_UZUN = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
+const GUN_KISA = ingilizceMi ? ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] : ["Pz", "Pt", "Sa", "Ça", "Pe", "Cu", "Ct"];
+const GUN_UZUN = ingilizceMi ? ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  : ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
 const bugunSn = () => A.okumaRitmi.gunler[gunAnahtari()] || 0;
 function ritimEkle(sn) {
   const g = A.okumaRitmi.gunler, k = gunAnahtari();
@@ -89,14 +93,19 @@ function ritimEkle(sn) {
   if (anahtarlar.length > 40) for (const x of anahtarlar.sort().slice(0, anahtarlar.length - 40)) delete g[x];
 }
 
+// ---------- dokunma bölgeleri (TASARIM-5 11.3 C6) ----------
+// store.ayarlar.okumaBolge: "25" (25/50/25, varsayılan) | "33" (eşit) | "15" (15/70/15); okumaHepIleri: kenarlar da ileri
+export const kenarOrani = () => ({ 33: 1 / 3, 15: 0.15 })[A.okumaBolge] || 0.25;
+
 // ---------- mod anahtarı: Koltuk ve Masa'da aynı yerde, aynı biçimde (TASARIM-2 §2.3) ----------
 export function modAnahtari(mod, sec) {
-  const el = h("div", { class: "mod-anahtari", role: "group", "aria-label": "Görünüm", dataset: { mod } });
+  // "Görünüm" anahtarı Aa balonunda "Appearance" (okuma-1); burada anlamı mod seçimi, bu yüzden ayrı dallanır
+  const el = h("div", { class: "mod-anahtari", role: "group", "aria-label": ingilizceMi ? "View" : "Görünüm", dataset: { mod } });
   const dugme = (m, ad, ik, aciklama) => h("button", {
     type: "button", "data-m": m, "aria-pressed": String(m === mod), "aria-label": aciklama, title: aciklama,
     onclick: () => { if (el.dataset.mod !== m) sec(m); },
   }, icon(ik), h("span", {}, ad));
-  el.append(dugme("koltuk", "Koltuk", "koltuk", "Koltuk: sade okuma"), dugme("masa", "Masa", "masa", "Masa: çalışma araçları"));
+  el.append(dugme("koltuk", t("Koltuk"), "koltuk", t("Koltuk: sade okuma")), dugme("masa", t("Masa"), "masa", t("Masa: çalışma araçları")));
   el.ayarla = (m) => {
     el.dataset.mod = m;
     for (const b of el.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.m === m));
@@ -124,7 +133,7 @@ export function koltukKur(kok, s) {
   el.anahtar = modAnahtari("koltuk", (m) => s.modDegistir?.(m));
   el.ad.title = s.ad || "";   // uzun ad tek satırda kesilir, tamamı ipucunda (TASARIM-4 3.7)
   el.ust = h("header", { class: "koltuk-ust" + (s.anahtarDaha ? " anahtar-daha" : "") },
-    h("button", { type: "button", class: "ikon-dugme", "aria-label": "Kitaplığa dön", onclick: () => (s.geri ? s.geri() : bus.emit("git", { ekran: "kitaplik" })) }, icon("geri", "i-22")),
+    h("button", { type: "button", class: "ikon-dugme", "aria-label": t("Kitaplığa dön"), onclick: () => (s.geri ? s.geri() : bus.emit("git", { ekran: "kitaplik" })) }, icon("geri", "i-22")),
     el.ad, el.ritim, ...(s.araclar || []), el.anahtar);
 
   // Alt çubuk (4.3): ölçüm uçları ve sürgülü cetvel
@@ -135,32 +144,42 @@ export function koltukKur(kok, s) {
   el.dolu = h("i", { class: "cetvel-dolu" });
   el.izCentik = h("span", { class: "cetvel-izler", "aria-hidden": "true" });
   el.izAtla = h("span", { class: "iz-atla", hidden: true },
-    h("button", { type: "button", class: "ikon-dugme", "aria-label": "Önceki iz", title: "Önceki iz ( [ )", onclick: () => s.izAtla?.(-1) }, icon("sol")),
-    h("button", { type: "button", class: "ikon-dugme", "aria-label": "Sonraki iz", title: "Sonraki iz ( ] )", onclick: () => s.izAtla?.(1) }, icon("sag")));
+    h("button", { type: "button", class: "ikon-dugme", "aria-label": t("Önceki iz"), title: t("Önceki iz ( [ )"), onclick: () => s.izAtla?.(-1) }, icon("sol")),
+    h("button", { type: "button", class: "ikon-dugme", "aria-label": t("Sonraki iz"), title: t("Sonraki iz ( ] )"), onclick: () => s.izAtla?.(1) }, icon("sag")));
   el.cetvel = h("div", {
-    class: "koltuk-cetvel", role: "slider", tabindex: "0", "aria-label": s.tur === "pdf" ? "Belgede konum" : "Kitapta konum",
+    class: "koltuk-cetvel", role: "slider", tabindex: "0", "aria-label": s.tur === "pdf" ? t("Belgede konum") : t("Kitapta konum"),
     "aria-valuemin": "0", "aria-valuemax": "100",
   },
   ...(s.bolumler || []).filter((b) => b.oran > 0.001).map((b) => h("i", { class: "cetvel-bolum", style: `left:${(b.oran * 100).toFixed(3)}%`, title: b.ad })),
   ...(s.yerImleri || []).map((o) => h("i", { class: "cetvel-yer-imi", style: `left:${(o * 100).toFixed(3)}%` })),
   el.izCentik, el.dolu, el.iz);
   // Telefonda ikinci kat: dört düğme, başparmak erişiminde (yalnız altAraclar verildiyse ve dar ekranda görünür)
-  el.altAraclar = s.altAraclar?.length ? h("div", { class: "koltuk-alt-araclar", role: "toolbar", "aria-label": "Okuma araçları" }, ...s.altAraclar) : null;
+  el.altAraclar = s.altAraclar?.length ? h("div", { class: "koltuk-alt-araclar", role: "toolbar", "aria-label": t("Okuma araçları") }, ...s.altAraclar) : null;
   el.alt = h("div", { class: "koltuk-alt" + (el.altAraclar ? " iki-kat" : "") }, el.sol, el.sag, el.izAtla, el.cetvel, el.altAraclar);
   el.cizgi = h("div", { class: "koltuk-cizgi", "aria-hidden": "true" }, h("i"));
 
   // Gizli kalem (4.9)
-  el.kalemUcu = h("button", { type: "button", class: "kalem-ucu", "aria-label": "Kalemle yaz", "aria-pressed": "false", onclick: () => kalemAc(el.kalemUcu.getAttribute("aria-pressed") !== "true") }, icon("kalem-ucu"));
+  el.kalemUcu = h("button", { type: "button", class: "kalem-ucu", "aria-label": t("Kalemle yaz"), "aria-pressed": "false", onclick: () => kalemAc(el.kalemUcu.getAttribute("aria-pressed") !== "true") }, icon("kalem-ucu"));
 
   const ucVar = s.kalemUcu !== false;
   kok.append(el.cizgi, el.ust, el.alt);
   if (ucVar) kok.append(el.kalemUcu);
 
-  // İlk açılışta bölgeler bir kez gösterilir (4.1.4)
+  // İlk açılışta bölgeler bir kez gösterilir (4.1.4). Yarı saydam zemin metni bastırır, etiketler kendi kâğıtlarında:
+  // metnin üstüne binen kesik çizgi ve yazı okunmuyordu. Dört saniye sonra ya da ilk dokunuşta, tuşta, tekerlekte kalkar.
   if (!A.koltukIpucu) {
-    el.ipucu = h("div", { class: "koltuk-ipucu", "aria-hidden": "true" }, h("span", {}, "geri"), h("span", {}, "çubuklar"), h("span", {}, "ileri"));
+    const k = (kenarOrani() * 100).toFixed(2) + "%";
+    el.ipucu = h("div", { class: "koltuk-ipucu", "aria-hidden": "true", style: `grid-template-columns:${k} 1fr ${k}` },
+      h("span", {}, h("b", {}, A.okumaHepIleri === true ? t("ileri") : t("geri"))), h("span", {}, h("b", {}, t("çubuklar"))), h("span", {}, h("b", {}, t("ileri"))));
     kok.append(el.ipucu);
-    zamanla(() => { el.ipucu?.remove(); el.ipucu = null; }, 2400);
+    const ipucuKapat = () => {
+      const x = el.ipucu;
+      if (!x || x.classList.contains("kapaniyor")) return;
+      x.classList.add("kapaniyor");
+      zamanla(() => { x.remove(); if (el.ipucu === x) el.ipucu = null; }, 200);
+    };
+    zamanla(ipucuKapat, 4000);
+    for (const ad of ["pointerdown", "keydown", "wheel"]) addEventListener(ad, ipucuKapat, { capture: true, passive: true, once: true, ...sinyal });
     A.koltukIpucu = true;
     ayarla({ koltukIpucu: true });
     depoYaz();
@@ -237,9 +256,11 @@ export function koltukKur(kok, s) {
     if (e.target.closest?.("a, button, input, textarea, select, label, mark, [contenteditable], .kenar-notu, .kenar-asistan, [data-dokunma-yok]")) return;
     if (s.dokunmaGecerli && s.dokunmaGecerli(e) === false) return;
     const R = sahne.getBoundingClientRect(), x = (e.clientX - R.left) / Math.max(1, R.width);
+    // Bölge genişliği ve tek elle okuma okurun seçimi (Aa > Dokunma bölgeleri; TASARIM-5 11.3 C6)
+    const k = kenarOrani(), hepIleri = A.okumaHepIleri === true;
     const calistir = () => {
-      if (x < 0.25) { if (gorunur) cubuk(false); s.cevir?.(-1); }
-      else if (x > 0.75) { if (gorunur) cubuk(false); s.cevir?.(1); }
+      if (x < k) { if (gorunur) cubuk(false); s.cevir?.(hepIleri ? 1 : -1); }
+      else if (x > 1 - k) { if (gorunur) cubuk(false); s.cevir?.(1); }
       else cubuk(!gorunur);
     };
     // Farede çift tıklama kelime seçer: tek tıklama biraz bekler
@@ -256,7 +277,7 @@ export function koltukKur(kok, s) {
   function surukleGoster(oran) {
     el.iz.classList.remove("kayiyor");
     el.iz.style.setProperty("--iz-p", oran.toFixed(4));
-    el.etiket.textContent = s.etiket ? s.etiket(oran) : "%" + Math.round(oran * 100);
+    el.etiket.textContent = s.etiket ? s.etiket(oran) : yuzdeMetni(Math.round(oran * 100));
   }
   el.cetvel.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -319,7 +340,7 @@ export function koltukKur(kok, s) {
   const kalemAcik = () => el.kalemUcu.getAttribute("aria-pressed") === "true";
   function kalemAc(acik) {
     el.kalemUcu.setAttribute("aria-pressed", String(acik));
-    el.kalemUcu.setAttribute("aria-label", acik ? "Kalemi kapat" : "Kalemle yaz");
+    el.kalemUcu.setAttribute("aria-label", acik ? t("Kalemi kapat") : t("Kalemle yaz"));
     el.kalemUcu.classList.add("gorunur");
     s.kalem?.(acik);
     iptalEt(ucZ);
@@ -344,21 +365,21 @@ export function koltukKur(kok, s) {
       return { t, dk: Math.floor((r.gunler[gunAnahtari(t)] || 0) / 60), bugun: i === 6 };
     });
     const tepe = Math.max(r.hedef, ...gunler.map((g) => g.dk), 1);
-    const govde = h("div", { class: "fis ritim-fis", role: "dialog", "aria-label": "Okuma ritmi" });
+    const govde = h("div", { class: "fis ritim-fis", role: "dialog", "aria-label": t("Okuma ritmi") });
     const ciz = () => {
       const dk = Math.floor(bugunSn() / 60);
       govde.replaceChildren(
-        h("p", { class: "ritim-ozet olcum" }, ...htmlParca(`Bugün <b>${dk}</b> dk okudun · Hedef <b>${r.hedef}</b> dk`)),
-        h("div", { class: "ritim-gunler", role: "img", "aria-label": "Son yedi gün: " + gunler.map((g) => `${GUN_UZUN[g.t.getDay()]} ${g.dk} dakika`).join(", ") },
+        h("p", { class: "ritim-ozet olcum" }, ...htmlParca(t("Bugün <b>{dk}</b> dk okudun · Hedef <b>{hedef}</b> dk", { dk, hedef: r.hedef }))),
+        h("div", { class: "ritim-gunler", role: "img", "aria-label": t("Son yedi gün: {liste}", { liste: gunler.map((g) => t("{gun} {dk} dakika", { gun: GUN_UZUN[g.t.getDay()], dk: g.dk })).join(", ") }) },
           ...gunler.map((g) => h("span", { class: "ritim-gun" + (g.bugun ? " bugun" : "") },
             h("small", { class: "ritim-sayi" }, String(g.dk)),
             h("span", { class: "ritim-cubuk" }, h("i", { style: `--o:${Math.min(1, g.dk / tepe).toFixed(3)}` })),
             h("small", {}, GUN_KISA[g.t.getDay()])))),
-        h("span", { class: "t-etiket" }, "Günlük hedef"),
-        h("div", { class: "parcali", role: "group", "aria-label": "Günlük hedef" }, ...[15, 30, 45, 60].map((d) => h("button", {
+        h("span", { class: "t-etiket" }, t("Günlük hedef")),
+        h("div", { class: "parcali", role: "group", "aria-label": t("Günlük hedef") }, ...[15, 30, 45, 60].map((d) => h("button", {
           type: "button", "aria-pressed": String(r.hedef === d),
           onclick: () => { r.hedef = d; depoYaz(); ritimGuncelle(true); ciz(); },
-        }, `${d} dk`))));
+        }, t("{dk} dk", { dk: d })))));
     };
     ciz();
     fis = govde;
@@ -383,9 +404,9 @@ export function koltukKur(kok, s) {
     sonDk = dk;
     el.ritim.hidden = dk < 1;   // ilk dakika dolmadan "0 dk" halkası gösterilmez
     el.ritimYay.style.setProperty("--oran", Math.min(1, dk / hedef).toFixed(3));
-    el.ritimDk.innerHTML = `<b>${dk}</b> dk`;
+    el.ritimDk.innerHTML = t("<b>{dk}</b> dk", { dk });
     if (dk >= hedef) el.ritim.dataset.tamam = ""; else delete el.ritim.dataset.tamam;
-    el.ritim.setAttribute("aria-label", `Okuma ritmi: bugün ${dk} dakika, hedef ${hedef} dakika`);
+    el.ritim.setAttribute("aria-label", t("Okuma ritmi: bugün {dk} dakika, hedef {hedef} dakika", { dk, hedef }));
   }
 
   // ---------- saat: ölçüm ve ritim yalnız ekran görünürken ilerler ----------
@@ -431,18 +452,18 @@ export function koltukKur(kok, s) {
     ilerlemeYaz(p);
     el.cizgi.style.setProperty("--p", p.toFixed(4));
     el.cetvel.setAttribute("aria-valuenow", String(Math.round(p * 100)));
-    el.cetvel.setAttribute("aria-valuetext", s.etiket ? s.etiket(p) : "%" + Math.round(p * 100));
+    el.cetvel.setAttribute("aria-valuetext", s.etiket ? s.etiket(p) : yuzdeMetni(Math.round(p * 100)));
     if (!gorunur && !surukle) return;   // yazılar yalnız çubuk açıkken
     // Kalan süre okuma hızı ölçülene kadar (OLCUM_ESIGI sayfa) hiç yazılmaz: "0 dk" ya da "ölçülüyor 0/8" görünmez
     let sol, sag;
     if (s.tur === "pdf") {
-      sol = `s. <b>${k.sayfa || 1}</b> / ${k.sayfaSayisi || 1}`;
+      sol = t("s. <b>{n}</b> / {toplam}", { n: k.sayfa || 1, toplam: k.sayfaSayisi || 1 });
       const sure = sureHtml(Math.max(0, (k.sayfaSayisi || 1) - (k.sayfa || 1) + 1), "sayfa");
-      sag = sure ? `Belge sonuna ${sure}` : "";
+      sag = sure ? t("Belge sonuna {sure}", { sure }) : "";
     } else {
-      const b = sureHtml(Math.max(0, k.kelimeKalanBolum || 0)), t = sureHtml(Math.max(0, k.kelimeKalanKitap || 0));
-      sol = b ? `Bölüm sonuna ${b}` : "";
-      sag = t ? `Kitapta ${t}` : `Kitapta <b>%${Math.round(p * 100)}</b>`;
+      const b = sureHtml(Math.max(0, k.kelimeKalanBolum || 0)), kt = sureHtml(Math.max(0, k.kelimeKalanKitap || 0));
+      sol = b ? t("Bölüm sonuna {sure}", { sure: b }) : "";
+      sag = kt ? t("Kitapta {sure}", { sure: kt }) : t("Kitapta <b>%{n}</b>", { n: Math.round(p * 100) });
     }
     if (sol !== sonSol) { el.sol.innerHTML = sol; sonSol = sol; }
     if (sag !== sonSag) { el.sag.innerHTML = sag; sonSag = sag; }

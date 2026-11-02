@@ -19,6 +19,7 @@
 import { h, icon, bus, hareketAz, yeniId, yanTusSilgiMi, basincUygula } from "./ortak.js";
 import * as ortak from "./ortak.js";   // bosta ve parmakGeriBildirim: kabukta yoksa yerel yedek
 import { cizgiAc } from "./cizgi-belge.js";
+import { t, ingilizceMi } from "./dil.js";
 import { hepsiniCiz, cizgiCiz, CanliKatman, islakBitir, islakAktar, silgi as silgiUygula, cizgilerKutusu } from "./kalem.js";
 
 const PB = 800;               // sayfa birimi genişliği (kalem.js ile aynı)
@@ -30,9 +31,12 @@ const MUREKKEP_SINIR = 4096;
 const CEVIR_MS = 220, PANEL_MS = 380, SAYFA_GOR_MS = 600, SON_MS = 1000;
 const AVUC_MS = 600;          // kalemden sonra dokunma yok sayılır
 const KALEM_MM = 0.6;
-const RENKLER = [["Mürekkep mavisi", "#24407A"], ["Siyah", "#1C1B19"], ["Bordo", "#8C2B38"], ["Kızıl", "#C2502E"], ["Yeşil", "#2F6B4F"]];
-const GORUNUMLER = [["sayfa", "Sayfa"], ["genislik", "Genişlik"], ["panel", "Panel"]];
-const YONLER = [["ltr", "Soldan sağa"], ["rtl", "Manga"]];
+// Çizgi romana özgü kısa metinler (görünüm adları, sayı): İngilizcede "çizgi:" önekli kendi anahtarları var,
+// başka parçalardaki aynı Türkçe anahtarla (Genişlik, Sayı {n}) birbirini ezmesin. Türkçe çıktı aynı.
+const tc = (metin, p) => t(ingilizceMi ? "çizgi:" + metin : metin, p);
+const RENKLER = [[t("Mürekkep mavisi"), "#24407A"], [t("Siyah"), "#1C1B19"], [t("Bordo"), "#8C2B38"], [t("Kızıl"), "#C2502E"], [t("Yeşil"), "#2F6B4F"]];
+const GORUNUMLER = [["sayfa", tc("Sayfa")], ["genislik", tc("Genişlik")], ["panel", tc("Panel")]];
+const YONLER = [["ltr", t("Soldan sağa")], ["rtl", t("Manga")]];
 const IPUCU_ANAHTAR = "kn:cizgi-ipucu";
 const PANEL_IPUCU = "kn:cizgi-panel-ipucu";
 // Dikey telefon (TASARIM-4 2.8): kullanıcı görünüm seçmemişse Panel; yatay telefonda ve genişte Sayfa
@@ -53,7 +57,7 @@ export async function ac(kap, belge, sayfa, mod, ek = {}) {
   if (S) kapat();
   const no = ++acilisNo;
   const kok = h("div", { class: "cizgi yukleniyor", tabindex: "-1" },
-    h("div", { class: "cizgi-bekle", role: "status" }, h("div", { class: "cizgi-bekle-kagit" }), h("p", {}, "Açılıyor")));
+    h("div", { class: "cizgi-bekle", role: "status" }, h("div", { class: "cizgi-bekle-kagit" }), h("p", {}, t("Açılıyor"))));
   kap.replaceChildren(kok);
   await cssYukle();
   if (no !== acilisNo) return;
@@ -61,8 +65,8 @@ export async function ac(kap, belge, sayfa, mod, ek = {}) {
   try {
     const blob = await kaynakAl(belge);
     if (no !== acilisNo) return;
-    if (!blob) throw new Error("Dosyanın kayıtlı kopyası bulunamadı.");
-    motor = await cizgiAc(blob);
+    if (!blob) throw Object.assign(new Error(t("Dosyanın kayıtlı kopyası bulunamadı.")), { goster: true });
+    motor = await parolayla(belge, (parola) => cizgiAc(blob, parola ? { parola } : {}));
     if (no !== acilisNo) { motor.kapat(); return; }
   } catch (e) {
     motor?.kapat();
@@ -137,13 +141,33 @@ async function kaynakAl(belge) {
   return blob;
 }
 
+// Parolalı PDF (TASARIM-5 11.3 C7): oturumda hatırlanan parola (pdf-belge.js parolaAl) önce denenir. Yoksa ya da yanlışsa
+// Masa'nın parola sorusu (masa paketinin dışa verdiği parolaSor; varsa) sorulur; o da yoksa "Masa'da aç" iletisi.
+async function parolayla(belge, acici) {
+  const pdfMod = await import("./pdf-belge.js").catch(() => null);
+  let parola = typeof pdfMod?.parolaAl === "function" ? pdfMod.parolaAl(belge.id) : null;
+  for (let deneme = 0; deneme < 4; deneme++) {
+    try { return await acici(parola); }
+    catch (e) {
+      if (e?.kod !== "parola" && e?.kod !== "parola-yanlis") throw e;
+      const sor = pdfMod?.parolaSor || (await import("./duzenleyici.js").catch(() => null))?.parolaSor;
+      if (typeof sor !== "function") throw Object.assign(new Error(t("Bu PDF parolalı. Masa'da açıp parolayı gir, sonra burada okuyabilirsin.")), { kod: "parola" });
+      parola = await sor(belge, { yanlis: e.kod === "parola-yanlis" || deneme > 0 });
+      if (!parola) throw Object.assign(new Error(t("Bu PDF parolalı, parola girilmedi.")), { kod: "parola" });
+      pdfMod.parolaHatirla?.(belge.id, parola);
+    }
+  }
+  throw Object.assign(new Error(t("Parola kabul edilmedi.")), { kod: "parola" });
+}
+
+// Bilinen hata: ileti kullanıcıya gösterilir (goster işaretli, parola, ya da Türkçe iletideki anahtar sözcük)
 function hataGoster(kok, e) {
-  const bilinen = /CBR|Arşiv|görsel|kopyası/.test(e?.message || "");
+  const bilinen = !!e?.goster || e?.kod === "parola" || /CBR|Arşiv|görsel|kopyası|parola/i.test(e?.message || "");
   kok.classList.remove("yukleniyor");
   kok.replaceChildren(h("div", { class: "cizgi-hata", role: "alert" },
-    h("p", { class: "cizgi-hata-baslik" }, "Bu çizgi roman açılamadı."),
-    h("p", {}, bilinen ? e.message : "Dosya bozuk ya da desteklenmiyor."),
-    h("button", { class: "cizgi-metin-dugme", onclick: () => bus.emit("git", { ekran: "kitaplik" }) }, "Kitaplığa dön")));
+    h("p", { class: "cizgi-hata-baslik" }, t("Bu çizgi roman açılamadı.")),
+    h("p", {}, bilinen ? e.message : t("Dosya bozuk ya da desteklenmiyor.")),
+    h("button", { class: "cizgi-metin-dugme", onclick: () => bus.emit("git", { ekran: "kitaplik" }) }, t("Kitaplığa dön"))));
 }
 
 // Belgenin çizgi roman verisi. PDF'te Masa'nın verisi (sayfalar vb.) olduğu gibi kalır.
@@ -221,38 +245,38 @@ function anahtarGuncelle(kap, secili) {
 
 function arayuzKur(kok) {
   const b = S.motor.bilgi, belge = S.belge;
-  const meta = [b.seri && b.seri !== (b.baslik || belge.ad) ? b.seri : "", b.sayi ? "Sayı " + b.sayi : ""].filter(Boolean).join(" · ");
+  const meta = [b.seri && b.seri !== (b.baslik || belge.ad) ? b.seri : "", b.sayi ? tc("Sayı {n}", { n: b.sayi }) : ""].filter(Boolean).join(" · ");
   const el = S.el;
   el.sahne = h("div", { class: "cizgi-sahne" });
   el.perde = h("div", { class: "cizgi-panel-perde", "aria-hidden": "true" },
     ...["ust", "alt", "sol", "sag"].map((k) => h("i", { class: "pp-" + k })));
   el.kare = h("div", { class: "cizgi-kare", "aria-hidden": "true" });
   el.cerceve = h("div", { class: "cizgi-cerceve", "aria-hidden": "true" });   // Panel'de karenin kenarında ince ışık
-  el.son = h("div", { class: "cizgi-son", "aria-hidden": "true" }, "Son.");
+  el.son = h("div", { class: "cizgi-son", "aria-hidden": "true" }, t("Son."));
   el.halka = h("div", { class: "kalem-halka cizgi-halka", "aria-hidden": "true" });
   el.ipucu = h("div", { class: "cizgi-ipucu", "aria-hidden": "true" }, h("i", { class: "ip-sol" }), h("i", { class: "ip-sag" }));
   el.duyuru = h("div", { class: "cizgi-duyuru", "aria-live": "polite" });
 
   // üst çubuk
-  el.renkler = h("div", { class: "cizgi-renkler", role: "radiogroup", "aria-label": "Kalem rengi" },
+  el.renkler = h("div", { class: "cizgi-renkler", role: "radiogroup", "aria-label": t("Kalem rengi") },
     ...RENKLER.map(([ad, renk]) => {
       const d = h("button", { type: "button", role: "radio", "aria-label": ad, title: ad, dataset: { renk },
         "aria-checked": String(renk === S.renk), onclick: () => renkSec(renk) });
       d.style.setProperty("--r", renk);
       return d;
     }));
-  el.kalem = dugme("kalem-ucu", "Parmakla ya da fareyle çiz", () => aracSec(S.arac === "kalem" ? "oku" : "kalem"), { "aria-pressed": "false" });
-  el.silgi = dugme("silgi", "Silgi", () => aracSec(S.arac === "silgi" ? "oku" : "silgi"), { "aria-pressed": "false" });
-  el.geriAl = dugme("geri-al", "Geri al", geriAl, { disabled: true });
+  el.kalem = dugme("kalem-ucu", t("Parmakla ya da fareyle çiz"), () => aracSec(S.arac === "kalem" ? "oku" : "kalem"), { "aria-pressed": "false" });
+  el.silgi = dugme("silgi", t("Silgi"), () => aracSec(S.arac === "silgi" ? "oku" : "silgi"), { "aria-pressed": "false" });
+  el.geriAl = dugme("geri-al", t("Geri al"), geriAl, { disabled: true });
   el.ust = h("header", { class: "cizgi-ust" },
-    dugme("geri", "Kitaplığa dön", () => bus.emit("git", { ekran: "kitaplik" })),
-    h("div", { class: "cizgi-baslik" }, h("b", {}, belge.ad || b.baslik || "Çizgi roman"), meta ? h("span", {}, meta) : null),
+    dugme("geri", t("Kitaplığa dön"), () => bus.emit("git", { ekran: "kitaplik" })),
+    h("div", { class: "cizgi-baslik" }, h("b", {}, belge.ad || b.baslik || t("Çizgi roman")), meta ? h("span", {}, meta) : null),
     h("div", { class: "cizgi-araclar" }, el.renkler, h("span", { class: "cizgi-ayrac" }), el.kalem, el.silgi, el.geriAl));
 
   // alt çubuk
-  el.serit = h("div", { class: "cizgi-serit", role: "list", "aria-label": "Sayfalar", dir: S.yon === "rtl" ? "rtl" : "ltr" });
+  el.serit = h("div", { class: "cizgi-serit", role: "list", "aria-label": t("Sayfalar"), dir: S.yon === "rtl" ? "rtl" : "ltr" });
   // Konum: telefonda dokununca küçük resim şeridi açılır (şerit kendiliğinden yer kaplamaz)
-  el.konum = h("button", { type: "button", class: "cizgi-konum", "aria-label": "Sayfalar", "aria-expanded": "false",
+  el.konum = h("button", { type: "button", class: "cizgi-konum", "aria-label": t("Sayfalar"), "aria-expanded": "false",
     onclick: () => { const a = S.kok.classList.toggle("serit-acik"); el.konum.setAttribute("aria-expanded", String(a)); if (a) { seritGuncelle(true); kucukleriIste(); } } });
   el.yon = anahtar("cizgi-yon", YONLER, S.yon, yonSec);
   el.gorunum = anahtar("cizgi-gorunum", GORUNUMLER, S.gorunum, gorunumSec);
@@ -634,7 +658,7 @@ async function panelaGit(y, liste, k, ms = PANEL_MS) {
     Object.assign(S.el.cerceve.style, { left: kutu.x + "px", top: kutu.y + "px", width: kutu.w + "px", height: kutu.h + "px" });
     S.el.cerceve.classList.add("acik");
   }
-  duyur(`Sayfa ${y.sayfalar[0].i + 1}, kare ${k + 1} / ${liste.length}`);
+  duyur(t("Sayfa {s}, kare {k} / {n}", { s: y.sayfalar[0].i + 1, k: k + 1, n: liste.length }));
   // Çözünürlük yetmiyorsa (yuva panellerden önce hazırlandıysa) yükseltilir
   if (cam.s > y.f * 1.15 && y.f < EN_F) { y.f = Math.min(EN_F, cam.s); bosta(() => y.olu || y.sayfalar.forEach((p) => sayfaCiz(y, p, y.f))); }
 }
@@ -976,7 +1000,7 @@ function parmakGeriAl(noktalar) {
     setTimeout(() => r.remove(), 400);
   }
   S.geriFis?.remove();
-  const f = S.geriFis = h("div", { class: "geri-fis cizgi-geri-fis", role: "status" }, bos ? "Geri alınacak bir şey yok" : "Geri alındı");
+  const f = S.geriFis = h("div", { class: "geri-fis cizgi-geri-fis", role: "status" }, bos ? t("Geri alınacak bir şey yok") : t("Geri alındı"));
   document.body.append(f);
   zamanla(() => f.remove(), 1200);
 }
@@ -1347,9 +1371,9 @@ function yonSec(yon) {
   degisti();
 }
 function yonTelGuncelle() {
-  const b = S.el.yonTel, ad = S.yon === "rtl" ? "Manga: sağdan sola" : "Soldan sağa";
-  b.setAttribute("aria-label", "Okuma yönü: " + ad);
-  b.title = "Okuma yönü: " + ad;
+  const b = S.el.yonTel, ad = S.yon === "rtl" ? t("Manga: sağdan sola") : t("Soldan sağa");
+  b.setAttribute("aria-label", t("Okuma yönü: {ad}", { ad }));
+  b.title = t("Okuma yönü: {ad}", { ad });
   b.replaceChildren(icon(S.yon === "rtl" ? "sol" : "sag"));
 }
 function gorunumSec(g) {
@@ -1380,7 +1404,7 @@ function zorlaYenile(panel = "bas") {
 // Telefonda Panel ilk kez: altta cam fiş, 3 sn ya da dokununca kaybolur (TASARIM-4 2.8)
 function panelIpucu() {
   try { if (localStorage.getItem(PANEL_IPUCU) === "1") return; localStorage.setItem(PANEL_IPUCU, "1"); } catch { return; }
-  const f = h("div", { class: "cizgi-fis", role: "status" }, "Kareden kareye geçmek için sağa dokun. Bütün sayfa için iki kez dokun.");
+  const f = h("div", { class: "cizgi-fis", role: "status" }, t("Kareden kareye geçmek için sağa dokun. Bütün sayfa için iki kez dokun."));
   S.kok.append(f);
   const git = () => { f.classList.add("gidiyor"); setTimeout(() => f.remove(), 220); };
   f.addEventListener("pointerdown", git, { once: true });
@@ -1408,7 +1432,7 @@ function kucukResimleriKur() {
   }, { root: serit, rootMargin: "0px 240px" });
   for (let i = 0; i < n; i++) {
     const cv = h("canvas", { width: 1, height: 1 });
-    const b = h("button", { type: "button", class: "cizgi-kucuk", role: "listitem", "aria-label": `Sayfa ${i + 1}`, dataset: { i },
+    const b = h("button", { type: "button", class: "cizgi-kucuk", role: "listitem", "aria-label": t("Sayfa {n}", { n: i + 1 }), dataset: { i },
       onclick: () => { S.akis++; yayilimaGec(yayBul(i), { anim: Math.abs(yayBul(i) - S.yi) === 1, panel: "bas" }); cubukGoster(true); } },
     cv, h("span", {}, String(i + 1)));
     b.style.setProperty("--r", oran(i).toFixed(4));
@@ -1492,7 +1516,7 @@ function konumYaz(hemen = false) {
   if (hemen) return;
   if (S.sonYer === ilk) return;
   S.sonYer = ilk;
-  duyur(`Sayfa ${ilk === son ? ilk + 1 : `${ilk + 1} ve ${son + 1}`} / ${S.n}`);
+  duyur(ilk === son ? t("Sayfa {s} / {n}", { s: ilk + 1, n: S.n }) : t("Sayfa {a} ve {b} / {n}", { a: ilk + 1, b: son + 1, n: S.n }));
   clearTimeout(S.konumZ);
   const id = b.id;
   S.konumZ = zamanla(() => bus.emit("belge:degisti", { belgeId: id }), 800);

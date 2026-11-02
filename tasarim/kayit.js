@@ -15,6 +15,12 @@
 //             "yedekKlasoru" -> otomatik yedek klasörü: { tutamac (FileSystemDirectoryHandle), son, dosya, hata }
 //             "kitapKlasoru" -> kitap klasörü (13. tur, yalnız okunur): { tutamac, bilinen: ["yol/ad|boyut"], son, izinFisiKapali }
 //             "derlemeler"   -> İzlerim'de birleştirilen defterler: [{ id, ad, olusturma, girdiler: [{ belgeId, izId }] }]
+//   7.0 çöp kutusu (TASARIM-5 11.2 K5): "kitaplik" kaydında cop: [{ belge (liste biçiminde), silindi, kartlar }].
+//             Çöpteki belgenin veri:<id>, kapak:<id>, dosyası ve ekleri yerinde durur; 30 gün sonra açılışta kalıcı silinir.
+//   7.0 künye (K8): belge.seri, belge.cilt (EPUB'da calibre:series ve belongs-to-collection'dan), belge.kapakElle
+//             (kullanıcının seçtiği kapak görseli kapak:<id>'de), belge.raf ("okunacak" | "okunuyor" | "bitti", elle).
+//             Parolalı PDF (K11): belge.parolali = true, sayfa sayısı bilinmez (sayfaSayisi 0).
+//   7.0 şifreli yedek (TASARIM-5 10.5): yedekAl({ parola }) ve yedekYukle(file, { parola }); şifre yedek-isci.js'te.
 //   Belge kaydında dil (10. tur): belge.dil kısa dil kodu ("en"; null: bakıldı, bulunamadı), belge.dilElle kullanıcı seçtiyse true.
 //   Çeviri önbelleği ve paketleri ceviri.js'in kendi veritabanında ("kenar-notu-ceviri"); yedeğe girmez.
 //   dosyalar: <id>           -> ham PDF/EPUB/CBZ (Blob)
@@ -24,6 +30,12 @@
 import { bus, store, belgeBul, yeniId, kartEkle, kartSil, KLASORLER, CILT_RENKLERI, ORNEK_SURUM } from "./ortak.js";
 import { arsivAc, okumaHatasi, yedekUret, PARCALI, oncekiDizinAnahtari, dizinTemizle,
   oncekiKopyaAl, oncekiDonus } from "./yedek-isci.js";
+// Şifreli yedek işlevleri (sifreliMi, sifrele, sifreCoz) yardimci paketinden gelir; yoksa arayüz anahtarı gizler
+import * as yedekIsci from "./yedek-isci.js";
+import { t } from "./dil.js";
+
+// yedek-isci.js iletileri Türkçe kaynak metindir (işçi seçilen dili bilmez): kullanıcıya gidecek ileti burada çevrilir
+const iletiCevir = (hata) => { if (hata && typeof hata.message === "string") { try { hata.message = t(hata.message); } catch { /* salt okunur */ } } return hata; };
 
 const VT = { ad: "kenar-notu-tasarim", surum: 2 };
 const LISTE = "kitaplik", YZ = "yz";
@@ -128,7 +140,8 @@ export async function ekDosyalar(belgeId) {
 const kirli = new Set();          // verisi yazılacak belgeler
 const belki = new Set();          // verisi değişmiş olabilecek belgeler (imzası değiştiyse yazılır)
 // "belgeler" olayının yalnız liste alanını değiştiren türleri ("geri": veri dönüşte zaten yazıldı)
-const LISTE_OLAYLARI = new Set(["ad", "tasi", "favori", "mod", "dil", "cizgi", "kapak", "geri"]);
+// 7.0: "kunye" (ad, yazar, seri, cilt), "raf" (okuma rafı), "toplu" (çoklu seçimle taşıma, rafa koyma, favori)
+const LISTE_OLAYLARI = new Set(["ad", "tasi", "favori", "mod", "dil", "cizgi", "kapak", "geri", "kunye", "raf", "toplu"]);
 const degisen = new Set();        // içeriği açıkça değişen belgeler (degisim damgası; yedek birleşiminde kullanılır)
 const kirliKartlar = new Set();   // yazılacak ya da silinecek kartlar (kartlarKirli: hepsi)
 let kartSiraKirli = false;
@@ -177,8 +190,11 @@ export const ornekSurumAyarla = (n) => { ornekSurumu = Number(n) || 0; };
 let ornekCizgi = false;
 export const ornekCizgiVar = () => ornekCizgi;
 export const ornekCizgiAyarla = (v = true) => { ornekCizgi = !!v; };
-function listeKaydi(belgeler = store.belgeler, klasorler = KLASORLER) {
+// Çöpteki belge liste biçiminde (veri ve kapak ayrı anahtarlarda), kartları kendi alanında
+const copKaydi = (cop) => cop.map((g) => ({ belge: listeBelgesi(g.belge), silindi: g.silindi, kartlar: g.kartlar || [] }));
+function listeKaydi(belgeler = store.belgeler, klasorler = KLASORLER, cop = store.cop) {
   const k = { surum: VT.surum, zaman: Date.now(), klasorler, belgeler: belgeler.map(listeBelgesi), ornekSurum: ornekSurumu };
+  if (cop?.length) k.cop = copKaydi(cop);
   if (ornekCizgi) k.ornekCizgi = true;
   damgaEkle(k.zaman);
   return k;
@@ -226,6 +242,12 @@ export async function durumYukle() {
       if (kapakMap.has(b.id)) b.kapakGorsel = kapakMap.get(b.id);
     }
     store.belgeler.splice(0, store.belgeler.length, ...liste.belgeler);
+    // Çöp kutusu: 30 günü dolanlar listeden çıkar, dosyaları liste yazıldıktan sonra silinir
+    const cop = copTemizle(liste.cop);
+    for (const g of cop) { g.belge.veri = null; if (kapakMap.has(g.belge.id)) g.belge.kapakGorsel = kapakMap.get(g.belge.id); }
+    const sinir = Date.now() - COP_GUN * 864e5;
+    store.cop.splice(0, store.cop.length, ...cop.filter((g) => g.silindi > sinir));
+    const dolan = cop.filter((g) => g.silindi <= sinir).map((g) => g.belge.id);
     if (Array.isArray(liste.klasorler)) KLASORLER.splice(0, KLASORLER.length, ...liste.klasorler);
     store.kirpintilar.splice(0, store.kirpintilar.length, ...(Array.isArray(kirpintilar) ? kirpintilar : []));
     const kartlarVar = Array.isArray(kartlar) || Array.isArray(kartSira) || kartAnahtarlar.length > 0;
@@ -237,8 +259,9 @@ export async function durumYukle() {
     ornekCizgi = !!liste.ornekCizgi;
     veriSoz = verileriYukle(liste.belgeler.filter((b) => veriIdler.has(b.id)));
     // Silinmiş belgelerden kalan veri, kapak ve dosyalar sessizce temizlenir
-    const idler = new Set(liste.belgeler.map((b) => b.id));
+    const idler = new Set([...liste.belgeler.map((b) => b.id), ...store.cop.map((g) => g.belge.id)]);
     setTimeout(() => yetimleriSil(idler, [...veriIdler, ...kapakMap.keys()]), 4000);
+    if (dolan.length && !baska) setTimeout(() => { for (const id of dolan) silinmisBelgeyiTemizle(id); }, 1500);
     // Otomatik yedek kayıtlı kitaplıkla başlar (karşılama ve okunamayan kayıtta değil)
     if (!baska) setTimeout(otoYedekKur, 0);
     return { geri: true, kartlarVar, yz, baska, ornekSurum: ornekSurumu };
@@ -480,6 +503,7 @@ async function yetimleriSil(idler, anahtarIdler) {
     // Kayıttaki güncel liste de sayılır: arada başka sekmenin eklediği belge silinmesin
     const guncel = await islem("durum", "readonly", (d) => d.durum.get(LISTE));
     for (const b of guncel?.belgeler || []) idler.add(b.id);
+    for (const g of [...store.cop, ...(Array.isArray(guncel?.cop) ? guncel.cop : [])]) if (g?.belge?.id) idler.add(g.belge.id);
     const anahtarlar = await islem("dosyalar", "readonly", (d) => d.dosyalar.getAllKeys());
     const oncekiler = await islem("durum", "readonly", (d) => d.durum.getAllKeys(aralik("oncekiDizin:")));
     anahtarIdler = [...anahtarIdler, ...oncekiler.map((k) => k.slice("oncekiDizin:".length))];
@@ -750,10 +774,66 @@ async function denetliYaz(fn, hizli = false) {
 const silBekleyen = new Set();
 export async function silinmisBelgeyiTemizle(id) {
   silBekleyen.delete(id);
-  if (!id || kilit || belgeBul(id)) return;
-  if (!(await hemenKaydet()) || belgeBul(id)) return;
+  if (!id || kilit || belgeBul(id) || copBul(id)) return;
+  if (!(await hemenKaydet()) || belgeBul(id) || copBul(id)) return;
   dosyaSil(id).catch(() => {});
   ceviriTemizle({ belgeId: id });
+}
+
+/* ---------- çöp kutusu (TASARIM-5 11.2 K5) ---------- */
+// store.cop: [{ belge, silindi, kartlar }], en yeni başta. Çöpteki belge store.belgeler'de durmaz (ortak.js sözleşmesi).
+// Belgenin verisi, kapağı, dosyası ve ekleri yerinde kalır; kartları çöp kaydına taşınır, geri yüklenince aynı kimlikle döner.
+// 30 gün dolunca açılışta durumYukle listeden çıkarır ve silinmisBelgeyiTemizle ile kalıcı siler.
+export const COP_GUN = 30;
+export const copBul = (id) => store.cop.find((g) => g.belge?.id === id) || null;
+// Kayıttan ya da yedekten gelen çöp kaydı: bozuk girdi atılır, kimlik iki kez girmez
+function copTemizle(liste) {
+  if (!Array.isArray(liste)) return [];
+  const gorulen = new Set();
+  return liste.filter((g) => g && g.belge && typeof g.belge.id === "string" && BELGE_TURLERI.has(g.belge.tur) && !gorulen.has(g.belge.id) && gorulen.add(g.belge.id))
+    .map((g) => ({ belge: g.belge, silindi: Number(g.silindi) || Date.now(), kartlar: Array.isArray(g.kartlar) ? g.kartlar.filter((k) => k && k.id) : [] }));
+}
+// Çöpte kalan gün (en az 0): "3 gün kaldı"
+export const copKalanGun = (g, simdi = Date.now()) => Math.max(0, Math.ceil((g.silindi + COP_GUN * 864e5 - simdi) / 864e5));
+// Belgeyi çöpe atar. Dönen kayıt "Geri al" için de kullanılır (indis: kitaplıktaki yeri)
+export function copaAt(belge, { yay = true } = {}) {
+  const indis = store.belgeler.indexOf(belge);
+  if (indis < 0) return null;
+  store.belgeler.splice(indis, 1);
+  const kartlar = store.kartlar.filter((k) => k.belgeId === belge.id).map((k) => ({ ...k }));
+  for (const k of kartlar) kartSil(k.id);
+  const g = { belge, silindi: Date.now(), kartlar, indis };
+  store.cop.unshift(g);
+  if (yay) bus.emit("belgeler", { tur: "sil", id: belge.id, cop: true });
+  return g;
+}
+// Çöpten kitaplığa: verisi bellekte değilse (önceki oturumda silinmiş) kayıttan okunur; kartlar aynı kimlikle döner
+export function coptenGeriAl(id, { yay = true } = {}) {
+  const j = store.cop.findIndex((g) => g.belge?.id === id);
+  if (j < 0) return null;
+  const [g] = store.cop.splice(j, 1);
+  const b = g.belge;
+  if (belgeBul(b.id)) return belgeBul(b.id);
+  store.belgeler.splice(Math.max(0, Math.min(Number.isInteger(g.indis) ? g.indis : 0, store.belgeler.length)), 0, b);
+  if (b.veri == null && !veriBekleyen.has(b.id)) { veriBekleyen.set(b.id, b); tekVeri(b.id); }
+  for (const k of [...(g.kartlar || [])].reverse()) if (!store.kartlar.some((x) => x.id === k.id)) kartEkle({ ...k });
+  if (yay) bus.emit("belgeler", { tur: "ekle", belge: b });
+  return b;
+}
+// Kalıcı sil: listeden çıkar, liste yazılınca dosya, veri ve ekler gider
+export function copKaliciSil(id) {
+  const j = store.cop.findIndex((g) => g.belge?.id === id);
+  if (j < 0) return;
+  store.cop.splice(j, 1);
+  bus.emit("belgeler", { tur: "sil", id, kalici: true });
+  return silinmisBelgeyiTemizle(id);
+}
+export async function copuBosalt() {
+  const idler = store.cop.map((g) => g.belge.id);
+  store.cop.splice(0, store.cop.length);
+  bus.emit("belgeler", { tur: "sil", kalici: true });
+  if (!idler.length || !(await hemenKaydet())) return;
+  for (const id of idler) { silBekleyen.delete(id); if (!belgeBul(id)) { dosyaSil(id).catch(() => {}); ceviriTemizle({ belgeId: id }); } }
 }
 
 // Çeviri önbelleği (ceviri.js): belge silinince o belgeninki, sıfırlamada hepsi; "Her şeyi temizle" paketleri de siler.
@@ -907,7 +987,7 @@ async function klasorIzni(tutamac) {
 export async function yedekKlasoru() {
   const k = await klasorKaydi();
   if (!k?.tutamac) return null;
-  return { ad: k.tutamac.name, son: k.son || 0, dosya: k.dosya || "", hata: k.hata || "", izin: await klasorIzni(k.tutamac) };
+  return { ad: k.tutamac.name, son: k.son || 0, dosya: k.dosya || "", hata: k.hata ? t(k.hata) : "", izin: await klasorIzni(k.tutamac) };
 }
 // Dokunuşla çağrılır. Vazgeçilirse AbortError fırlar. Seçilince ilk yedek hemen yazılır.
 export async function yedekKlasoruSec({ ilerleme } = {}) {
@@ -963,13 +1043,14 @@ async function klasoreYaz(ilerleme) {
   } catch (hata) {
     yedekDegisti = true;
     console.warn("[kenar-notu] Klasöre yedek yazılamadı:", hata);
+    // Kayda Türkçe kaynak metin yazılır, görüntülenirken çevrilir (yedekKlasoru)
     const mesaj = hata?.kod === "eksik" || hata?.kod === "buyuk" ? hata.message
       : hata?.name === "NotAllowedError" ? "Klasöre yazma izni yok."
         : hata?.name === "NotFoundError" ? "Yedek klasörü bulunamadı; yeniden seç."
           : hata?.name === "QuotaExceededError" ? "Diskte yer kalmadı."
             : "Yedek klasöre yazılamadı.";
     await klasorKaydiYaz({ ...k, hata: mesaj }).catch(() => {});
-    bus.emit("yedek:klasor", { tur: "hata", mesaj });
+    bus.emit("yedek:klasor", { tur: "hata", mesaj: t(mesaj) });
     return false;
   }
 }
@@ -1021,8 +1102,10 @@ function ozet(bayt) {
 // Tür içerikten tanınır, uzantı yalnız son çare (OZELLIKLER-8 §3.3): uzantısız ya da yanlış uzantılı dosya da açılır.
 // "zip": içine bakılmadan karar verilemeyen zip (zipTuru bakar)
 const CIZGI_MIME = /^application\/(vnd\.comicbook\+zip|x-cbz)$/i;
-const CBR_HATA = "CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.";
+const CBR_HATA = t("CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.");
 function turBul(ad, mime, bas) {
+  // Şifreli Kenar Notu yedeği (TASARIM-5 10.5): "KNSIFRE1"
+  if (bas.length >= 8 && new TextDecoder("latin1").decode(bas.subarray(0, 8)) === "KNSIFRE1") return "yedek";
   if (bas[0] === 0x25 && bas[1] === 0x50 && bas[2] === 0x44 && bas[3] === 0x46) return "pdf";   // %PDF
   if (bas[0] === 0x50 && bas[1] === 0x4b && bas[2] === 3 && bas[3] === 4) {
     // EPUB: zip'in ilk girdisi "mimetype", içeriği application/epub+zip (kurala uyan EPUB'da içine bakmak gerekmez)
@@ -1141,6 +1224,53 @@ export async function kapakTamamla(belge) {
   return true;
 }
 
+// Çoğalt (7.0 K8): aynı dosya (Blob yeni anahtarla yazılır, tarayıcı içeriği paylaşır), verinin bağımsız kopyası,
+// ad "(kopya)". Ek dosyalar da kopyalanır; kartlar kaynağın kalır. Dönen: yeni belge
+export async function belgeCogalt(b) {
+  await veriBekle(b.id);
+  const id = yeniId(b.tur === "defter" ? "d" : "b");
+  const { veri, kapakGorsel, parmakIzi, ...alanlar } = b;
+  const yeni = { ...JSON.parse(JSON.stringify(alanlar)), id, ad: t("{ad} (kopya)", { ad: b.ad }).slice(0, 200), favori: false,
+    acilis: Date.now(), eklenme: Date.now(), veri: veri == null ? null : structuredClone(veri) };
+  delete yeni.raf;
+  if (kapakGorsel) yeni.kapakGorsel = kapakGorsel;
+  // Dosyasız örnek EPUB'un kopyası kaynağın metnini açar (okuma-metni.js ornekKitap)
+  if (!b.dosya && b.tur === "epub") yeni.ornekAsil ??= b.id;
+  if (b.dosya) {
+    const blob = await dosyaGetir(b.id);
+    if (!blob) throw Object.assign(new Error("Dosya okunamadı"), { kod: "eksik" });
+    const ekler = await ekDosyalar(b.id);
+    for (const e of ekler) { const bl = await ekDosyaGetir(b.id, e.ad); if (bl) await ekDosyaKaydet(id, e.ad, bl); }
+    await dosyaliBelgeYaz(yeni, blob, kapakGorsel || null);
+  } else {
+    const ekler = await ekDosyalar(b.id);
+    for (const e of ekler) { const bl = await ekDosyaGetir(b.id, e.ad); if (bl) await ekDosyaKaydet(id, e.ad, bl); }
+    if (kapakGorsel) await islem("durum", "readwrite", (d) => d.durum.put(kapakGorsel, kapakAnahtari(id))).catch(() => {});
+    store.belgeler.unshift(yeni);
+    bus.emit("belgeler", { tur: "ekle", belge: yeni });
+  }
+  // Veri bir sonraki kayıtta yazılır
+  if (yeni.veri != null) { kirli.add(id); kaydetPlanla(); }
+  return yeni;
+}
+
+// Künye penceresi (7.0 K8): kullanıcının seçtiği kapak görseli. dosya null ise elle kapak kalkar: içe aktarılan
+// belgede dosyanın kendi kapağı yeniden çıkarılır, defterde üretilen kapak döner.
+export async function kapakDegistir(belge, dosya) {
+  if (dosya) {
+    const g = await kapakKucult(dosya, 480);
+    belge.kapakGorsel = g;
+    belge.kapakElle = true;
+    await islem("durum", "readwrite", (d) => d.durum.put(g, kapakAnahtari(belge.id)));
+  } else {
+    delete belge.kapakGorsel;
+    delete belge.kapakElle;
+    await islem("durum", "readwrite", (d) => d.durum.delete(kapakAnahtari(belge.id))).catch(() => {});
+    if (belge.dosya && !belge.parolali) { belge.kapakDenendi = false; await kapakTamamla(belge).catch(() => false); }
+  }
+  bus.emit("belgeler", { tur: "kapak", id: belge.id });
+}
+
 // Çizgi romanın künyesi (ComicInfo.xml): seri, sayı, yazar ve okuma yönü
 function cizgiBilgisiYaz(belge, bilgi) {
   const yazi = (v) => String(v ?? "").trim() || undefined;
@@ -1150,8 +1280,29 @@ function cizgiBilgisiYaz(belge, bilgi) {
   if (!belge.yazar && yazi(bilgi.yazar)) belge.yazar = yazi(bilgi.yazar);
 }
 
+// Dosya adından belge adı: uzantı gider, %20 gibi kodlar çözülür, alt çizgi boşluk olur, çift boşluk teklenir
+function dosyaAdiTemizle(ad) {
+  let s = String(ad || "").replace(/\.(pdf|epub|cbz|zip)$/i, "");
+  if (/%[0-9a-f]{2}/i.test(s)) { try { s = decodeURIComponent(s); } catch { s = s.replace(/%20/gi, " "); } }
+  return s.replace(YON_DENETIM, "").replace(/_+/g, " ").replace(/\s+/g, " ").trim();
+}
+// Belgenin kendi başlığı ancak anlamlıysa ad olur. Boş, "Untitled-1", "Document1", "Microsoft Word - x.docx",
+// dosya adı ya da yol gibi üretici artıkları sayılmaz (boş metin döner, dosya adı kullanılır)
+const COP_BASLIK = /^(untitled( document)?|adsız( kitap)?|adsiz|başlıksız|basliksiz|isimsiz|no title|title|başlık|document|doc|belge|doküman|dokuman|presentation|powerpoint presentation|powerpoint sunusu|sunu|sunum|slide|book|kitap|scan|scanned document|taranmış belge|image|img|page|sayfa|main|print|new document|yeni belge|pdf|unknown|anonymous)[\s._-]*\d*$/i;
+const BELGE_UZANTI = /\.(docx?|pptx?|xlsx?|od[tps]|rtf|txt|tex|dvi|e?ps|indd|qxp|pages|key|pdf|html?|md|ai|psd|jpe?g|png|tiff?|cdr|pub)$/i;
+function anlamliBaslik(baslik) {
+  const t = String(baslik || "").replace(YON_DENETIM, "").replace(/\s+/g, " ").trim();
+  if (t.length < 2 || t.length > 300 || !/\p{L}/u.test(t)) return "";   // yalnız rakam ve işaret de sayılmaz
+  if (COP_BASLIK.test(t) || /^microsoft\s+(word|powerpoint|excel)\b/i.test(t) || BELGE_UZANTI.test(t)) return "";
+  if (/^[a-z]:[\\/]|^file:|^\/|\\/i.test(t)) return "";                 // dosya yolu
+  if (!/\s/.test(t) && (t.includes("_") || t.length > 24)) return "";     // "lecture_03" ya da karma gibi makine adı
+  return t;
+}
+
 export async function belgeIceAktar(file, { klasor } = {}) {
+  // ad parmak izine girer (veri): adsız dosyada Türkçe kalır, görünen ad arayüz dilinde
   const ad = String(file?.name || "Adsız");
+  const gorunenAd = file?.name ? ad : t("Adsız");
   const bas = new Uint8Array(await file.slice(0, 65536).arrayBuffer());
   let tur = turBul(ad, file.type, bas);
   if (tur === "zip") tur = await zipTuru(file, ad, file.type);
@@ -1163,19 +1314,26 @@ export async function belgeIceAktar(file, { klasor } = {}) {
   if (vardi) return vardi;
 
   const bilgi = (await belgeBilgisi(tur, file)) || {};
+  // Parolalı PDF (K11): reddedilmez, kilitli kapakla girer; açılınca Masa parolayı sorar (pdf-belge.js kod "parola")
+  const n0 = bilgi.neden;
+  const parolali = tur === "pdf" && bilgi.hata && (n0?.kod === "parola" || n0?.kod === "parola-yanlis" || n0?.name === "PasswordException");
   // Okunamayan dosya kitaplığa girmez (açılınca yine hata verirdi). Zaman aşımı bozukluk sayılmaz:
   // büyük ya da yavaş dosya eklenir, bilgisi sonra tamamlanır.
-  if (bilgi.hata && bilgi.neden?.message !== "zaman aşımı") {
+  if (bilgi.hata && !parolali && bilgi.neden?.message !== "zaman aşımı") {
     const n = bilgi.neden, kod = n?.kod || (n?.name === "PasswordException" ? "parola" : "bozuk");
     throw Object.assign(new Error(
-      kod === "drm" ? `“${ad}” DRM ile korunuyor; Kenar Notu korumalı kitapları açamıyor.`
-        : kod === "parola" ? `“${ad}” parolalı; parolasız bir kopyasını ekle.`
-          : kod === "buyuk" ? `“${ad}” açılamadı: içinde aşırı büyük bir bölüm var.`
-            : `“${ad}” okunamadı; dosya bozuk ya da yarım inmiş olabilir.`), { kod: "bozuk" });
+      kod === "drm" ? t("“{ad}” DRM ile korunuyor; Kenar Notu korumalı kitapları açamıyor.", { ad: gorunenAd })
+        : kod === "parola" ? t("“{ad}” parolalı; parolasız bir kopyasını ekle.", { ad: gorunenAd })
+          : kod === "buyuk" ? t("“{ad}” açılamadı: içinde aşırı büyük bir bölüm var.", { ad: gorunenAd })
+            : t("“{ad}” okunamadı; dosya bozuk ya da yarım inmiş olabilir.", { ad: gorunenAd })), { kod: "bozuk" });
   }
   const kapakGorsel = await kapakHazirla(bilgi.kapak);
-  const dosyaAd = ad.replace(/\.(pdf|epub|cbz|zip)$/i, "").trim() || "Adsız";
-  const belgeAd = ((tur !== "pdf" && String(bilgi.baslik || "").replace(YON_DENETIM, "").trim()) || dosyaAd).replace(YON_DENETIM, "");
+  const dosyaAd = (file?.name ? dosyaAdiTemizle(ad) : "") || t("Adsız");
+  // Ad: belgenin anlamlı başlığı, yoksa temizlenmiş dosya adı. Dosya adı başlıkla başlayıp onu sürdürüyorsa
+  // (PDF'te ayıklanan "Ad (s. 3)", "Lineer Cebir Hafta 3") daha belirgin olan dosya adı kalır
+  let icBaslik = anlamliBaslik(bilgi.baslik);
+  if (icBaslik && tur === "pdf" && dosyaAd.toLocaleLowerCase("tr").startsWith(icBaslik.toLocaleLowerCase("tr"))) icBaslik = "";
+  const belgeAd = icBaslik || dosyaAd;
   const sayfali = tur === "pdf" || tur === "cizgi";
   const belge = {
     id: yeniId("b"), tur, ad: belgeAd.slice(0, 200),
@@ -1186,7 +1344,16 @@ export async function belgeIceAktar(file, { klasor } = {}) {
     kapak: renkSec(belgeAd), dosya: true, parmakIzi: iz, boyut: file.size, eklenme: Date.now(), veri: null,
   };
   if (tur === "cizgi") cizgiBilgisiYaz(belge, bilgi);
-  if (tur === "epub") { const dil = await zamanAsimi(epubDili(file), 8000).catch(() => null); if (dil) belge.dil = dil; }
+  if (tur === "epub") {
+    const k = await zamanAsimi(epubKunye(file), 8000).catch(() => null);
+    if (k?.dil) belge.dil = k.dil;
+    // Seri: epub-belge.js verirse onunki, yoksa paket dosyasından
+    const seri = String(bilgi.seri || k?.seri || "").replace(YON_DENETIM, "").trim();
+    const cilt = Number(bilgi.cilt ?? k?.cilt);
+    if (seri) belge.seri = seri.slice(0, 120);
+    if (seri && cilt > 0) belge.cilt = cilt;
+  }
+  if (parolali) { belge.parolali = true; belge.sayfaSayisi = 0; belge.kapakDenendi = true; }
   if (!bilgi.hata) belge.kapakDenendi = true;   // bilgi okunamadıysa kapak sonraki açılışta yeniden denenir
   if (kapakGorsel) belge.kapakGorsel = kapakGorsel;
   // Dosya türü sabitlenir: Android bazen EPUB'u türsüz verir
@@ -1247,7 +1414,7 @@ export async function ornekCizgiEkle(blob, { alanlar = {}, acilis = Date.now() -
   if (belgeBul(id)) return belgeBul(id);
   const kapakGorsel = await kapakHazirla(bilgi.kapak);
   for (const k of ["seri", "sayi", "yazar", "yon"]) if (!bilgi[k] && alanlar[k]) bilgi[k] = alanlar[k];
-  const ad = String(bilgi.baslik || "").trim() || String(alanlar.ad || "").trim() || "Örnek çizgi roman";
+  const ad = String(bilgi.baslik || "").trim() || String(alanlar.ad || "").trim() || t("Örnek çizgi roman");
   const belge = {
     id, tur: "cizgi", ad: ad.slice(0, 200), yazar: String(bilgi.yazar || "").trim() || undefined,
     sayfaSayisi: Math.max(1, Math.floor(Number(bilgi.sayfaSayisi)) || 1), sayfa: 1, ilerleme: 0, favori: false, acilis,
@@ -1276,6 +1443,11 @@ export async function depoDurumu() {
 
 // EPUB'un dili (OPF dc:language), kısa koda indirgenmiş: "en-US" -> "en". Yalnız paket dosyası okunur.
 export async function epubDili(blob) {
+  return (await epubKunye(blob)).dil;
+}
+// 7.0 (K8): dil, seri ve cilt numarası aynı okumada. Seri: Calibre'nin <meta name="calibre:series"> ve
+// "calibre:series_index"i, ya da EPUB 3'ün <meta property="belongs-to-collection"> ve onu niteleyen "group-position"
+async function epubKunye(blob) {
   const JSZip = await jszipYukle();
   const zip = await JSZip.loadAsync(blob);
   const oku = (yol) => zip.file(yol)?.async("string");
@@ -1284,7 +1456,29 @@ export async function epubDili(blob) {
   if (!opfYol || !zip.file(opfYol)) opfYol = Object.keys(zip.files).find((y) => /\.opf$/i.test(y)) || "";
   const opf = opfYol ? (await oku(opfYol)) || "" : "";
   const ham = opf.match(/<(?:[\w-]+:)?language(?:\s[^>]*)?>\s*([^<\s]+)\s*</i)?.[1] || "";
-  return dilKisalt(ham);
+  return { dil: dilKisalt(ham), ...seriOku(opf) };
+}
+const xmlCoz = (s) => String(s || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&amp;/g, "&").trim();
+export function seriOku(opf) {
+  const nitelik = (etiket, ad) => new RegExp(`\\s${ad}\\s*=\\s*["']([^"']*)["']`, "i").exec(etiket)?.[1];
+  const metalar = [...String(opf).matchAll(/<(?:[\w-]+:)?meta\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:[\w-]+:)?meta>)/gi)].map((m) => ({ nit: m[1], ic: m[2] }));
+  let seri = "", cilt = "";
+  for (const { nit } of metalar) {
+    const ad = nitelik(nit, "name");
+    if (ad === "calibre:series") seri = xmlCoz(nitelik(nit, "content"));
+    if (ad === "calibre:series_index") cilt = xmlCoz(nitelik(nit, "content"));
+  }
+  if (!seri) {
+    const kol = metalar.find((m) => nitelik(m.nit, "property") === "belongs-to-collection" && xmlCoz(m.ic));
+    if (kol) {
+      seri = xmlCoz(kol.ic);
+      const id = nitelik(kol.nit, "id");
+      const sira = id && metalar.find((m) => nitelik(m.nit, "property") === "group-position" && nitelik(m.nit, "refines") === "#" + id);
+      if (sira) cilt = xmlCoz(sira.ic);
+    }
+  }
+  const n = Number.parseFloat(cilt);
+  return { seri: seri.replace(YON_DENETIM, "").slice(0, 120) || undefined, cilt: Number.isFinite(n) && n > 0 ? n : undefined };
 }
 // "en-US" -> "en", "zh-Hant-TW" -> "zh-Hant", "und" ve bozuk değer -> null
 export function dilKisalt(kod) {
@@ -1332,38 +1526,51 @@ function yerelTercihleriYaz(o) {
 }
 
 // ilerleme(oran): 0..1, ekranda "Yedek hazırlanıyor %40" için
-export async function yedekAl({ ilerleme = () => {} } = {}) {
+// parola: verilirse arşiv 10.5'teki biçimde şifrelenir (yedek-isci.js sifrele); işlev yoksa kod "sifre-yok"
+export const sifreliYedekVar = () => typeof yedekIsci.sifreliMi === "function" && typeof yedekIsci.sifrele === "function" && typeof yedekIsci.sifreCoz === "function";
+export async function yedekAl({ ilerleme = () => {}, parola = null } = {}) {
+  if (parola && !sifreliYedekVar()) throw Object.assign(new Error(t("Bu sürüm yedeği şifreleyemiyor.")), { kod: "sifre-yok" });
   // Bütün belge verileri bellekte olmalı (açılışta parça parça gelir)
   await veriSoz;
-  if (veriBekleyen.size) throw Object.assign(new Error("Belge verileri okunamadı; yedek alınmadı."), { kod: "eksik" });
+  if (veriBekleyen.size) throw Object.assign(new Error(t("Belge verileri okunamadı; yedek alınmadı.")), { kod: "eksik" });
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
+  // Çöpteki belgeler de yedeğe girer (7.0): verisi bellekte değilse kayıttan okunur
+  const cop = [];
+  for (const g of store.cop) {
+    let veri = g.belge.veri;
+    if (veri == null) { try { veri = (await islem("durum", "readonly", (d) => d.durum.get(veriAnahtari(g.belge.id)))) ?? null; } catch { veri = null; } }
+    cop.push({ belge: { ...g.belge, veri }, silindi: g.silindi, kartlar: g.kartlar || [] });
+  }
   const durum = {
     uygulama: "Kenar Notu", bicim: 1, surum: VT.surum, ornekSurum: ornekSurumu, zaman: Date.now(),
     belgeler: store.belgeler, kirpintilar: store.kirpintilar, kartlar: store.kartlar, klasorler: KLASORLER,
     derlemeler: store.derlemeler, ornekCizgi: ornekCizgi || undefined,
-    ayarlar: ayarlarYedegi(), yerel: yerelTercihler(),
+    ayarlar: ayarlarYedegi(), yerel: yerelTercihler(), cop: cop.length ? cop : undefined,
   };
   const girdiler = [];   // [yol, Blob]
   // Ek dosyaların türleri durum.json'da durur (zip türü saklamaz): { belgeId: { ad: tür } }
   durum.ekler = {};
-  // Dosyası okunamayan belge varsa yedek eksik çıkmasın: durulur ve hangi belge olduğu söylenir
-  for (const b of store.belgeler) {
+  // Dosyası okunamayan belge varsa yedek eksik çıkmasın: durulur ve hangi belge olduğu söylenir.
+  // Çöpteki belgenin dosyası okunamazsa yedek durmaz, o belge yedekte dosyasız kalır (geri yüklenmez)
+  const copBelgeleri = cop.map((g) => g.belge);
+  for (const b of [...store.belgeler, ...copBelgeleri]) {
     if (!b.dosya) continue;
     let blob = null;
     try { blob = await islem("dosyalar", "readonly", (d) => d.dosyalar.get(b.id)); } catch (hata) { console.warn("[kenar-notu] Dosya okunamadı:", b.id, hata); }
-    if (!blob) throw Object.assign(new Error(`“${b.ad}” belgesinin dosyası okunamadı; yedek alınmadı.`), { kod: "eksik", belgeId: b.id });
+    if (!blob && copBelgeleri.includes(b)) continue;
+    if (!blob) throw Object.assign(new Error(t("“{ad}” belgesinin dosyası okunamadı; yedek alınmadı.", { ad: b.ad })), { kod: "eksik", belgeId: b.id });
     girdiler.push([`dosyalar/${b.id}`, blob]);
   }
   // Ek dosyalar (ses, görsel): ekler/<belgeId>/<ad>.
   // Okunamayan ek varsa yedek eksik çıkmasın: belge verisi o eke bakıyor olabilir
-  for (const b of store.belgeler) {
+  for (const b of [...store.belgeler, ...copBelgeleri]) {
     const on = ekOnEki(b.id);
     let anahtarlar, bloblar;
     try {
       [anahtarlar, bloblar] = await islem("dosyalar", "readonly", (d) => [d.dosyalar.getAllKeys(aralik(on)), d.dosyalar.getAll(aralik(on))]);
     } catch (hata) {
       console.warn("[kenar-notu] Ek dosyalar okunamadı:", b.id, hata);
-      throw Object.assign(new Error(`“${b.ad}” belgesinin ses ya da görsel ekleri okunamadı; yedek alınmadı.`), { kod: "eksik", belgeId: b.id });
+      throw Object.assign(new Error(t("“{ad}” belgesinin ses ya da görsel ekleri okunamadı; yedek alınmadı.", { ad: b.ad })), { kod: "eksik", belgeId: b.id });
     }
     anahtarlar.forEach((k, i) => {
       if (!bloblar[i]) return;
@@ -1374,11 +1581,13 @@ export async function yedekAl({ ilerleme = () => {} } = {}) {
   }
   // zip64 yazılmaz: 4 GB'ı geçen arşiv bozuk çıkar, baştan söylenir
   const toplam = girdiler.reduce((t, [, b]) => t + b.size, 0);
-  if (toplam > YEDEK_SINIR) throw Object.assign(new Error("Kitaplık 4 GB'ı geçiyor; yedek tek dosyada en çok 4 GB olabilir."), { kod: "buyuk" });
+  if (toplam > YEDEK_SINIR) throw Object.assign(new Error(t("Kitaplık 4 GB'ı geçiyor; yedek tek dosyada en çok 4 GB olabilir.")), { kod: "buyuk" });
   // JSON, CRC ve sıkıştırma işçide (deneme turunda büyük kitaplıkta ekran 10 ile 26 sn kilitleniyordu).
   // İşçi açılamazsa aynı kod burada çalışır.
+  // Şifre ana iş parçacığında, arşiv bittikten sonra (Web Crypto zaten ayrı iş parçacığında çalışır)
+  const sifrele = async (blob) => (parola ? yedekIsci.sifrele(blob, parola).catch((h) => { throw iletiCevir(h); }) : blob);
   const w = await isciAc();
-  if (!w) return yedekUret({ durum, girdiler }, ilerleme);
+  if (!w) return sifrele(await yedekUret({ durum, girdiler }, ilerleme));
   // Büyük diziler önce sabitlenir (o arada eklenen kart iki kez girmesin), sonra öğe öğe kopyalanır:
   // her kopya kısa bir iş, arada ekran çizilir. Sayfa gizliyken beklenmez (zamanlayıcılar yavaşlar).
   const diziler = Object.fromEntries(PARCALI.map((a) => [a, Array.isArray(durum[a]) ? durum[a].slice() : null]));
@@ -1400,7 +1609,14 @@ export async function yedekAl({ ilerleme = () => {} } = {}) {
     }
     w.postMessage({ is: 1, tur: "bitir" });
   }, { ilerleme: (o) => ilerleme(0.15 + o * 0.85) });
-  return sonuc.blob;
+  return sifrele(sonuc.blob);
+}
+// Şifreli yedek mi (10.5): ilk 8 bayt "KNSIFRE1". yedek-isci.js yoksa da tanınır (açılamadığı söylenir)
+export async function yedekSifreliMi(file) {
+  try {
+    if (typeof yedekIsci.sifreliMi === "function") return await yedekIsci.sifreliMi(file);
+    return new TextDecoder("latin1").decode(new Uint8Array(await file.slice(0, 8).arrayBuffer())) === "KNSIFRE1";
+  } catch { return false; }
 }
 const YEDEK_SINIR = 4 * 2 ** 30 - 64 * 2 ** 20;
 
@@ -1433,7 +1649,7 @@ function isciIsi(w, gonder, { ilerleme, parca } = {}) {
       if (m.tur === "ilerleme") ilerleme?.(m.oran);
       else if (m.tur === "parca") parca?.(m);
       else if (m.tur === "tamam") son(tamam, m);
-      else if (m.tur === "hata") son(hata, Object.assign(new Error(m.mesaj || "Yedek işçisi hata verdi"), { kod: m.kod || "" }));
+      else if (m.tur === "hata") son(hata, Object.assign(new Error(m.mesaj ? t(m.mesaj) : "Yedek işçisi hata verdi"), { kod: m.kod || "" }));
     };
     w.onerror = (e) => { e.preventDefault?.(); son(hata, Object.assign(new Error("Yedek işçisi durdu"), { kod: "isci" })); };
     Promise.resolve().then(gonder).catch((x) => son(hata, x));
@@ -1554,13 +1770,20 @@ function veriDuzelt(y) {
   }
 }
 
-export async function yedekYukle(file) {
+// parola: şifreli yedekte gerekir. Yoksa kod "parola", yanlışsa "parola-yanlis" (yedek-isci.js sifreCoz) fırlar
+export async function yedekYukle(file, { parola = null } = {}) {
   if (yazarDegil) throw Object.assign(new Error("Kitaplık başka pencerede açık"), { kod: "baska" });
+  if (await yedekSifreliMi(file)) {
+    if (!sifreliYedekVar()) throw Object.assign(new Error(t("Bu yedek parolayla şifreli; bu sürüm açamıyor.")), { kod: "sifre-yok" });
+    if (!parola) throw Object.assign(new Error(t("Bu yedek parolayla şifreli.")), { kod: "parola" });
+    const cozulen = await yedekIsci.sifreCoz(file, parola).catch((h) => { throw iletiCevir(h); });
+    file = new File([cozulen], String(file.name || "yedek.kenar"), { type: "application/zip" });
+  }
   const { arsiv, durum } = await yedekArsivi(file);
   // Birleşim yereldeki veriye bakar: hepsi bellekte olmalı (yoksa yedekteki eski hâl yerelin üstüne geçerdi)
   await veriSoz;
   if (veriBekleyen.size) throw Object.assign(new Error("Kayıt okunamadı"), { kod: "yazma" });
-  for (const alan of ["belgeler", "kirpintilar", "kartlar", "klasorler", "derlemeler"]) yedegiTemizle(durum[alan]);
+  for (const alan of ["belgeler", "kirpintilar", "kartlar", "klasorler", "derlemeler", "cop"]) yedegiTemizle(durum[alan]);
 
   try { ayar.oncesi(); } catch { /* son hâl yeter */ }
   // Birleşim kopyalar üstünde hazırlanır; canlı durum ancak her şey yazılınca değişir (yarıda kalırsa eskisi durur)
@@ -1579,18 +1802,34 @@ export async function yedekYukle(file) {
     veriDuzelt(y);
     if (typeof y.kapak !== "string") y.kapak = renkSec(y.ad || "");
     // Bozuk ad tek kayıtla bütün kitaplığı düşürmesin
-    if (typeof y.ad !== "string" || !y.ad.trim()) y.ad = "Adsız belge";
+    if (typeof y.ad !== "string" || !y.ad.trim()) y.ad = t("Adsız belge");
     const i = belgeler.findIndex((b) => b.id === y.id);
     if (i >= 0 && !yedektekiYeni(belgeler[i], y)) continue;
     // Dosyası yedekte olmayan belge alınmaz (açılamazdı); burada da varsa yerel hâli kalır
     const g = y.dosya ? `dosyalar/${y.id}` : null;
     if (g && !arsiv.var(g)) { sonuc.eksik++; continue; }
     y.veri ??= null;
-    if (!y.dosya && yedekOrnek < ORNEK_SURUM && Array.isArray(y.veri?.sayfalar)) y.veri.ornekSurum = yedekOrnek;
+    if (!y.dosya && yedekOrnek < ORNEK_SURUM && (Array.isArray(y.veri?.sayfalar) || (y.tur === "epub" && y.veri))) y.veri.ornekSurum = yedekOrnek;
     if (i >= 0) { belgeler[i] = y; sonuc.guncellenen++; } else { belgeler.push(y); sonuc.eklenen++; }
     if (g) dosyaYaz.push([y, g]);
     alinan.add(y.id);
   }
+  // Çöp kutusu (7.0): yedekteki çöp kaydı, burada ne kitaplıkta ne çöpte olan belge için eklenir
+  const cop = store.cop.map((g) => ({ ...g }));
+  for (const g of copTemizle(durum.cop)) {
+    const y = g.belge;
+    if (belgeler.some((b) => b.id === y.id) || cop.some((c) => c.belge.id === y.id)) continue;
+    veriDuzelt(y);
+    if (typeof y.kapak !== "string") y.kapak = renkSec(y.ad || "");
+    if (typeof y.ad !== "string" || !y.ad.trim()) y.ad = t("Adsız belge");
+    const g2 = y.dosya ? `dosyalar/${y.id}` : null;
+    if (g2 && !arsiv.var(g2)) continue;
+    y.veri ??= null;
+    cop.push(g);
+    if (g2) dosyaYaz.push([y, g2]);
+    alinan.add(y.id);
+  }
+  cop.sort((a, b) => b.silindi - a.silindi);
   // Alınan belgelerin ek dosyaları (ses, görsel) da gelir
   const ekYaz = [];
   for (const yol of arsiv.yollar()) {
@@ -1650,7 +1889,7 @@ export async function yedekYukle(file) {
       await islem("dosyalar", "readwrite", (d) => d.dosyalar.put(new Blob([ham], { type: typeof tur === "string" ? tur : "" }), ekAnahtari(belgeId, ad)));
     }
     await islem("durum", "readwrite", (d) => {
-      for (const b of belgeler) {
+      for (const b of [...belgeler, ...cop.filter((g) => alinan.has(g.belge.id)).map((g) => g.belge)]) {
         if (b.veri != null) d.durum.put(b.veri, veriAnahtari(b.id));
         if (b.kapakGorsel) d.durum.put(b.kapakGorsel, kapakAnahtari(b.id));
       }
@@ -1659,7 +1898,7 @@ export async function yedekYukle(file) {
       d.durum.put(kirpintilar, "kirpintilar");
       d.durum.put(derlemeler, "derlemeler");
       if (yzKopya) d.durum.put(yzKopya, YZ);
-      return d.durum.put(listeKaydi(belgeler, klasorler), LISTE);
+      return d.durum.put(listeKaydi(belgeler, klasorler, cop), LISTE);
     });
   } catch (hata) {
     // Kitaplık değişmedi: otomatik kayıt yeniden açılır

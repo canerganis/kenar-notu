@@ -17,6 +17,7 @@
 // Hata olursa metin olduğu gibi kalır. Temml çıktısı da EPUB'unki gibi süzülür: DOM'a ham HTML girmez.
 
 import { h, toast, panoyaYaz } from "./ortak.js";
+import { t } from "./dil.js";
 
 const MATHML = "http://www.w3.org/1998/Math/MathML";
 
@@ -336,12 +337,12 @@ function menuAc(f, x, y) {
   const k = f.closest?.(".formul-tex, .formul-kap") || f;
   const duz = k.dataset?.duz || (k.classList.contains("formul-kap") ? k.textContent : "");
   if (!tex && !duz) return;
-  const d = h("button", { class: "izler-fis__satir", type: "button", role: "menuitem" }, h("span", {}, tex ? "LaTeX olarak kopyala" : "Metin olarak kopyala"));
+  const d = h("button", { class: "izler-fis__satir", type: "button", role: "menuitem" }, h("span", {}, tex ? t("LaTeX olarak kopyala") : t("Metin olarak kopyala")));
   d.addEventListener("click", async () => {
     menuKapat();
-    toast((await panoyaYaz(tex || duz)) ? (tex ? "LaTeX kopyalandı" : "Kopyalandı") : "Kopyalanamadı");
+    toast((await panoyaYaz(tex || duz)) ? (tex ? t("LaTeX kopyalandı") : t("Kopyalandı")) : t("Kopyalanamadı"));
   });
-  const el = h("div", { class: "izler-fis formul-menu", role: "menu", "aria-label": "Formül" }, d);
+  const el = h("div", { class: "izler-fis formul-menu", role: "menu", "aria-label": t("Formül") }, d);
   document.body.append(el);
   const w = el.offsetWidth, hY = el.offsetHeight;
   el.style.left = `${Math.round(Math.min(Math.max(8, x - w / 2), innerWidth - w - 8))}px`;

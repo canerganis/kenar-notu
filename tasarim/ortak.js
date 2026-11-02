@@ -1,6 +1,14 @@
 // Ortak parçalar: bütün ekran modülleri (app.js, duzenleyici.js, okuma.js) bunu kullanır.
 // Burada sadece paylaşılan durum, olay yolu, küçük DOM yardımcıları ve sabit paletler var.
-// Görsel kurallar için TASARIM.md'ye bak.
+// Görsel kurallar için TASARIM.md'ye bak; 7.0 "Işıklı Kenar" tokenları ve atmosferler TASARIM-5.md'de.
+// 7.0 kancaları (TASARIM-5 10.4): ATMOSFERLER, VURGULAR, etkinAtmosfer, vurguRenkleri (canvas ve SVG rengi),
+// simgeEkle (sprite'a simge), kisayolEkle ve kisayollar (kısayol listesi), store.cop (çöp kutusu),
+// FSRS derecesi (1..4), hedefHatirlama, askıdaki kartlar ve günlük yeni kart sınırı (kart bölümü).
+
+// Örnek EPUB'ların adı ve yazarı metinleriyle birlikte tek yerde, arayüz diline göre
+import { ornekKunye } from "./okuma-metni.js";
+// Arayüz dili: t() Türkçe kaynak metni çevirir; yerel büyük harf için
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 // ---------- DOM ----------
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -38,7 +46,8 @@ export const hareketAz = () => azHareketMedya.matches || document.documentElemen
 // ---------- olay yolu ----------
 // Olaylar: "belgeler" (belge listesi değişti), "kirpintilar" (kırpıntı eklendi/silindi/notu değişti),
 // "ayarlar" (store.ayarlar değişti), "git" ({ ekran: "kitaplik" | "belge", belgeId }),
-// "tema" ({ koyu }: etkin tema açıktan koyuya ya da tersine döndü; ayar ya da sistem)
+// "tema" ({ koyu }: etkin tema açıktan koyuya ya da tersine döndü; ayar ya da sistem),
+// "atmosfer" ({ secim, atmosfer, vurgu, kip }: atmosfer, vurgu ya da kip değişti; renkleri JS ile çizen modül yeniden boyar)
 const dinleyiciler = new Map();
 export const bus = {
   on(ad, fn) {
@@ -52,10 +61,11 @@ export const bus = {
 };
 
 // ---------- sabit paletler (TASARIM.md 2.5) ----------
+// Renk adları yalnız görünür (aria-label, title): dile göre çevrilir, kimlik hex'tir
 export const MUREKKEPLER = [
-  ["Mürekkep mavisi", "#1F3A68"], ["Gece siyahı", "#1B1B1F"], ["Grafit", "#5C5F66"], ["Bordo", "#7D1D2C"],
-  ["Vermilyon", "#C2412D"], ["Kiremit", "#B5652B"], ["Hardal", "#B8871B"], ["Zeytin", "#5F6B2A"],
-  ["Zümrüt", "#1F6B52"], ["Petrol", "#1C6E7D"], ["Çivit", "#2F4FA2"], ["Gül", "#B8507A"],
+  [t("Mürekkep mavisi"), "#1F3A68"], [t("Gece siyahı"), "#1B1B1F"], [t("Grafit"), "#5C5F66"], [t("Bordo"), "#7D1D2C"],
+  [t("Vermilyon"), "#C2412D"], [t("Kiremit"), "#B5652B"], [t("Hardal"), "#B8871B"], [t("Zeytin"), "#5F6B2A"],
+  [t("Zümrüt"), "#1F6B52"], [t("Petrol"), "#1C6E7D"], [t("Çivit"), "#2F4FA2"], [t("Gül"), "#B8507A"],
 ];
 export const KOYU_SAYFA_ESLEME = {
   "#1F3A68": "#9FB6DC", "#1B1B1F": "#E9E2D6", "#5C5F66": "#B9B2A8", "#7D1D2C": "#D98A90",
@@ -63,25 +73,66 @@ export const KOYU_SAYFA_ESLEME = {
 };
 // Fosfor ve vurgu: kâğıtta soluk, harfin üstünde okunur tonlar (sentez 5). Limon değişmez.
 // EPUB_VURGULARI'nda adı "Pembe" kalır: okuma.js vurgu kimliğini addan türetir ("pembe"), kayıtlı vurgular kopmasın.
-export const FOSFORLAR = [["Limon", "#F4D63E"], ["Kayısı", "#F2B27A"], ["Gül kurusu", "#E9A79C"], ["Nane", "#9CCFAE"], ["Gök", "#9DBEE0"]];
+// Aynı nedenle EPUB_VURGULARI adları t() ile sarılmaz; gösteren yer t(ad) ile çevirir (en-ortak.js: "Pembe").
+export const FOSFORLAR = [[t("Limon"), "#F4D63E"], [t("Kayısı"), "#F2B27A"], [t("Gül kurusu"), "#E9A79C"], [t("Nane"), "#9CCFAE"], [t("Gök"), "#9DBEE0"]];
 export const EPUB_VURGULARI = [["Limon", "#F4D63E"], ["Pembe", "#E9A79C"], ["Nane", "#9CCFAE"], ["Gök", "#9DBEE0"]];
 // Eski kayıtlardaki parlak tonlar yeni tonla çizilir: vurguRengi("#F49CC0") -> "#E9A79C"
 const ESKI_YENI = { "#F49CC0": "#E9A79C", "#7FD3A0": "#9CCFAE", "#86C3F2": "#9DBEE0", "#F7A65A": "#F2B27A" };
 export const vurguRengi = (hex) => (typeof hex === "string" && ESKI_YENI[hex.toUpperCase()]) || hex;
-export const NOT_RENKLERI = [["Tereyağı", "#F8E7A1"], ["Gül kurusu", "#F2C6BE"], ["Adaçayı", "#D3E2C4"], ["Buz mavisi", "#CDE0EF"], ["Kayısı", "#F6D3A8"]];
+export const NOT_RENKLERI = [[t("Tereyağı"), "#F8E7A1"], [t("Gül kurusu"), "#F2C6BE"], [t("Adaçayı"), "#D3E2C4"], [t("Buz mavisi"), "#CDE0EF"], [t("Kayısı"), "#F6D3A8"]];
 // Bant: dört soluk ton (tasarim.css --bant-*). Kimlikler eski kayıtlarla aynı kalır, yalnız ton ve ad değişti.
-export const BANTLAR = [["Lacivert", "murekkep"], ["Gül", "bordo"], ["Pirinç", "hardal"], ["Adaçayı", "adacayi"]];
+export const BANTLAR = [[t("Lacivert"), "murekkep"], [t("Gül"), "bordo"], [t("Pirinç"), "hardal"], [t("Adaçayı"), "adacayi"]];
 export const BANT_TONLARI = { murekkep: "--bant-lacivert", bordo: "--bant-gul", hardal: "--bant-pirinc", adacayi: "--bant-adacayi" };
 export const KAPAK_RENKLERI = [
-  ["Lacivert", "#24324F"], ["Bordo", "#6E1F2A"], ["Çam", "#2F4A3E"], ["Zeytin", "#5B5F36"],
-  ["Hardal", "#B0822A", true], ["Kiremit", "#A5502F"], ["Kum", "#CDBB96", true], ["Mürekkep", "#232428"],
+  [t("Lacivert"), "#24324F"], [t("Bordo"), "#6E1F2A"], [t("Çam"), "#2F4A3E"], [t("Zeytin"), "#5B5F36"],
+  [t("Hardal"), "#B0822A", true], [t("Kiremit"), "#A5502F"], [t("Kum"), "#CDBB96", true], [t("Mürekkep"), "#232428"],
 ];
 export const CILT_RENKLERI = ["#5A1A22", "#34442A", "#24324F", "#5B4A2E", "#2E4A4A", "#4A2E46"];
+// Örnek klasör ve belge adları iki dilde, kimlikler aynı. Kayıtta durdukları için dil değişince
+// ornekAdDile() kullanıcının değiştirmediği adı seçilen dile çeker.
+export const ORNEK_DIL = ingilizceMi ? "en" : "tr";
+const ORNEK_KLASOR_ADLARI = {
+  kalkulus: { tr: { ad: "Kalkülüs II" }, en: { ad: "Calculus II" } },
+  statik: { tr: { ad: "Statik" }, en: { ad: "Statics" } },
+  anatomi: { tr: { ad: "Anatomi" }, en: { ad: "Anatomy" } },
+};
+const ORNEK_KUNYELER = {
+  kalkulus: { tr: { ad: "Kalkülüs II Ders Notları", yazar: "Bölüm 3, Türev" }, en: { ad: "Calculus II Lecture Notes", yazar: "Chapter 3, Derivatives" } },
+  statik: { tr: { ad: "Statik: Çözümlü Problemler", yazar: "Kirişler ve mesnetler" }, en: { ad: "Statics: Solved Problems", yazar: "Beams and supports" } },
+  anatomi: { tr: { ad: "Üst Ekstremite Anatomisi", yazar: "Kas ve sinirler" }, en: { ad: "Upper Limb Anatomy", yazar: "Muscles and nerves" } },
+  difdenk: { tr: { ad: "Diferansiyel Denklemler" }, en: { ad: "Differential Equations" } },
+  fizyoloji: { tr: { ad: "Fizyoloji Notları" }, en: { ad: "Physiology Notes" } },
+  fikirler: { tr: { ad: "Proje Fikirleri" }, en: { ad: "Project Ideas" } },
+};
+const ornekAd = (id) => ({ ...ORNEK_KUNYELER[id][ORNEK_DIL] });
 export const KLASORLER = [
-  { id: "kalkulus", ad: "Kalkülüs II", renk: "#1F3A68" },
-  { id: "statik", ad: "Statik", renk: "#B8871B" },
-  { id: "anatomi", ad: "Anatomi", renk: "#9E3B4A" },
+  { id: "kalkulus", ...ORNEK_KLASOR_ADLARI.kalkulus[ORNEK_DIL], renk: "#1F3A68" },
+  { id: "statik", ...ORNEK_KLASOR_ADLARI.statik[ORNEK_DIL], renk: "#B8871B" },
+  { id: "anatomi", ...ORNEK_KLASOR_ADLARI.anatomi[ORNEK_DIL], renk: "#9E3B4A" },
 ];
+// Kayıtlı örnek belge (PDF, defter) ya da örnek klasörün adı dile çekilir: ad ya da yazar hâlâ bir dildeki örnek
+// adıysa (kullanıcı değiştirmediyse) seçilen dilinkiyle değişir. Klasör { id, ad, renk }, belgede tur alanı var.
+// EPUB örnekleri okuma-metni.js ornekKunyeDile ile. Dönen: değişti mi
+export function ornekAdDile(kayit, dil = ORNEK_DIL) {
+  if (!kayit || kayit.dosya) return false;
+  const tablo = (kayit.tur ? ORNEK_KUNYELER : ORNEK_KLASOR_ADLARI)[kayit.id];
+  if (!tablo?.[dil]) return false;
+  let degisti = false;
+  for (const [a, yeni] of Object.entries(tablo[dil])) {
+    if (kayit[a] === yeni || !Object.values(tablo).some((k) => k[a] === kayit[a])) continue;
+    kayit[a] = yeni;
+    degisti = true;
+  }
+  return degisti;
+}
+// Kayıttan yüklenen bütün örnek adlarını (kitaplık, çöp, klasörler) dile çeker. Kayıt yüklendikten sonra
+// bir kez çağrılır; true dönerse liste yazılmalı (app.js ornekVeriyiTasi). EPUB künyeleri okuma-metni.js ile.
+export function ornekAdlariDile(dil = ORNEK_DIL) {
+  let degisti = false;
+  for (const b of [...store.belgeler, ...store.cop.map((g) => g.belge)]) if (b?.tur !== "epub" && ornekAdDile(b, dil)) degisti = true;
+  for (const k of KLASORLER) if (ornekAdDile(k, dil)) degisti = true;
+  return degisti;
+}
 // Kalınlık mm olarak saklanır; çizim genişliği (sayfa birimi) = mm × 5.
 export const VARSAYILAN_KALEMLER = [
   { tur: "dolma", renk: "#1F3A68", mm: 0.6 },
@@ -98,19 +149,22 @@ const saat = 3600e3;
 const simdi = Date.now();
 export const store = {
   belgeler: [
-    { id: "kalkulus", tur: "pdf", ad: "Kalkülüs II Ders Notları", yazar: "Bölüm 3, Türev", klasor: "kalkulus", sayfaSayisi: 312, sayfa: 47, ilerleme: 47 / 312, favori: true, acilis: simdi - 2 * saat, kapak: "#1F3A68", veri: null },
-    { id: "statik", tur: "pdf", ad: "Statik: Çözümlü Problemler", yazar: "Kirişler ve mesnetler", klasor: "statik", sayfaSayisi: 188, sayfa: 23, ilerleme: 23 / 188, favori: false, acilis: simdi - 26 * saat, kapak: "#B8871B", veri: null },
-    { id: "anatomi", tur: "pdf", ad: "Üst Ekstremite Anatomisi", yazar: "Kas ve sinirler", klasor: "anatomi", sayfaSayisi: 96, sayfa: 61, ilerleme: 61 / 96, favori: false, acilis: simdi - 3 * 24 * saat, kapak: "#9E3B4A", veri: null },
-    { id: "sucveceza", tur: "epub", ad: "Suç ve Ceza", yazar: "Fyodor Dostoyevski", sayfaSayisi: 0, sayfa: 0, ilerleme: 0.34, favori: true, acilis: simdi - 5 * saat, kapak: "#5A1A22", veri: null },
-    { id: "kagit", tur: "epub", ad: "Kâğıdın Hafızası", yazar: "Deneme", sayfaSayisi: 0, sayfa: 0, ilerleme: 0.18, favori: true, acilis: simdi - 1 * saat, kapak: "#24324F", veri: null },
-    { id: "donusum", tur: "epub", ad: "Dönüşüm", yazar: "Franz Kafka", sayfaSayisi: 0, sayfa: 0, ilerleme: 0.12, favori: false, acilis: simdi - 14 * 24 * saat, kapak: "#34442A", veri: null },
-    { id: "difdenk", tur: "defter", ad: "Diferansiyel Denklemler", klasor: "kalkulus", sayfaSayisi: 14, sayfa: 1, ilerleme: 0, favori: false, acilis: simdi - 30 * saat, kapak: "#24324F", kagit: "grid", veri: null },
-    { id: "fizyoloji", tur: "defter", ad: "Fizyoloji Notları", klasor: "anatomi", sayfaSayisi: 22, sayfa: 1, ilerleme: 0, favori: true, acilis: simdi - 4 * 24 * saat, kapak: "#2F4A3E", kagit: "lined", veri: null },
-    { id: "fikirler", tur: "defter", ad: "Proje Fikirleri", sayfaSayisi: 5, sayfa: 1, ilerleme: 0, favori: false, acilis: simdi - 20 * 24 * saat, kapak: "#B0822A", kagit: "dotted", veri: null },
+    { id: "kalkulus", tur: "pdf", ...ornekAd("kalkulus"), klasor: "kalkulus", sayfaSayisi: 312, sayfa: 47, ilerleme: 47 / 312, favori: true, acilis: simdi - 2 * saat, kapak: "#1F3A68", veri: null },
+    { id: "statik", tur: "pdf", ...ornekAd("statik"), klasor: "statik", sayfaSayisi: 188, sayfa: 23, ilerleme: 23 / 188, favori: false, acilis: simdi - 26 * saat, kapak: "#B8871B", veri: null },
+    { id: "anatomi", tur: "pdf", ...ornekAd("anatomi"), klasor: "anatomi", sayfaSayisi: 96, sayfa: 61, ilerleme: 61 / 96, favori: false, acilis: simdi - 3 * 24 * saat, kapak: "#9E3B4A", veri: null },
+    { id: "sucveceza", tur: "epub", ...ornekKunye("sucveceza", ORNEK_DIL), sayfaSayisi: 0, sayfa: 0, ilerleme: 0.34, favori: true, acilis: simdi - 5 * saat, kapak: "#5A1A22", veri: null },
+    { id: "kagit", tur: "epub", ...ornekKunye("kagit", ORNEK_DIL), sayfaSayisi: 0, sayfa: 0, ilerleme: 0.18, favori: true, acilis: simdi - 1 * saat, kapak: "#24324F", veri: null },
+    { id: "donusum", tur: "epub", ...ornekKunye("donusum", ORNEK_DIL), sayfaSayisi: 0, sayfa: 0, ilerleme: 0.12, favori: false, acilis: simdi - 14 * 24 * saat, kapak: "#34442A", veri: null },
+    { id: "difdenk", tur: "defter", ...ornekAd("difdenk"), klasor: "kalkulus", sayfaSayisi: 14, sayfa: 1, ilerleme: 0, favori: false, acilis: simdi - 30 * saat, kapak: "#24324F", kagit: "grid", veri: null },
+    { id: "fizyoloji", tur: "defter", ...ornekAd("fizyoloji"), klasor: "anatomi", sayfaSayisi: 22, sayfa: 1, ilerleme: 0, favori: true, acilis: simdi - 4 * 24 * saat, kapak: "#2F4A3E", kagit: "lined", veri: null },
+    { id: "fikirler", tur: "defter", ...ornekAd("fikirler"), sayfaSayisi: 5, sayfa: 1, ilerleme: 0, favori: false, acilis: simdi - 20 * 24 * saat, kapak: "#B0822A", kagit: "dotted", veri: null },
   ],
   kirpintilar: [],
   ayarlar: {
-    tema: "oto",          // "oto" | "acik" | "koyu"  -> html[data-theme]
+    tema: "oto",          // "oto" | "acik" | "koyu"  -> html[data-theme]; çözülmüş kip html[data-kip] ("gunduz" | "gece")
+    atmosfer: "aurora",   // ATMOSFERLER kimliği (seçim); etkin olan html[data-atmosfer] (etkinAtmosfer). Eski kayıtta yoksa Aurora
+    vurgu: null,          // null (atmosferin rengi) | VURGULAR kimliği -> html[data-vurgu]
+    canliZemin: false,    // html[data-canli-zemin]: zemin ışığı çok yavaş kayar; sade hareket açıkken yok sayılır
     sayfaRengi: "oto",    // "oto" | "beyaz" | "sepya" | "koyu" | "tahta"; okurken sayfaCoz() ile çözülür
     sadeHareket: false,   // html[data-hareket="sade"]
     parmaklaCiz: true,    // kalem algılanınca düzenleyici bunu false yapar
@@ -119,15 +173,123 @@ export const store = {
 
 export const belgeBul = (id) => store.belgeler.find((b) => b.id === id);
 
+// ---------- 7.0: çöp kutusu (TASARIM-5 10.4) ----------
+// store.cop: [{ belge, silindi (zaman damgası), kartlar }]. Çöpteki belge store.belgeler içinde DURMAZ:
+// öbür modüllerin süzme yapması gerekmez. Kabuk (app.js, kayit.js) yazar, 30 gün sonra kalıcı siler.
+store.cop = [];
+
+// ---------- 7.0: atmosferler ve vurgu (TASARIM-5 4. bölüm) ----------
+// Atmosfer: { id, ad, yalnizGece?: true, gunduzEsi?: id, onizleme: { gunduz: [bg, v1, v2], gece: [bg, v1, v2] } }.
+// Renklerin asıl kaynağı atmosfer.css; buradaki önizleme renkleri yalnız JS ile çizen yerler (Yenilikler, komutlar) içindir.
+// yalnizGece olanın gündüz kipinde gunduzEsi etkin olur (oled > grafit, sepya-gece > kagit); seçim kaybolmaz.
+// Nebula'nın gündüz yüzü kendi "Lavanta" bloğudur (gunduzAd), eşlemeye girmez.
+export const ATMOSFERLER = [
+  { id: "aurora", ad: "Aurora", onizleme: { gunduz: ["#F4F5F9", "#5B4CF0", "#1376A6"], gece: ["#0B0C11", "#A69BFF", "#5ED6F2"] } },
+  { id: "nebula", ad: "Nebula", gunduzAd: t("Lavanta"), onizleme: { gunduz: ["#F6F3FC", "#7444E0", "#B8327F"], gece: ["#0D0A16", "#C4A8FF", "#FF9AD5"] } },
+  { id: "okyanus", ad: t("Okyanus"), onizleme: { gunduz: ["#F2F7F8", "#0B7593", "#2E5BD6"], gece: ["#071216", "#6FD6E8", "#7FA6FF"] } },
+  { id: "grafit", ad: t("Grafit"), onizleme: { gunduz: ["#F3F3F4", "#26262B", "#4A4A55"], gece: ["#0E0E10", "#F2F2F4", "#BFC3CC"] } },
+  { id: "oled", ad: t("OLED siyah"), yalnizGece: true, gunduzEsi: "grafit", onizleme: { gunduz: ["#F3F3F4", "#26262B", "#4A4A55"], gece: ["#000000", "#7CE0FF", "#A99BFF"] } },
+  { id: "kagit", ad: t("Kâğıt klasik"), onizleme: { gunduz: ["#F7F5F0", "#2B4A7E", "#2B4A7E"], gece: ["#141413", "#A3B8DE", "#A3B8DE"] } },
+  { id: "sepya-gece", ad: t("Sepya gece"), yalnizGece: true, gunduzEsi: "kagit", onizleme: { gunduz: ["#F7F5F0", "#2B4A7E", "#2B4A7E"], gece: ["#15110C", "#F0B867", "#E58A5B"] } },
+  { id: "orman", ad: t("Orman"), onizleme: { gunduz: ["#F2F5F0", "#2F7547", "#0F7268"], gece: ["#0A110C", "#8FD9A0", "#C8E07A"] } },
+];
+// Vurgu numuneleri: { id, ad, gunduz: [v1, v2], gece: [v1, v2] }. Beyaz yazı gündüz çiftinde, koyu yazı gece çiftinde AA
+export const VURGULAR = [
+  { id: "iris", ad: t("İris"), gunduz: ["#5B4CF0", "#1376A6"], gece: ["#A69BFF", "#5ED6F2"] },
+  { id: "lagun", ad: t("Lagün"), gunduz: ["#0B7593", "#2563D8"], gece: ["#6FD6E8", "#8DB8FF"] },
+  { id: "zumrut", ad: t("Zümrüt"), gunduz: ["#1F7A4D", "#0B7593"], gece: ["#7FDCA6", "#6FD6E8"] },
+  { id: "kehribar", ad: t("Kehribar"), gunduz: ["#A3570A", "#C2413A"], gece: ["#F0B867", "#FF9A8A"] },
+  { id: "mercan", ad: t("Mercan"), gunduz: ["#C2413A", "#B8327F"], gece: ["#FF9A8A", "#FF9AD5"] },
+  { id: "gul", ad: t("Gül"), gunduz: ["#B8327F", "#5B4CF0"], gece: ["#FF9AD5", "#A69BFF"] },
+  { id: "gok", ad: t("Gök"), gunduz: ["#2563D8", "#5B4CF0"], gece: ["#8DB8FF", "#A69BFF"] },
+  { id: "gumus", ad: t("Gümüş"), gunduz: ["#4A4F5C", "#2B2F38"], gece: ["#C9CDD6", "#8E93A0"] },
+];
+export const atmosferBul = (id) => ATMOSFERLER.find((a) => a.id === id) || null;
+// Seçimden etkin atmosfer: yalnız gece olanın gündüz eşi. Tanımsız ya da bilinmeyen seçim Aurora olur.
+// index.html'deki ilk boyama betiği aynı eşlemeyi kendi küçük tablosuyla yapar; değişirse orası da değişmeli.
+export function etkinAtmosfer(secim, kip = temaKoyu() ? "gece" : "gunduz") {
+  const a = atmosferBul(secim) || ATMOSFERLER[0];
+  return kip === "gunduz" && a.gunduzEsi ? a.gunduzEsi : a.id;
+}
+// Etkin vurgu çiftinin hesaplanmış renkleri: { v1, v2, yazi, accent, focus } (canvas ve SVG için düz renk dizeleri).
+// Okuma ekranında el olarak okuma kökü verilirse sayfaya göre çift döner. Değişince bus "atmosfer" yayınlanır.
+let renkTuvali = null;
+export function vurguRenkleri(el = document.documentElement) {
+  const kap = el instanceof Element ? el : document.documentElement;
+  const yokla = document.createElement("i");
+  // Geçiş kapalı: tema değişirken (.tema-gecisi) renk 240ms'de kayar, okunan değer eski renk olurdu
+  yokla.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;transition:none!important";
+  kap.append(yokla);
+  const oku = (ad, yedek) => {
+    yokla.style.color = yedek;
+    yokla.style.color = `var(${ad}, ${yedek})`;
+    return duzRenk(getComputedStyle(yokla).color) || yedek;
+  };
+  const sonuc = { v1: oku("--vurgu-1", "#2B4A7E"), v2: oku("--vurgu-2", "#2B4A7E"), yazi: oku("--vurgu-yazi", "#FFFFFF"),
+    accent: oku("--accent", "#2B4A7E"), focus: oku("--focus", "#2B4A7E") };
+  yokla.remove();
+  return sonuc;
+}
+// color-mix, oklab gibi biçimleri her yerde geçen "#rrggbb" (saydamsa "rgba(...)") biçimine çevirir: 1 piksel boyanıp okunur
+function duzRenk(renk) {
+  if (!renk) return "";
+  try {
+    renkTuvali ||= Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d", { willReadFrequently: true });
+    if (!renkTuvali) return renk;
+    renkTuvali.clearRect(0, 0, 1, 1);
+    renkTuvali.fillStyle = "#000";
+    renkTuvali.fillStyle = renk;
+    renkTuvali.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = renkTuvali.getImageData(0, 0, 1, 1).data;
+    if (a < 255) return `rgba(${r}, ${g}, ${b}, ${+(a / 255).toFixed(3)})`;
+    return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  } catch { return renk; }
+}
+
+// ---------- 7.0: simge ekleme (TASARIM-5 10.4) ----------
+// simgeEkle("sayfa-dondur", '<path d="..."/>'): index.html sprite'ında i-<ad> yoksa <symbol> ekler, varsa dokunmaz.
+// Çizgi 24 ızgara, stroke currentColor; ikili ton için kapalı şekle class="d". Modül yüklenirken çağrılabilir.
+const SVG_NS = "http://www.w3.org/2000/svg";
+export function simgeEkle(ad, icerik, viewBox = "0 0 24 24") {
+  if (!ad || document.getElementById("i-" + ad)) return;
+  let sprite = document.querySelector("body > svg symbol")?.parentNode;
+  if (!sprite) {
+    sprite = document.createElementNS(SVG_NS, "svg");
+    sprite.setAttribute("width", "0"); sprite.setAttribute("height", "0");
+    sprite.setAttribute("aria-hidden", "true"); sprite.style.position = "absolute";
+    (document.body || document.documentElement).prepend(sprite);
+  }
+  const s = document.createElementNS(SVG_NS, "symbol");
+  s.id = "i-" + ad;
+  s.setAttribute("viewBox", viewBox);
+  s.innerHTML = icerik;
+  sprite.append(s);
+}
+
+// ---------- 7.0: kısayol listesi (TASARIM-5 10.4) ----------
+// kisayolEkle({ tus: "Ctrl K", ad: "Hızlı erişim", alan: "genel" }): yalnız listeleme kaydı, tuşu dinlemez (sahibi dinler).
+// alan: "genel" | "koltuk" | "masa" | "tekrar" | "izler" | "arama". Aynı alan ve tuş ikinci kez gelirse eskisinin yerine geçer.
+// Dönen işlev kaydı çıkarır. kisayollar(): kayıt sırasıyla [{ tus, ad, alan }] (kabuğun Kısayollar sayfası gruplar).
+const KISAYOLLAR = new Map();
+export function kisayolEkle({ tus, ad, alan = "genel" } = {}) {
+  if (!tus || !ad) return () => {};
+  const anahtar = alan + "\u0000" + tus, kayit = { tus: String(tus), ad: String(ad), alan: String(alan) };
+  KISAYOLLAR.delete(anahtar);
+  KISAYOLLAR.set(anahtar, kayit);
+  return () => { if (KISAYOLLAR.get(anahtar) === kayit) KISAYOLLAR.delete(anahtar); };
+}
+export const kisayollar = () => [...KISAYOLLAR.values()];
+
 // ---------- örnek veri sürümü ----------
 // Örnek belgelerin sayfaları, süsleri, örnek kırpıntılar ya da kartlar değişince ORNEK_SURUM artırılır,
 // değişen parça ORNEK_DEGISIM'de o sürüme çekilir, örnek PDF'lerin sayfa düzeni ORNEK_SAYFALAR'a eklenir.
 // Açılışta app.js eski sürümdeki kayıtlı örneği yeniler: kullanıcı bir şey eklemediyse baştan kurar,
 // eklediyse sayfa eşlemesini taşır ve eklediklerini korur. Kitaplık kaydı sürümü "ornekSurum" alanında tutar.
-//   1: 7. turdan önce (üç örnek PDF de aynı üç sayfayı gösteriyordu), 2: 7. tur (her örnek PDF kendi üç sayfası)
-export const ORNEK_SURUM = 2;
+//   1: 7. turdan önce (üç örnek PDF de aynı üç sayfayı gösteriyordu), 2: 7. tur (her örnek PDF kendi üç sayfası),
+//   3: örnek EPUB'lar kendi metnini açar (önce hepsi "Kâğıdın Hafızası"nı gösteriyordu; okuma-metni.js)
+export const ORNEK_SURUM = 3;
 // Parçanın en son değiştiği sürüm: kayıttaki örnek bundan eskiyse yenilenir
-export const ORNEK_DEGISIM = { kalkulus: 2, statik: 2, anatomi: 2, difdenk: 2, kirpintilar: 2, kartlar: 2 };
+export const ORNEK_DEGISIM = { kalkulus: 2, statik: 2, anatomi: 2, difdenk: 2, kirpintilar: 2, kartlar: 2, sucveceza: 3, donusum: 3 };
 // Örnek PDF'te veri.sayfalar[].pdf sırasının o sürümde gösterdiği sayfa: sayfalar.js çizim fonksiyonunun adı
 // (eski sürümün sayfası bugün hangi fonksiyonsa o). Fonksiyon adı değişirse buradaki adlar da değişmeli.
 const ESKI_UCLU = ["kalkulus1", "kalkulus2", "statik3"];
@@ -194,7 +356,9 @@ export const setBildirimGosterici = (fn) => (bildirimGosterici = fn);
 export const toast = (metin, eylem) => bildirimGosterici(metin, eylem);
 
 // İki dokunuşla onay: ilk dokunuşta düğme "Emin misin?" olur ve 3 sn bekler, ikincide çalışır.
+// onayMetni verilmezse (null ya da undefined) varsayılan "Emin misin?" dile göre yazılır.
 export function ikiDokunus(dugme, onayMetni, fn) {
+  onayMetni ??= t("Emin misin?");
   let zamanlayici = null;
   const asil = dugme.innerHTML;
   dugme.addEventListener("click", (e) => {
@@ -244,11 +408,16 @@ export function basincUygula(p) {
 // Mod değiştirme: belge.mod = yeni; bus.emit("git", { ekran: "belge", belgeId, mod: yeni })
 
 // ---------- v2: Tekrar kartları (12. turdan beri FSRS-5; kutular görsel) ----------
-// Kart: { id, tur: "bant" | "kirpinti" | "kelime" | "soru",
+// Kart: { id, tur: "bant" | "kirpinti" | "kelime" | "soru" | "bosluk",
 //         on: { metin?, gorsel? }, arka: { metin?, gorsel? },
-//         belgeId, belgeAd, sayfa, kutu (1..5), sonraki (zaman damgası), gecmis: [{ zaman, bildi }],
-//         fsrs?: { s: kararlılık (gün), d: zorluk 1..10, son: son tekrar zamanı } }
+//         belgeId, belgeAd, sayfa, kutu (1..5), sonraki (zaman damgası), gecmis: [{ zaman, bildi, derece? }],
+//         fsrs?: { s: kararlılık (gün), d: zorluk 1..10, son: son tekrar zamanı },
+//         askida?: true (bugünkü listeye girmez), ters?: true, bosluk? (7.0, tekrar paketi) }
 // Olay: "kartlar" ({ tur: "ekle" | "guncelle" | "sil", kart })
+// 7.0 deste ayarları (TASARIM-5 10.4; arayüzü tekrar paketinde):
+//   store.ayarlar.tekrarHedef: hedef hatırlama 0,80..0,97 (yoksa 0,9: aralıklar 6.x ile birebir aynı). hedefHatirlama() okur.
+//   store.ayarlar.tekrarGunlukYeni: sayıysa bugünkü listede en çok o kadar yeni kart (bugün ilk kez cevaplananlar dahil);
+//   null ya da yoksa sınırsız (6.x davranışı).
 store.kartlar = [];
 const GUN = 24 * 3600e3;
 // Leitner dönemindeki kutu aralıkları (gün): eski kartın ilk FSRS kararlılığı buradan tahmin edilir
@@ -257,18 +426,28 @@ export const KUTU_ARALIK = [0, 1, 3, 7, 16, 35];
 export const KUTU_SINIR = [0, 1, 3, 7, 16];
 export const aralikKutusu = (gun) => { let n = 1; while (n < 5 && gun >= KUTU_SINIR[n]) n++; return n; };
 // Erişilebilir ad için: "1 ile 2 günde bir", V'te "16 günde bir ya da daha seyrek"
-export const kutuAralikMetni = (n) => (n <= 1 ? "bugün yeniden" : n >= 5 ? `${KUTU_SINIR[4]} günde bir ya da daha seyrek`
-  : `${KUTU_SINIR[n - 1]} ile ${KUTU_SINIR[n] - 1} günde bir`);
+export const kutuAralikMetni = (n) => (n <= 1 ? t("bugün yeniden") : n >= 5 ? t("{n} günde bir ya da daha seyrek", { n: KUTU_SINIR[4] })
+  : t("{a} ile {b} günde bir", { a: KUTU_SINIR[n - 1], b: KUTU_SINIR[n] - 1 }));
 
-// FSRS-5 (open-spaced-repetition, py-fsrs 5.x varsayılan ağırlıkları). İki düğme: Bilemedim = Again (1), Bildim = Good (3).
+// FSRS-5 (open-spaced-repetition, py-fsrs 5.x varsayılan ağırlıkları). Derece: 1 Again, 2 Hard, 3 Good, 4 Easy.
+// İki düğmeli eski çağrı da geçerli: true = Bildim (3), false = Bilemedim (1); sonuç 6.x ile birebir aynı.
 // Unutma eğrisi R(t) = (1 + F t / S)^-0,5; F = 19/81 iken hedef 0,9 için aralık S gündür.
 export const FSRS_W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192,
   1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
 const FSRS_KARAR = -0.5, FSRS_F = 0.9 ** (1 / FSRS_KARAR) - 1, FSRS_HEDEF = 0.9, FSRS_EN_UZUN = 36500;
+// Hedef hatırlama: deste ayarı (tekrarHedef), 0,80 ile 0,97 arasına sıkışır. Yüksek hedef daha sık tekrar demek.
+export function hedefHatirlama() {
+  const h = Number(store.ayarlar.tekrarHedef ?? FSRS_HEDEF);
+  return Number.isFinite(h) ? Math.min(0.97, Math.max(0.8, h)) : FSRS_HEDEF;
+}
+// Cevabı dereceye çevirir: true/false (eski iki düğme) ya da 1..4
+export const fsrsDerece = (cevap) => (cevap === true ? 3 : cevap === false ? 1
+  : Math.min(4, Math.max(1, Math.round(Number(cevap)) || 1)));
 const zorlukSinirla = (d) => Math.min(10, Math.max(1, d));
 const ilkZorluk = (G) => zorlukSinirla(FSRS_W[4] - Math.exp(FSRS_W[5] * (G - 1)) + 1);
 export const hatirlama = (t, s) => (1 + FSRS_F * t / s) ** FSRS_KARAR;
-export const fsrsAralik = (s) => Math.min(FSRS_EN_UZUN, Math.max(1, Math.round((s / FSRS_F) * (FSRS_HEDEF ** (1 / FSRS_KARAR) - 1))));
+export const fsrsAralik = (s, hedef = hedefHatirlama()) =>
+  Math.min(FSRS_EN_UZUN, Math.max(1, Math.round((s / FSRS_F) * (hedef ** (1 / FSRS_KARAR) - 1))));
 function sonrakiZorluk(d, G) {
   const ara = d + (10 - d) * (-FSRS_W[6] * (G - 3)) / 9;               // doğrusal sönüm
   return zorlukSinirla(FSRS_W[7] * ilkZorluk(4) + (1 - FSRS_W[7]) * ara);   // ortalamaya dönüş
@@ -277,7 +456,9 @@ function sonrakiKararlilik(d, s, r, G) {
   if (G === 1) return Math.min(
     FSRS_W[11] * d ** -FSRS_W[12] * ((s + 1) ** FSRS_W[13] - 1) * Math.exp((1 - r) * FSRS_W[14]),
     s / Math.exp(FSRS_W[17] * FSRS_W[18]));
-  return s * (1 + Math.exp(FSRS_W[8]) * (11 - d) * s ** -FSRS_W[9] * (Math.exp((1 - r) * FSRS_W[10]) - 1));
+  // Zor cevapta ceza (w15), kolayda ödül (w16); İyi'de çarpan 1: iki düğmeli sonuç değişmez
+  const carpan = G === 2 ? FSRS_W[15] : G === 4 ? FSRS_W[16] : 1;
+  return s * (1 + Math.exp(FSRS_W[8]) * (11 - d) * s ** -FSRS_W[9] * (Math.exp((1 - r) * FSRS_W[10]) - 1) * carpan);
 }
 // Kartın FSRS durumu: yoksa eski Leitner verisinden tahmin (s = kutu aralığı, d = 5, son = son cevap).
 // Hiç cevaplanmamış yeni kartta null döner.
@@ -288,10 +469,10 @@ function fsrsDurumu(k) {
   const son = gecmis.length ? gecmis[gecmis.length - 1].zaman : (k.sonraki || Date.now()) - KUTU_ARALIK[kutu] * GUN;
   return { s: KUTU_ARALIK[kutu], d: 5, son };
 }
-// Cevabın sonucu, kartı değiştirmeden: { fsrs, aralik (gün; bilemediyse 0), kutu, sonraki }.
-// Tekrar ekranı "Bildim" altındaki "4 gün sonra"yı buradan yazar.
-export function fsrsHesapla(k, bildi, simdi = Date.now()) {
-  const G = bildi ? 3 : 1, o = fsrsDurumu(k);
+// Cevabın sonucu, kartı değiştirmeden: { fsrs, aralik (gün; bilemediyse 0), kutu, sonraki, derece }.
+// cevap: true/false (Bildim/Bilemedim) ya da 1..4. Tekrar ekranı düğme altındaki "4 gün sonra"yı buradan yazar.
+export function fsrsHesapla(k, cevap, simdi = Date.now()) {
+  const G = fsrsDerece(cevap), bildi = G >= 2, o = fsrsDurumu(k);
   let s, d;
   if (!o) { s = Math.max(0.1, FSRS_W[G - 1]); d = ilkZorluk(G); }
   else {
@@ -302,7 +483,7 @@ export function fsrsHesapla(k, bildi, simdi = Date.now()) {
   }
   s = Math.min(FSRS_EN_UZUN, Math.max(0.01, s));
   const aralik = bildi ? fsrsAralik(s) : 0;
-  return { fsrs: { s, d, son: simdi }, aralik, kutu: aralikKutusu(aralik), sonraki: bildi ? gunBasi(simdi, aralik) : simdi };
+  return { fsrs: { s, d, son: simdi }, aralik, kutu: aralikKutusu(aralik), sonraki: bildi ? gunBasi(simdi, aralik) : simdi, derece: G };
 }
 export function kartEkle(alanlar) {
   const k = { id: yeniId("t"), kutu: 1, sonraki: Date.now(), gecmis: [], on: {}, arka: {}, ...alanlar };
@@ -332,18 +513,35 @@ export function gunBasi(t = Date.now(), ekGun = 0) {
 }
 // İki an arasındaki takvim günü farkı (bugün 0, yarın 1)
 export const gunFarki = (t, simdi = Date.now()) => Math.round((gunBasi(t) - gunBasi(simdi)) / GUN);
-// Bugünün sonuna kadar vakti gelen kartlar: takvim saatle değil günle işler
-export const bugunTekrar = () => { const sinir = gunBasi(Date.now(), 1); return store.kartlar.filter((k) => k.sonraki < sinir); };
+// Hiç cevaplanmamış (yeni) kart: FSRS durumu yok, geçmişi boş, Leitner kutusu I
+const yeniKartMi = (k) => !(k.fsrs && k.fsrs.s > 0) && !(Array.isArray(k.gecmis) && k.gecmis.length) && (k.kutu || 1) <= 1;
+// Bugünün sonuna kadar vakti gelen kartlar: takvim saatle değil günle işler. Askıdaki kart girmez.
+// tekrarGunlukYeni sayıysa yeni kartlardan yalnız kalan kota kadarı (önce eklenen önce), sıra store sırasıdır.
+export const bugunTekrar = () => {
+  const simdi = Date.now(), sinir = gunBasi(simdi, 1);
+  const liste = store.kartlar.filter((k) => !k.askida && k.sonraki < sinir);
+  const sinirSayi = store.ayarlar.tekrarGunlukYeni;
+  if (typeof sinirSayi !== "number" || !Number.isFinite(sinirSayi) || sinirSayi < 0) return liste;
+  // Bugün ilk kez cevaplanan yeni kartlar kotadan düşer
+  const bugun = gunBasi(simdi);
+  const bugunIlk = store.kartlar.filter((k) => Array.isArray(k.gecmis) && k.gecmis.length && k.gecmis[0].zaman >= bugun).length;
+  const kota = Math.max(0, Math.floor(sinirSayi) - bugunIlk);
+  const yeniler = liste.filter(yeniKartMi);
+  if (yeniler.length <= kota) return liste;
+  const secilen = new Set(yeniler.slice().sort((a, b) => (a.sonraki || 0) - (b.sonraki || 0)).slice(0, kota));
+  return liste.filter((k) => !yeniKartMi(k) || secilen.has(k));
+};
 // FSRS: bildiyse aralık kadar gün sonrasının sabahı düşer, bilemediyse bugün yeniden sorulur (kutu I).
-export function kartCevapla(id, bildi) {
+// cevap: true/false ya da 1..4 (fsrsHesapla). Geçmişe derece yazılır, bildi = derece >= 2 (eski okuyucular için).
+export function kartCevapla(id, cevap) {
   const k = store.kartlar.find((x) => x.id === id);
   if (!k) return null;
-  const simdi = Date.now(), c = fsrsHesapla(k, bildi, simdi);
+  const simdi = Date.now(), c = fsrsHesapla(k, cevap, simdi);
   k.fsrs = c.fsrs;
   k.kutu = c.kutu;
   k.sonraki = c.sonraki;
   if (!Array.isArray(k.gecmis)) k.gecmis = [];
-  k.gecmis.push({ zaman: simdi, bildi });
+  k.gecmis.push({ zaman: simdi, bildi: c.derece >= 2, derece: c.derece });
   bus.emit("kartlar", { tur: "guncelle", kart: k });
   return k;
 }
@@ -359,7 +557,7 @@ export const YZ_UYGULAMALAR = [
 ];
 // Gelişmiş yol "anahtar": kendi API anahtarıyla cevap uygulamanın içinde akar. Model adı düzenlenebilir.
 export const YZ_SAGLAYICILAR = [
-  { id: "deneme", ad: "Deneme (çevrimdışı)", varsayilanModel: "deneme" }, // anahtarsız, hazır cevaplar
+  { id: "deneme", ad: t("Deneme (çevrimdışı)"), varsayilanModel: "deneme" }, // anahtarsız, hazır cevaplar
   { id: "gemini", ad: "Gemini", varsayilanModel: "gemini-3.8-flash" },
   { id: "claude", ad: "Claude", varsayilanModel: "claude-opus-5-5" },
   { id: "openai", ad: "ChatGPT", varsayilanModel: "gpt-6-astra" },
@@ -427,7 +625,7 @@ document.addEventListener("pointerdown", (e) => {
   kalemGoruldu = true;
   if (kalemTuru() !== once) bus.emit("kalem:tur", { tur: kalemTuru() });
 }, { capture: true, passive: true });
-export const kalemAdi = () => ({ spen: "S Pen", pencil: "Apple Pencil" })[kalemTuru()] || "Kalem";
+export const kalemAdi = () => ({ spen: "S Pen", pencil: "Apple Pencil" })[kalemTuru()] || t("Kalem");
 
 // Programla odak (TASARIM-4 1.1.6): dokunarak açılan panelde halka çıkmaz, klavyeyle gelince çıkar.
 // focusVisible desteklenmeyen tarayıcıda .odak-sessiz sınıfı halkayı gizler, ilk tuşta kalkar.
@@ -492,9 +690,9 @@ export function oduncOzet(b) {
 // 45 sn -> "1 dk", 1260 -> "21 dk", 11520 -> "3 sa 12 dk"
 export function sureMetni(sn) {
   const dk = Math.max(1, Math.round(sn / 60));
-  if (dk < 60) return `${dk} dk`;
+  if (dk < 60) return t("{dk} dk", { dk });
   const sa = Math.floor(dk / 60), kalan = dk % 60;
-  return kalan ? `${sa} sa ${kalan} dk` : `${sa} sa`;
+  return kalan ? t("{sa} sa {dk} dk", { sa, dk: kalan }) : t("{sa} sa", { sa });
 }
 
 // ---------- 11. tur: ex libris (TASARIM-4 4.1) ----------
@@ -502,7 +700,7 @@ export function sureMetni(sn) {
 //   renk, yazi (en çok 18 harf), surum }. Ayarlar > Ex libris'te çizilir; kaydedilince ayarla() ve bus "exlibris" yayınlanır.
 // Koltuk iç kapakta, Masa ilk sayfada, disa-aktar.js notlu PDF'de exLibrisSvg(boyut, ex, { aci }) kullanır.
 // Kitapta basıldı bilgisi belge.veri.exLibrisBasildi (Koltuk yazar).
-export const EXLIBRIS_RENKLERI = [["Mürekkep siyahı", "#1C1B19"], ["Bordo", "#8C2B38"], ["Lacivert", "#2B4A7E"]];
+export const EXLIBRIS_RENKLERI = [[t("Mürekkep siyahı"), "#1C1B19"], [t("Bordo"), "#8C2B38"], [t("Lacivert"), "#2B4A7E"]];
 export const exLibrisVar = (ex = store.ayarlar.exLibris) => !!ex && Array.isArray(ex.vuruslar) && ex.vuruslar.some((v) => Array.isArray(v) && v.length);
 // Kitaba göre sabit eğim: kimlikten türetilen -6 ile -2 derece arası
 export function exLibrisAci(belgeId = "") {
@@ -518,7 +716,8 @@ export function exLibrisSvg(boyut = 72, ex = store.ayarlar.exLibris, { aci = -4,
   const id = "exl" + (++exSayac).toString(36);
   const renk = /^#[0-9a-f]{6}$/i.test(ex.renk || "") ? ex.renk : EXLIBRIS_RENKLERI[0][1];
   const cerceve = ["daire", "oval", "yok"].includes(ex.cerceve) ? ex.cerceve : "daire";
-  const yazi = String(ex.yazi || "").trim().toLocaleUpperCase("tr").slice(0, 18);
+  // Büyük harf arayüz diliyle: Türkçede i -> İ, İngilizcede i -> I
+  const yazi = String(ex.yazi || "").trim().toLocaleUpperCase(yerel).slice(0, 18);
   const u = 100 / boyut;   // bir CSS pikseli kaç birim
   const ry = cerceve === "oval" ? 37 : 47;
   const disR = 47, icR = yazi ? disR - 11 : disR - 4.2, icRy = yazi ? ry - 11 : ry - 4.2;
@@ -565,15 +764,15 @@ export function parmakGeriBildirim({ noktalar = [], geri, yineleme, vardi, bos, 
   }
   document.querySelector(".geri-fis")?.remove();
   const fis = h("div", { class: "geri-fis", role: "status" },
-    h("span", {}, !oldu ? (geriMi ? "Geri alınacak bir şey yok" : "Yinelenecek bir şey yok") : geriMi ? "Geri alındı" : "Yinelendi"));
-  if (oldu && geriMi && typeof yinele === "function") fis.append(h("button", { type: "button", onclick: () => { fis.remove(); yinele(); } }, "Yinele"));
+    h("span", {}, !oldu ? (geriMi ? t("Geri alınacak bir şey yok") : t("Yinelenecek bir şey yok")) : geriMi ? t("Geri alındı") : t("Yinelendi")));
+  if (oldu && geriMi && typeof yinele === "function") fis.append(h("button", { type: "button", onclick: () => { fis.remove(); yinele(); } }, t("Yinele")));
   document.body.append(fis);
   setTimeout(() => fis.remove(), oldu && geriMi && yinele ? 2000 : 1200);
 }
 
 // ---------- 11. tur: dönüş fişi (TASARIM-4 3.4) ----------
 // donusFisi({ metin: "Kaldığın yer: s. 47", etiket: "Dön", calistir }): altta 4 sn'lik cam fiş; Koltuk ve Masa kullanır
-export function donusFisi({ metin, etiket = "Dön", calistir, sure = 4000 } = {}) {
+export function donusFisi({ metin, etiket = t("Dön"), calistir, sure = 4000 } = {}) {
   document.querySelector(".donus-fis")?.remove();
   const fis = h("div", { class: "donus-fis", role: "status" }, h("span", {}, metin),
     calistir ? h("button", { type: "button", onclick: () => { fis.remove(); calistir(); } }, etiket) : null);

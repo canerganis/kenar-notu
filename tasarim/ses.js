@@ -3,6 +3,7 @@
 // Kalem önce gelir: dalga izi en fazla 15 fps, kalem yazarken 4 fps; kayıt ve oynatma ayrı iş parçacığında.
 
 import { h, icon, bus, belgeBul, store, yeniId, toast, ikiDokunus, hareketAz } from "./ortak.js";
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 /* ---------- stil ---------- */
 // ses.css index.html'e eklenmemişse bir kez buradan yüklenir
@@ -23,7 +24,7 @@ async function sesYaz(belgeId, ad, blob) {
   const m = await depo();
   if (m) return m.ekDosyaKaydet(belgeId, ad, blob);
   bellek.set(belgeId + "/" + ad, blob);
-  if (!bellekUyarildi) { bellekUyarildi = true; toast("Ses kaydı yalnız bu oturumda tutuluyor: kalıcı kayıt hazır değil."); }
+  if (!bellekUyarildi) { bellekUyarildi = true; toast(t("Ses kaydı yalnız bu oturumda tutuluyor: kalıcı kayıt hazır değil.")); }
 }
 async function sesGetir(belgeId, ad) {
   const m = await depo();
@@ -39,6 +40,8 @@ async function sesSilDosya(belgeId, ad) {
 const uzantiTur = (tur) => (/mp4|aac|m4a/i.test(tur || "") ? "m4a" : "webm");
 const dosyaAdi = (id, tur) => `ses-${id}.${uzantiTur(tur)}`;
 const metaDosyasi = (m) => dosyaAdi(m.id, m.tur);
+// Varsayılan ad "Kayıt N" kayıtta Türkçe durur; gösterirken arayüz diline çevrilir
+const adGoster = (ad) => { const m = /^Kayıt (\d+)$/.exec(ad || ""); return m ? t("Kayıt {no}", { no: m[1] }) : ad; };
 
 /* ---------- meta veri ---------- */
 // kayit: { id, belgeId, baslangic, sure, ad, tur?, boyut?, yarim? }  (yarim: kayıt sürüyor ya da kapanmadan kesildi)
@@ -73,12 +76,12 @@ const durumYay = () => bus.emit("ses:durum", { belgeId: S.kayit?.belgeId ?? S.oy
 // Hata metinleri: şerit bunları aynen gösterir
 function hataOlustur(kod, e) {
   const metinler = {
-    guvensiz: `Mikrofon yalnız güvenli bağlantıda açılır. Bu adres (${location.origin}) güvenli değil: tablette localhost ya da https ile aç.`,
-    destek: "Bu tarayıcı ses kaydını desteklemiyor.",
-    izin: "Mikrofon izni verilmedi. Adres çubuğundaki simgeden Mikrofon > İzin ver, sonra yeniden dene.",
-    yok: "Mikrofon bulunamadı.",
-    mesgul: "Mikrofon başka bir uygulamada kullanılıyor.",
-    baska: "Kayıt başlatılamadı" + (e?.message ? `: ${e.message}` : "."),
+    guvensiz: t("Mikrofon yalnız güvenli bağlantıda açılır. Bu adres ({adres}) güvenli değil: tablette localhost ya da https ile aç.", { adres: location.origin }),
+    destek: t("Bu tarayıcı ses kaydını desteklemiyor."),
+    izin: t("Mikrofon izni verilmedi. Adres çubuğundaki simgeden Mikrofon > İzin ver, sonra yeniden dene."),
+    yok: t("Mikrofon bulunamadı."),
+    mesgul: t("Mikrofon başka bir uygulamada kullanılıyor."),
+    baska: t("Kayıt başlatılamadı") + (e?.message ? `: ${e.message}` : "."),
   };
   return Object.assign(new Error(metinler[kod]), { kod, neden: e });
 }
@@ -182,8 +185,8 @@ export async function kayitDurdur() {
   if (yazildi) delete meta.yarim;
   degisti(K.belgeId);
   haber();
-  if (yazildi) toast(`${meta.ad} kaydedildi · ${sureYaz(sure)}`);
-  else toast("Ses kaydı saklanamadı; depo dolu olabilir. Uygulamayı kapatmadan indir.", { etiket: "İndir", calistir: () => sesIndir(blob, meta), kalici: true });
+  if (yazildi) toast(t("{ad} kaydedildi · {sure}", { ad: adGoster(meta.ad), sure: sureYaz(sure) }));
+  else toast(t("Ses kaydı saklanamadı; depo dolu olabilir. Uygulamayı kapatmadan indir."), { etiket: t("İndir"), calistir: () => sesIndir(blob, meta), kalici: true });
   return kayitDisari(meta);
 }
 // Diske yazılamamış kayıtlar: { belgeId, ad, blob, meta }
@@ -202,7 +205,7 @@ async function yazilamayanlariDene() {
 }
 function sesIndir(blob, meta) {
   const uzanti = uzantiTur(blob.type || meta?.tur);
-  const a = h("a", { href: URL.createObjectURL(blob), download: `${meta.ad || "Ses kaydı"}.${uzanti}` });
+  const a = h("a", { href: URL.createObjectURL(blob), download: `${adGoster(meta.ad) || t("Ses kaydı")}.${uzanti}` });
   document.body.append(a);
   a.click();
   a.remove();
@@ -297,11 +300,11 @@ async function yukle(meta) {
 }
 
 export async function oynat(kayitId, ms = 0) {
-  if (S.kayit) { toast("Kayıt sürerken oynatılamaz."); return; }
+  if (S.kayit) { toast(t("Kayıt sürerken oynatılamaz.")); return; }
   const meta = metaBul(kayitId);
   if (!meta) return;
   const yuklendi = await yukle(meta);
-  if (!yuklendi) { toast("Bu kaydın sesi bulunamadı."); return; }
+  if (!yuklendi) { toast(t("Bu kaydın sesi bulunamadı.")); return; }
   const sure = Number.isFinite(ses.duration) ? ses.duration * 1000 : meta.sure;
   S.oynat = { kayitId, belgeId: meta.belgeId, sure: Math.max(sure, meta.sure || 0) };
   ses.playbackRate = S.hiz;
@@ -386,7 +389,7 @@ export async function kayitSil(kayitId) {
 function yenidenAdlandir(kayitId, ad) {
   const meta = metaBul(kayitId);
   ad = ad.trim().slice(0, 80);
-  if (!meta || !ad || ad === meta.ad) return;
+  if (!meta || !ad || ad === meta.ad || ad === adGoster(meta.ad)) return;
   meta.ad = ad;
   degisti(meta.belgeId);
   haber();
@@ -413,8 +416,8 @@ function sureYaz(ms) {
   const iki = (n) => String(n).padStart(2, "0");
   return sa ? `${sa}:${iki(dk)}:${iki(sn)}` : `${iki(dk)}:${iki(sn)}`;
 }
-const tarihYaz = (t) => new Date(t).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const hizYaz = (v) => String(v).replace(".", ",") + "x";
+const tarihYaz = (z) => new Date(z).toLocaleString(yerel, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const hizYaz = (v) => (ingilizceMi ? String(v) : String(v).replace(".", ",")) + "x";
 const HIZLAR = [1, 1.5, 2];
 
 // Küçük çizimler: sprite'ta karşılığı olmayabilir, burada çizilir
@@ -462,9 +465,9 @@ export function cubukKur(kap, belge) {
   const ev = ust?.parentElement || kap;
   let listeAcik = false, adlandirilan = null, kaldirildi = false, izZaman = 0, izinDurumu = null;
 
-  const serit = h("div", { class: "ses-serit", role: "region", "aria-label": "Ses kaydı" });
+  const serit = h("div", { class: "ses-serit", role: "region", "aria-label": t("Ses kaydı") });
   const canli = h("span", { class: "ses-canli", "aria-live": "polite" });
-  const liste = h("div", { class: "ses-liste fis", role: "dialog", "aria-label": "Kayıtlar", hidden: true });
+  const liste = h("div", { class: "ses-liste fis", role: "dialog", "aria-label": t("Kayıtlar"), hidden: true });
   ev.classList.add("ses-serit-acik");
   ev.append(serit, liste);
   // Şeridin gerçek yüksekliği kökte --ses-serit'te durur (Masa'da araç çubuğu ve sayfa buna göre aşağı iner); kapanınca 0
@@ -490,7 +493,7 @@ export function cubukKur(kap, belge) {
 
   const listeDugme = () => {
     const n = sesler(belge).filter((k) => !k.yarim).length;
-    return h("button", { class: "ses-dugme ses-liste-dugme", type: "button", "aria-expanded": String(listeAcik), "aria-label": `Kayıtlar, ${n} kayıt`, onclick: () => listeDegistir() },
+    return h("button", { class: "ses-dugme ses-liste-dugme", type: "button", "aria-expanded": String(listeAcik), "aria-label": t("Kayıtlar, {n} kayıt", { n }), onclick: () => listeDegistir() },
       icon("liste"), h("span", { class: "t-deger-k" }, String(n)));
   };
 
@@ -528,7 +531,7 @@ export function cubukKur(kap, belge) {
 
   function cetvelKur() {
     const etiket = h("span", { class: "cam cam-k ses-cetvel-etiket" });
-    const el = h("div", { class: "ses-cetvel", role: "slider", tabindex: "0", "aria-label": "Kayıt konumu", "aria-valuemin": "0", "aria-valuemax": "100" },
+    const el = h("div", { class: "ses-cetvel", role: "slider", tabindex: "0", "aria-label": t("Kayıt konumu"), "aria-valuemin": "0", "aria-valuemax": "100" },
       h("span", { class: "ses-cetvel-dolu" }), h("span", { class: "ses-cetvel-iz" }, h("span", { class: "ses-cetvel-imlec" }), etiket));
     const oran = (e) => { const r = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); };
     const goster = (p) => { el.style.setProperty("--p", p.toFixed(4)); etiket.textContent = sureYaz(p * S.oynat.sure); };
@@ -569,10 +572,11 @@ export function cubukKur(kap, belge) {
     if (K) {
       sayac.yaz(sureYaz(performance.now() - K.t0));
       parcalar = [
-        h("button", { class: "ses-dugme ses-ana durdur", type: "button", "aria-label": "Durdur", onclick: () => kayitDurdur() }, sekil("durdur"), h("span", {}, "Durdur")),
-        h("span", { class: "ses-gosterge" }, h("span", { class: "lamba", "data-durum": "kayit" }), h("span", { class: "t-daktilo" }, "Kayıt"), sayac),
+        h("button", { class: "ses-dugme ses-ana durdur", type: "button", "aria-label": t("Durdur"), onclick: () => kayitDurdur() }, sekil("durdur"), h("span", {}, t("Durdur"))),
+        // "Kayıt" ve "Kaydet" başka yerde başka anlamda: sözlüğe girmez, burada dallanır
+        h("span", { class: "ses-gosterge" }, h("span", { class: "lamba", "data-durum": "kayit" }), h("span", { class: "t-daktilo" }, ingilizceMi ? "Recording" : "Kayıt"), sayac),
         izKap,
-        h("span", { class: "ses-ad" }, K.meta.ad),
+        h("span", { class: "ses-ad" }, adGoster(K.meta.ad)),
         listeDugme(),
       ];
       izCiz();
@@ -582,34 +586,35 @@ export function cubukKur(kap, belge) {
       cetvel = cetvelKur();
       const calar = !ses.paused && !ses.ended;
       parcalar = [
-        h("button", { class: "ses-dugme ses-ana", type: "button", "aria-label": calar ? "Duraklat" : "Oynat", onclick: () => (ses.paused || ses.ended ? devam() : duraklat()) }, sekil(calar ? "duraklat" : "oynat")),
+        h("button", { class: "ses-dugme ses-ana", type: "button", "aria-label": calar ? t("Duraklat") : t("Oynat"), onclick: () => (ses.paused || ses.ended ? devam() : duraklat()) }, sekil(calar ? "duraklat" : "oynat")),
         zamanCam,
         cetvel,
         h("span", { class: "cam cam-k soluk ses-toplam" }, sureYaz(O.sure)),
-        h("button", { class: "ses-dugme ses-hiz t-deger-k", type: "button", "aria-label": `Hız ${hizYaz(S.hiz)}`,
+        h("button", { class: "ses-dugme ses-hiz t-deger-k", type: "button", "aria-label": t("Hız {hiz}", { hiz: hizYaz(S.hiz) }),
           onclick: () => hizSec(HIZLAR[(HIZLAR.indexOf(S.hiz) + 1) % HIZLAR.length]) }, hizYaz(S.hiz)),
-        h("span", { class: "ses-ad" }, meta?.ad || ""),
+        h("span", { class: "ses-ad" }, adGoster(meta?.ad) || ""),
         listeDugme(),
-        h("button", { class: "ikon-dugme", type: "button", "aria-label": "Oynatmayı bitir", onclick: () => durdur() }, sekil("durdur")),
+        h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Oynatmayı bitir"), onclick: () => durdur() }, sekil("durdur")),
       ];
       tik();
     } else {
       let not;
       if (S.hata) not = h("span", { class: "ses-not hata" }, h("span", { class: "lamba", "data-durum": "hata" }), h("span", {}, S.hata.metin));
-      else if (baskaKayit) not = h("span", { class: "ses-not" }, "Başka bir belgede kayıt sürüyor.");
+      else if (baskaKayit) not = h("span", { class: "ses-not" }, t("Başka bir belgede kayıt sürüyor."));
       else if (izinDurumu === "denied") not = h("span", { class: "ses-not hata" }, h("span", { class: "lamba", "data-durum": "hata" }), h("span", {}, hataOlustur("izin").message));
       else if (!window.isSecureContext) not = h("span", { class: "ses-not hata" }, h("span", { class: "lamba", "data-durum": "hata" }), h("span", {}, hataOlustur("guvensiz").message));
-      else not = h("span", { class: "ses-not ses-ipucu" }, "Kayıtta yazdıkların sese bağlanır. Çizgiye dokun, o ana dön.");
+      else not = h("span", { class: "ses-not ses-ipucu" }, t("Kayıtta yazdıkların sese bağlanır. Çizgiye dokun, o ana dön."));
+      const kaydet = ingilizceMi ? "Record" : "Kaydet";
       parcalar = [
-        h("button", { class: "ses-dugme ses-ana kaydet", type: "button", "aria-label": "Kaydet", disabled: !!baskaKayit,
+        h("button", { class: "ses-dugme ses-ana kaydet", type: "button", "aria-label": kaydet, disabled: !!baskaKayit,
           onclick: () => kayitBaslat(belge).catch((e) => console.warn("[ses]", e.message)) },
-          h("span", { class: "ses-kayit-lamba", "aria-hidden": "true" }), h("span", {}, "Kaydet")),
+          h("span", { class: "ses-kayit-lamba", "aria-hidden": "true" }), h("span", {}, kaydet)),
         bostaCam,
         not,
         listeDugme(),
       ];
     }
-    canli.textContent = K ? "Kayıt sürüyor" : O ? "Oynatılıyor" : S.hata?.metin || "";
+    canli.textContent = K ? t("Kayıt sürüyor") : O ? t("Oynatılıyor") : S.hata?.metin || "";
     serit.replaceChildren(...parcalar, canli);
     if (listeAcik) listeKur();
   }
@@ -629,7 +634,7 @@ export function cubukKur(kap, belge) {
       const caliyor = S.oynat?.kayitId === k.id;
       let adEl;
       if (adlandirilan === k.id) {
-        adEl = h("input", { class: "ses-ad-girdi", type: "text", value: k.ad, maxlength: "80", "aria-label": "Kayıt adı" });
+        adEl = h("input", { class: "ses-ad-girdi", type: "text", value: adGoster(k.ad), maxlength: "80", "aria-label": t("Kayıt adı") });
         const bitir = (kaydet) => { if (adlandirilan !== k.id) return; adlandirilan = null; if (kaydet) yenidenAdlandir(k.id, adEl.value); listeKur(); };
         adEl.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); bitir(true); }
@@ -637,23 +642,23 @@ export function cubukKur(kap, belge) {
         });
         adEl.addEventListener("blur", () => bitir(true));
         queueMicrotask(() => { adEl.focus(); adEl.select(); });
-      } else adEl = h("b", {}, k.ad);
-      const alt = kaydediliyor ? "Kaydediliyor" : `${tarihYaz(k.baslangic)} · ${sureYaz(k.sure)}${k.yarim ? " · yarım kaldı" : ""}`;
-      const sil = h("button", { class: "ikon-dugme ses-sil", type: "button", "aria-label": "Kaydı sil", disabled: kaydediliyor }, icon("sil"));
-      ikiDokunus(sil, "Emin misin?", () => kayitSil(k.id));
+      } else adEl = h("b", {}, adGoster(k.ad));
+      const alt = kaydediliyor ? t("Kaydediliyor") : `${tarihYaz(k.baslangic)} · ${sureYaz(k.sure)}${k.yarim ? " · " + t("yarım kaldı") : ""}`;
+      const sil = h("button", { class: "ikon-dugme ses-sil", type: "button", "aria-label": t("Kaydı sil"), disabled: kaydediliyor }, icon("sil"));
+      ikiDokunus(sil, t("Emin misin?"), () => kayitSil(k.id));
       return h("li", { class: "ses-satir" + (caliyor ? " caliyor" : "") },
-        h("button", { class: "ikon-dugme", type: "button", "aria-label": `${k.ad} oynat`, disabled: kaydediliyor || !!S.kayit,
+        h("button", { class: "ikon-dugme", type: "button", "aria-label": t("{ad} oynat", { ad: adGoster(k.ad) }), disabled: kaydediliyor || !!S.kayit,
           onclick: () => { listeDegistir(false); oynat(k.id, 0); } }, sekil(caliyor && !ses.paused ? "duraklat" : "oynat")),
         h("span", { class: "ses-satir-metin" }, adEl, h("small", {}, alt)),
-        h("button", { class: "ikon-dugme", type: "button", "aria-label": "Yeniden adlandır", disabled: kaydediliyor,
+        h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Yeniden adlandır"), disabled: kaydediliyor,
           onclick: () => { adlandirilan = k.id; listeKur(); } }, icon("kalem-ucu")),
         sil);
     });
     liste.replaceChildren(
-      h("div", { class: "fis-baslik ses-liste-baslik" }, h("span", { class: "t-daktilo" }, "Kayıtlar"),
-        h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => listeDegistir(false) }, icon("kapat"))),
+      h("div", { class: "fis-baslik ses-liste-baslik" }, h("span", { class: "t-daktilo" }, t("Kayıtlar")),
+        h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => listeDegistir(false) }, icon("kapat"))),
       satirlar.length ? h("ul", { class: "ses-satirlar" }, satirlar)
-        : h("p", { class: "ses-bos" }, "Henüz kayıt yok. Kaydet'e basınca ders sesi bu belgeyle birlikte saklanır."));
+        : h("p", { class: "ses-bos" }, t("Henüz kayıt yok. Kaydet'e basınca ders sesi bu belgeyle birlikte saklanır.")));
   }
   // Dışarı dokununca liste kapanır
   const disari = (e) => { if (listeAcik && !liste.contains(e.target) && !serit.contains(e.target)) listeDegistir(false); };

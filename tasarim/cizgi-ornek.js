@@ -4,10 +4,16 @@
 //
 // ornekCizgiRoman() -> Promise<Blob>  (application/vnd.comicbook+zip; 8 görsel, biri çift sayfa, ComicInfo.xml)
 // ORNEK_CIZGI: kabuğun kitaplık kaydı için önerilen alanlar
+// Dil: balon ve anlatı metinleri arayüz diliyle çizilir (dilde); CBZ dosyasıyla saklandığı için üretildiği dilde kalır.
+// Kimlik ve dosya adı her dilde aynı.
+
+import { yerel, ingilizceMi } from "./dil.js";
+
+const dilde = (tr, en) => (ingilizceMi ? en : tr);
 
 export const ORNEK_CIZGI = {
-  id: "kedi-kutu-dalga", tur: "cizgi", ad: "Kedi, Kutu ve Dalga", yazar: "Laboratuvar Defteri, Sayı 1",
-  seri: "Laboratuvar Defteri", sayi: "1", sayfaSayisi: 8, yon: "ltr", dosyaAdi: "kedi-kutu-dalga.cbz",
+  id: "kedi-kutu-dalga", tur: "cizgi", ad: dilde("Kedi, Kutu ve Dalga", "Cat, Box and Wave"), yazar: dilde("Laboratuvar Defteri, Sayı 1", "Lab Notebook, Issue 1"),
+  seri: dilde("Laboratuvar Defteri", "Lab Notebook"), sayi: "1", sayfaSayisi: 8, yon: "ltr", dosyaAdi: "kedi-kutu-dalga.cbz",
 };
 
 const W = 1100, H = 1700, K = 48, O = 26;   // sayfa, kenar boşluğu, oluk
@@ -24,7 +30,7 @@ const SANS = '"Inter", "Instrument Sans", "Segoe UI", Roboto, Arial, sans-serif'
 const SERIF = 'Literata, Georgia, "Times New Roman", serif';
 const EL = 'Caveat, "Segoe Print", "Comic Sans MS", cursive';
 const harf = (boy) => `800 ${boy}px ${SANS}`;
-const buyuk = (s) => s.toLocaleUpperCase("tr");
+const buyuk = (s) => s.toLocaleUpperCase(yerel);
 
 async function yaziTipleriniBekle() {
   if (typeof document === "undefined" || !document.fonts?.load) return;
@@ -472,7 +478,7 @@ function kutu(c, x, y, w, h, { kapak = "kapali", yazi = true } = {}) {
     c.save();
     c.font = `800 ${Math.round(h * 0.17)}px ${SANS}`;
     c.fillStyle = "#F3E3C3"; c.textAlign = "center"; c.textBaseline = "middle";
-    c.fillText("KUTU No. 1", x + w / 2, y + h * 0.36);
+    c.fillText(dilde("KUTU No. 1", "BOX No. 1"), x + w / 2, y + h * 0.36);
     c.restore();
   }
   if (kapak === "kapali") {
@@ -596,22 +602,22 @@ function kapakSayfasi(c) {
   c.fillStyle = "#F3E3C3"; c.font = `700 30px ${SANS}`;
   if ("letterSpacing" in c) c.letterSpacing = "8px";
   c.textBaseline = "middle";
-  c.fillText("LABORATUVAR DEFTERİ", 56, 62);
+  c.fillText(dilde("LABORATUVAR DEFTERİ", "LAB NOTEBOOK"), 56, 62);
   if ("letterSpacing" in c) c.letterSpacing = "2px";
   c.font = `600 22px ${SANS}`; c.fillStyle = "#F3E3C3CC";
-  c.fillText("SAYI 1   ·   KOPENHAG 1927", 56, 108);
+  c.fillText(dilde("SAYI 1   ·   KOPENHAG 1927", "ISSUE 1   ·   COPENHAGEN 1927"), 56, 108);
   if ("letterSpacing" in c) c.letterSpacing = "0px";
   // fiyat yuvarlağı
   yuvarlak(c, W - 110, 82, 54); doldurCiz(c, R.altin, 4);
   c.fillStyle = R.ink; c.textAlign = "center";
   c.font = `800 34px ${SANS}`; c.fillText("5", W - 110, 66);
-  c.font = `700 16px ${SANS}`; c.fillText("KURUŞ", W - 110, 102);
+  c.font = `700 16px ${SANS}`; c.fillText(dilde("KURUŞ", "CENTS"), W - 110, 102);
   c.textAlign = "left";
   // başlık
   c.save();
   c.font = `800 128px ${SERIF}`;
   c.lineJoin = "round";
-  for (const [m, y] of [["Kedi, Kutu", 300], ["ve Dalga", 432]]) {
+  for (const [m, y] of [[dilde("Kedi, Kutu", "Cat, Box"), 300], [dilde("ve Dalga", "and Wave"), 432]]) {
     c.lineWidth = 16; c.strokeStyle = R.ink; c.strokeText(m, 58, y + 8);
     c.fillStyle = R.bordo; c.fillText(m, 58, y + 8);
     c.strokeText(m, 50, y);
@@ -629,7 +635,7 @@ function kapakSayfasi(c) {
   // zemin gölgesi
   c.fillStyle = "#00000055"; elips(c, 550, 1520, 330, 26); c.fill();
   // alt satır
-  anlati(c, 56, 1560, "Aynı anda iki yerde olabilen bir dalga, meraklı bir kedi ve kapalı bir kutu.", { en: 900, boy: 30, zemin: "#F6EBD0" });
+  anlati(c, 56, 1560, dilde("Aynı anda iki yerde olabilen bir dalga, meraklı bir kedi ve kapalı bir kutu.", "A wave that can be in two places at once, a curious cat and a closed box."), { en: 900, boy: 30, zemin: "#F6EBD0" });
 }
 
 function sayfa2(c) {
@@ -647,7 +653,7 @@ function sayfa2(c) {
     cokgen(c, [[lx - 34, ly - 70], [lx + 34, ly - 70], [lx + 14, ly - 108], [lx - 14, ly - 108]]); doldurCiz(c, "#3E6B5A");
     c.beginPath(); c.moveTo(lx, ly - 70); c.lineTo(lx, ly); c.stroke();
     kedi(c, w * 0.2, h * 0.66, 0.42, { goz: "acik" });
-    anlati(c, 20, 18, "Kopenhag, 1927. Enstitüde herkes evine gitmiş. Neredeyse herkes.", { en: 520 });
+    anlati(c, 20, 18, dilde("Kopenhag, 1927. Enstitüde herkes evine gitmiş. Neredeyse herkes.", "Copenhagen, 1927. Everyone at the institute has gone home. Almost everyone."), { en: 520 });
   });
   const solW = Math.round((W - 2 * K - O) * 0.42);
   panel(c, K, y2, solW, orta, (c, w, h) => {
@@ -657,13 +663,13 @@ function sayfa2(c) {
     const renk = [R.lacivert, R.bordo, "#4F6B4A", R.hardal];
     for (let i = 0; i < 4; i++) { c.beginPath(); c.rect(w * 0.12 + (i % 2) * 14, h - 70 - i * 46, w * 0.72, 44); doldurCiz(c, renk[i], 4); }
     kedi(c, w * 0.5, h - 70 - 3 * 46 + 2, 1.05, { goz: "kapali", agiz: "acik" });
-    ses(c, w * 0.5, h * 0.17, "MİYAAV", { boy: 66, aci: -0.08 });
+    ses(c, w * 0.5, h * 0.17, dilde("MİYAAV", "MEOW"), { boy: 66, aci: -0.08 });
   });
   panel(c, K + solW + O, y2, W - 2 * K - solW - O, orta, (c, w, h) => {
     c.fillStyle = R.duvar; c.fillRect(0, 0, w, h);
     karaTahta(c, 30, 40, w - 60, h * 0.5, [["iħ ∂ψ/∂t", 30, 40, 52], ["= Ĥψ ?", 220, 120, 52]]);
     profesor(c, w * 0.62, h + 140, 1.0, { poz: "tebesir", yon: -1, agiz: "duz" });
-    balon(c, { x: w * 0.36, y: h * 0.78, metin: "Sessiz ol, Planck. Denklem bitmek üzere.", en: 270, kuyruk: [w * 0.56, h * 0.62] });
+    balon(c, { x: w * 0.36, y: h * 0.78, metin: dilde("Sessiz ol, Planck. Denklem bitmek üzere.", "Quiet, Planck. The equation is almost done."), en: 270, kuyruk: [w * 0.56, h * 0.62] });
   });
   panel(c, K, y3, W - 2 * K, alt, (c, w, h) => {
     c.fillStyle = R.tahta; c.fillRect(0, 0, w, h);
@@ -676,11 +682,11 @@ function sayfa2(c) {
     g.addColorStop(0, "#8FEADF88"); g.addColorStop(1, "#8FEADF00");
     c.fillStyle = g; c.fillRect(0, 0, w, h);
     psi(c, w * 0.66, h * 0.72, 0.85, { genlik: 0.7, goz: "kapali" });
-    ses(c, w * 0.2, h * 0.82, "VIZZ", { boy: 84, aci: -0.1, renk: R.isik, golge: R.turkuaz });
+    ses(c, w * 0.2, h * 0.82, dilde("VIZZ", "VZZZ"), { boy: 84, aci: -0.1, renk: R.isik, golge: R.turkuaz });
     // el ve tebeşir
     boru(c, [[w + 40, h * 0.9], [w - 120, h * 0.78], [w - 190, h * 0.62]], 46, R.krem, 5);
     yuvarlak(c, w - 196, h * 0.6, 24); doldurCiz(c, R.ten, 4.5);
-    balon(c, { x: w * 0.66, y: h * 0.12, metin: "Ve... tamam!", en: 300, kuyruk: [w * 0.86, h * 0.5] });
+    balon(c, { x: w * 0.66, y: h * 0.12, metin: dilde("Ve... tamam!", "And... done!"), en: 300, kuyruk: [w * 0.86, h * 0.5] });
   });
 }
 
@@ -695,7 +701,7 @@ function sayfa3(c) {
       g.addColorStop(0, "#8FEADF99"); g.addColorStop(1, "#8FEADF00");
       c.fillStyle = g; c.fillRect(0, 0, w, h);
       psi(c, w * 0.5, h * 0.74, 1.15, { genlik: 1 });
-      balon(c, { x: w * 0.42, y: h * 0.2, metin: "Merhaba! Ben Psi.", en: 300, kuyruk: [w * 0.5, h * 0.48] });
+      balon(c, { x: w * 0.42, y: h * 0.2, metin: dilde("Merhaba! Ben Psi.", "Hello! I’m Psi."), en: 300, kuyruk: [w * 0.5, h * 0.48] });
     },
     (c, w, h) => {
       c.fillStyle = "#F3C7A8"; c.fillRect(0, 0, w, h);
@@ -712,13 +718,13 @@ function sayfa3(c) {
       psi(c, w * 0.22, h * 0.56, 0.5, { soluk: 0.45 });
       psi(c, w * 0.78, h * 0.66, 0.5, { soluk: 0.45 });
       psi(c, w * 0.5, h * 0.84, 0.62, { soluk: 1, agiz: "acik" });
-      balon(c, { x: w * 0.5, y: h * 0.22, metin: "Aynı anda birçok yerde dolaşırım!", en: 330, kuyruk: [w * 0.5, h * 0.62] });
+      balon(c, { x: w * 0.5, y: h * 0.22, metin: dilde("Aynı anda birçok yerde dolaşırım!", "I wander through many places at once!"), en: 330, kuyruk: [w * 0.5, h * 0.62] });
     },
     (c, w, h) => {
       c.fillStyle = "#D9E4D2"; c.fillRect(0, 0, w, h);
       noktalar(c, 0, 0, w, h, "#B7CBB0", 11, 2.6);
       kedi(c, w * 0.42, h + 30, 1.2, { goz: "kivrik" });
-      balon(c, { x: w * 0.66, y: h * 0.2, metin: "Hangisini yakalasam?", en: 250, tur: "dusun", kuyruk: [w * 0.48, h * 0.48] });
+      balon(c, { x: w * 0.66, y: h * 0.2, metin: dilde("Hangisini yakalasam?", "Which one do I catch?"), en: 250, tur: "dusun", kuyruk: [w * 0.48, h * 0.48] });
     },
   ];
   kutular.forEach(([x, y], i) => panel(c, x, y, yar, sat, icler[i]));
@@ -730,7 +736,7 @@ function sayfa3(c) {
     kedi(c, w * 0.46, h * 0.8, 1.15, { poz: "zipla", goz: "acik" });
     psi(c, w * 0.78, h * 0.42, 0.8, { genlik: 1.1, goz: "kirp" });
     ses(c, w * 0.28, h * 0.2, "HOP!", { boy: 96 });
-    balon(c, { x: w * 0.74, y: h * 0.14, metin: "Bana bakınca tek bir yerde olurum. Kural bu!", en: 380, kuyruk: [w * 0.78, h * 0.3] });
+    balon(c, { x: w * 0.74, y: h * 0.14, metin: dilde("Bana bakınca tek bir yerde olurum. Kural bu!", "When you look at me, I’m in just one place. That’s the rule!"), en: 380, kuyruk: [w * 0.78, h * 0.3] });
   });
 }
 
@@ -741,7 +747,7 @@ function sayfa4(c) {
     noktalar(c, 0, 0, w, h, "#A8D3CD", 12, (x) => 3 * (x / w));
     hizCizgileri(c, 0, h * 0.3, w * 0.55, h * 0.8, 9, "#2A9D9399", 4);
     psi(c, w * 0.66, h * 0.68, 0.95, { genlik: 1.1, agiz: "acik" });
-    balon(c, { x: w * 0.25, y: h * 0.36, metin: "Yakala beni, Planck!", en: 340, kuyruk: [w * 0.6, h * 0.5] });
+    balon(c, { x: w * 0.25, y: h * 0.36, metin: dilde("Yakala beni, Planck!", "Catch me, Planck!"), en: 340, kuyruk: [w * 0.6, h * 0.5] });
   });
   const y = K + ust + O;
   panel(c, K, y, sut, alt, (c, w, h) => {
@@ -749,7 +755,7 @@ function sayfa4(c) {
     psi(c, w * 0.5, h * 0.3, 0.6, { yon: -1 });
     hizCizgileri(c, w * 0.1, h * 0.36, w * 0.9, h * 0.44, 4, R.turkuaz, 3);
     kedi(c, w * 0.42, h * 0.82, 0.8, { poz: "kos", goz: "acik" });
-    ses(c, w * 0.5, h * 0.6, "TIP TIP", { boy: 48, aci: -0.2 });
+    ses(c, w * 0.5, h * 0.6, dilde("TIP TIP", "TAP TAP"), { boy: 48, aci: -0.2 });
   });
   panel(c, K + sut + O, y, sut, alt, (c, w, h) => {
     c.fillStyle = R.ahsapKoyu; c.fillRect(0, 0, w, h);
@@ -770,7 +776,7 @@ function sayfa4(c) {
       c.save(); c.translate(bx, by); c.rotate(a);
       c.beginPath(); c.rect(-20, -60, 40, 120); doldurCiz(c, R.bordo, 4); c.restore();
     }
-    ses(c, w * 0.5, h * 0.74, "PAT!", { boy: 72, aci: 0.18 });
+    ses(c, w * 0.5, h * 0.74, dilde("PAT!", "THUD!"), { boy: 72, aci: 0.18 });
   });
   panel(c, K + 2 * (sut + O), y, sut, alt, (c, w, h) => {
     c.fillStyle = R.duvar; c.fillRect(0, 0, w, h);
@@ -778,7 +784,7 @@ function sayfa4(c) {
     profesor(c, w * 0.3, h - 30, 1.05, { poz: "isaret", agiz: "acik" });
     // elinde iki yarıklı levha
     yarikLevha(c, w * 0.3 + 196 * 1.05 - 14, h - 30 - 378 * 1.05 - 120, 240, { kal: 28, bosluk: 22, ara: 0.18 });
-    balon(c, { x: w * 0.5, y: h * 0.2, metin: "Durun! Şuradan geçin: iki yarık!", en: 230, kuyruk: [w * 0.34, h * 0.42] });
+    balon(c, { x: w * 0.5, y: h * 0.2, metin: dilde("Durun! Şuradan geçin: iki yarık!", "Wait! Go through here: two slits!"), en: 230, kuyruk: [w * 0.34, h * 0.42] });
   });
 }
 
@@ -795,14 +801,14 @@ function ciftSayfa(c) {
     dalgaCepheleri(c, lx + 34, yariklar, 40, w * 0.62, 42, R.isik);
     psi(c, w * 0.18, h * 0.5, 0.9, { genlik: 1 });
     hizCizgileri(c, 0, h * 0.44, w * 0.12, h * 0.56, 3, R.isik, 3);
-    anlati(c, 24, 24, "İki yarık deneyi. Psi ikisine birden yöneldi.", { en: 360 });
+    anlati(c, 24, 24, dilde("İki yarık deneyi. Psi ikisine birden yöneldi.", "The double-slit experiment. Psi heads for both at once."), { en: 360 });
   });
   panel(c, K, K + ust + O, W - 2 * K + 12, alt, (c, w, h) => {
     c.fillStyle = "#F0D9B5"; c.fillRect(0, 0, w, h);
     noktalar(c, 0, 0, w, h, "#E2BF8A", 12, 2.6);
     yarikLevha(c, w * 0.72, 20, h - 40, { kal: 30, bosluk: 34, ara: 0.18 });
     kedi(c, w * 0.36, h + 20, 1.3, { goz: "saskin" });
-    balon(c, { x: w * 0.36, y: h * 0.16, metin: "Hangi yarıktan geçti?", en: 360, tur: "dusun", kuyruk: [w * 0.4, h * 0.44] });
+    balon(c, { x: w * 0.36, y: h * 0.16, metin: dilde("Hangi yarıktan geçti?", "Which slit did it go through?"), en: 360, tur: "dusun", kuyruk: [w * 0.4, h * 0.44] });
   });
   // sağ: girişim deseni
   const ust2 = 1100, alt2 = H - 2 * K - ust2 - O;
@@ -813,8 +819,8 @@ function ciftSayfa(c) {
     girisimDeseni(c, w * 0.66, 50, w * 0.16, h - 280, 0.5, 0.11);
     profesor(c, w * 0.34, h + 60, 1.02, { poz: "isaret", agiz: "acik", yon: 1 });
     kedi(c, w * 0.9, h - 30, 0.75, { goz: "saskin", yon: -1 });
-    balon(c, { x: w * 0.3, y: h * 0.12, metin: "İkisinden birden! Bak, çizgi çizgi bir desen.", en: 380, kuyruk: [w * 0.3, h * 0.42] });
-    ses(c, w * 0.6, h * 0.95, "Işık + ışık = karanlık?", { boy: 30, aci: -0.04, renk: "#F6EBD0", golge: R.lacivert });
+    balon(c, { x: w * 0.3, y: h * 0.12, metin: dilde("İkisinden birden! Bak, çizgi çizgi bir desen.", "Through both! Look, a striped pattern."), en: 380, kuyruk: [w * 0.3, h * 0.42] });
+    ses(c, w * 0.6, h * 0.95, dilde("Işık + ışık = karanlık?", "Light + light = dark?"), { boy: 30, aci: -0.04, renk: "#F6EBD0", golge: R.lacivert });
   });
   panel(c, sx + K - 12, K + ust2 + O, W - 2 * K + 12, alt2, (c, w, h) => {
     girisimDeseni(c, 0, 0, w, h, 0.5, 0.18);
@@ -822,7 +828,7 @@ function ciftSayfa(c) {
     boru(c, [[w * 0.2, h + 40], [w * 0.36, h * 0.7], [w * 0.5, h * 0.56]], 52, R.kedi, 5);
     elips(c, w * 0.52, h * 0.52, 36, 28); doldurCiz(c, R.kedi, 5);
     for (const [px, py] of [[-22, -18], [-4, -26], [16, -22]]) { elips(c, w * 0.52 + px, h * 0.52 + py, 9, 8); doldurCiz(c, R.pembe, 3); }
-    balon(c, { x: w * 0.74, y: h * 0.34, metin: "Mrr... çizgili. Benim gibi.", en: 260, kuyruk: [w * 0.56, h * 0.5] });
+    balon(c, { x: w * 0.74, y: h * 0.34, metin: dilde("Mrr... çizgili. Benim gibi.", "Mrr... striped. Like me."), en: 260, kuyruk: [w * 0.56, h * 0.5] });
   });
 }
 
@@ -832,8 +838,8 @@ function sayfa6(c) {
     laboratuvar(c, w * 2.4, h, { pencere: true, raf: false, zemin: 0.84 });
     profesor(c, w * 0.42, h * 0.84, 1.18, { poz: "kutu" });
     kutu(c, w * 0.42, h * 0.84 - 360, 190, 140, { kapak: "yok", yazi: false });
-    anlati(c, 16, 16, "Ertesi gece. Yeni bir deney.", { en: 300 });
-    balon(c, { x: w * 0.48, y: h * 0.12, metin: "Planck, bu kutuya sığar mısın?", en: 240, kuyruk: [w * 0.42, h * 0.32] });
+    anlati(c, 16, 16, dilde("Ertesi gece. Yeni bir deney.", "The next night. A new experiment."), { en: 300 });
+    balon(c, { x: w * 0.48, y: h * 0.12, metin: dilde("Planck, bu kutuya sığar mısın?", "Planck, will you fit in this box?"), en: 240, kuyruk: [w * 0.42, h * 0.32] });
   });
   const icler = [
     (c, w, h) => {
@@ -846,7 +852,7 @@ function sayfa6(c) {
       c.fillStyle = R.tahta; c.fillRect(0, 0, w, h);
       noktalar(c, 0, 0, w, h, "#FFFFFF12", 10, 2.4);
       psi(c, w * 0.32, h * 0.72, 0.9, { genlik: 1.2, agiz: "acik" });
-      balon(c, { x: w * 0.68, y: h * 0.3, metin: "Kutu mu? Ben de geleyim!", en: 240, kuyruk: [w * 0.4, h * 0.5] });
+      balon(c, { x: w * 0.68, y: h * 0.3, metin: dilde("Kutu mu? Ben de geleyim!", "A box? I’m coming too!"), en: 240, kuyruk: [w * 0.4, h * 0.5] });
     },
     (c, w, h) => {
       c.fillStyle = "#EFC9A4"; c.fillRect(0, 0, w, h);
@@ -869,21 +875,21 @@ function sayfa7(c) {
     c.save(); c.globalAlpha = 0.85; c.strokeStyle = R.isik; c.lineWidth = 4; c.shadowColor = R.isik; c.shadowBlur = 18;
     for (const k of [0.2, 0.45, 0.7]) { c.beginPath(); c.moveTo(w * 0.38 + w * 0.26 * k, h * 0.4); c.lineTo(w * 0.38 + w * 0.26 * k + 8, h * 0.28); c.stroke(); }
     c.restore();
-    anlati(c, w - 18, 18, "Kutu kapalı. İçine kimse bakmıyor.", { en: 360, sag: true });
+    anlati(c, w - 18, 18, dilde("Kutu kapalı. İçine kimse bakmıyor.", "The box is closed. Nobody is looking inside."), { en: 360, sag: true });
   });
   panel(c, K, K + kh + O, W - 2 * K, kh, (c, w, h) => {
     c.fillStyle = "#07080B"; c.fillRect(0, 0, w, h);
     psi(c, w * 0.5, h * 0.66, 1.05, { genlik: 0.8, soluk: 0.55 });
     for (const gx of [w * 0.32 - 16, w * 0.32 + 16]) { elips(c, gx, h * 0.46, 9, 11); c.fillStyle = "#CFD86A"; c.fill(); elips(c, gx + 1, h * 0.46, 2.5, 8); c.fillStyle = "#07080B"; c.fill(); }
-    balon(c, { x: w * 0.68, y: h * 0.24, metin: "Şimdi kedi hem uyuyor hem uyanık. Buna üst üste binme denir.", en: 470, kuyruk: [w * 0.54, h * 0.52], zemin: "#1C2A33", yazi: "#DFFBF6" });
+    balon(c, { x: w * 0.68, y: h * 0.24, metin: dilde("Şimdi kedi hem uyuyor hem uyanık. Buna üst üste binme denir.", "Now the cat is both asleep and awake. This is called superposition."), en: 470, kuyruk: [w * 0.54, h * 0.52], zemin: "#1C2A33", yazi: "#DFFBF6" });
   }, { zemin: "#07080B" });
   panel(c, K, K + 2 * (kh + O), W - 2 * K, kh, (c, w, h) => {
     c.fillStyle = "#E7D3AE"; c.fillRect(0, 0, w, h);
     noktalar(c, 0, 0, w, h, "#D2B583", 12, 2.6);
     kutu(c, w * 0.5, h * 0.52, w * 0.4, h * 0.6, { kapak: "kapali", yazi: false });
     profesor(c, w * 0.3, h + 380, 1.5, { poz: "kapak", agiz: "duz", ter: true });
-    ses(c, w * 0.8, h * 0.42, "GICIRR", { boy: 60, aci: -0.1, renk: "#F6EBD0" });
-    balon(c, { x: w * 0.6, y: h * 0.18, metin: "Ölçüm zamanı. Açıyorum.", en: 300, kuyruk: [w * 0.36, h * 0.3] });
+    ses(c, w * 0.8, h * 0.42, dilde("GICIRR", "CREAK"), { boy: 60, aci: -0.1, renk: "#F6EBD0" });
+    balon(c, { x: w * 0.6, y: h * 0.18, metin: dilde("Ölçüm zamanı. Açıyorum.", "Time to measure. Opening it."), en: 300, kuyruk: [w * 0.36, h * 0.3] });
   });
 }
 
@@ -900,7 +906,7 @@ function sayfa8(c) {
     kutu(c, w * 0.18, h * 0.6, w * 0.48, h * 0.3, { kapak: "yok" });
     ses(c, w * 0.28, h * 0.42, "Zzz", { boy: 64, aci: -0.15, renk: "#F6EBD0", golge: R.lacivert });
     profesor(c, w * 0.82, h * 0.96, 1.18, { poz: "not", yon: -1 });
-    balon(c, { x: w * 0.6, y: h * 0.12, metin: "Sonuç: kedi uyuyor. Dalga mırlıyor.", en: 420, kuyruk: [w * 0.78, h * 0.38] });
+    balon(c, { x: w * 0.6, y: h * 0.12, metin: dilde("Sonuç: kedi uyuyor. Dalga mırlıyor.", "Result: the cat is asleep. The wave is purring."), en: 420, kuyruk: [w * 0.78, h * 0.38] });
   });
   panel(c, K, K + ust + O, yar, alt, (c, w, h) => {
     c.fillStyle = R.krem; c.fillRect(0, 0, w, h);
@@ -908,7 +914,7 @@ function sayfa8(c) {
     for (let yy = 70; yy < h; yy += 44) { c.beginPath(); c.moveTo(0, yy); c.lineTo(w, yy); c.stroke(); }
     c.strokeStyle = "#D98C8C"; c.beginPath(); c.moveTo(70, 0); c.lineTo(70, h); c.stroke();
     c.save(); c.fillStyle = "#24407A"; c.font = `600 42px ${EL}`; c.textBaseline = "alphabetic";
-    [["29 Ekim, gece", 92, 108], ["Gözlem: kedi uyuyor.", 92, 196], ["Ψ mutlu. Kutu sıcak.", 92, 284]].forEach(([m, x, y]) => c.fillText(m, x, y));
+    [[dilde("29 Ekim, gece", "October 29, night"), 92, 108], [dilde("Gözlem: kedi uyuyor.", "Observation: cat asleep."), 92, 196], [dilde("Ψ mutlu. Kutu sıcak.", "Ψ happy. Box warm."), 92, 284]].forEach(([m, x, y]) => c.fillText(m, x, y));
     c.restore();
     // kenarda küçük kedi karalaması
     c.save(); c.strokeStyle = "#24407A"; c.lineWidth = 3; c.lineCap = "round";
@@ -923,7 +929,7 @@ function sayfa8(c) {
     c.fillStyle = R.tahta; c.fillRect(0, 0, w, h);
     noktalar(c, 0, 0, w, h, "#FFFFFF12", 10, 2.4);
     psi(c, w * 0.5, h * 0.82, 1.1, { genlik: 1.1, goz: "kirp" });
-    balon(c, { x: w * 0.5, y: h * 0.22, metin: "Ölçüm yapıldı. İyi geceler!", en: 300, kuyruk: [w * 0.5, h * 0.52] });
+    balon(c, { x: w * 0.5, y: h * 0.22, metin: dilde("Ölçüm yapıldı. İyi geceler!", "Measured. Good night!"), en: 300, kuyruk: [w * 0.5, h * 0.52] });
   });
 }
 
@@ -974,13 +980,14 @@ function comicInfo() {
   const sayfalar = SAYFALAR.map((s, i) => `    <Page Image="${i}" ImageWidth="${s.w}" ImageHeight="${H}"${s.kapak ? ' Type="FrontCover"' : ""}${s.cift ? ' DoublePage="True"' : ""}/>`).join("\n");
   return `<?xml version="1.0" encoding="utf-8"?>
 <ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Title>Kedi, Kutu ve Dalga</Title>
-  <Series>Laboratuvar Defteri</Series>
+  <Title>${ORNEK_CIZGI.ad}</Title>
+  <Series>${ORNEK_CIZGI.seri}</Series>
   <Number>1</Number>
   <Year>1927</Year>
   <Writer>Kenar Notu</Writer>
-  <Summary>Kopenhag, 1927. Kedi Planck, Profesör Nur ve aynı anda birçok yerde olabilen dalga fonksiyonu Psi bir gece laboratuvarda karşılaşır.</Summary>
-  <LanguageISO>tr</LanguageISO>
+  <Summary>${dilde("Kopenhag, 1927. Kedi Planck, Profesör Nur ve aynı anda birçok yerde olabilen dalga fonksiyonu Psi bir gece laboratuvarda karşılaşır.",
+    "Copenhagen, 1927. Planck the cat, Professor Nur and Psi, a wave function that can be in many places at once, meet one night in the lab.")}</Summary>
+  <LanguageISO>${dilde("tr", "en")}</LanguageISO>
   <Manga>No</Manga>
   <PageCount>${SAYFALAR.length}</PageCount>
   <Pages>

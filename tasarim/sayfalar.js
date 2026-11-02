@@ -7,6 +7,34 @@
 // rakam ve işleç dik, kesir üst üste). Görünen parçalar kaydedilmeden çizilir; her satır için bir kez
 // saydam "kayıt" metni yazılır. fillText'i dinleyen modüller (arama, tanıtım süsleri, Tekrar kesitleri)
 // böylece parça parça değil, satırın tamamını gerçek konumu ve genişliğiyle görür.
+//
+// Dil: örnek sayfanın içerik dili arayüz dilinden ayrıdır ve belge kaydının "ornekDil" alanında kilitlidir
+// (ornekSayfaDili). Dil değişince sayfa başka dilde akarsa üstündeki mürekkep, fosforlu ve kırpıntılar kayardı.
+// Çizim sırasında içerik dili "icerik" değişkenindedir: kısa etiketler (başlık, "Örnek 1", "Şekil 3.9") tc() ile
+// dil/en-ornek.js'ten, formüllü paragraflar dilde(tr, en) ile yerinde. Başka modüller sayfa metninde etiket ararken
+// listenin diliyle ornekEtiket(anahtar, liste.dil) kullanmalı (arayüz dilindeki PDF_PAGES için t() de olur).
+// Arayüz etiketleri (TEMPLATES, defter kâğıdı başlıkları) arayüz dilinde: t().
+
+import { t, ingilizceMi } from "./dil.js";
+import EN_ORNEK from "./dil/en-ornek.js";
+import * as ORTAK from "./ortak.js";
+
+const ARAYUZ = ingilizceMi ? "en" : "tr";
+const DILLER = ["tr", "en"];
+const gecerliDil = (d) => DILLER.includes(d);
+// Çizilen sayfanın içerik dili; yalnız çizim süresince değişir (sayfa() sarmalayıcısı), çizim eşzamanlıdır
+let icerik = ARAYUZ;
+const dilde = (tr, en) => (icerik === "en" ? en : tr);
+const icerikYerel = () => (icerik === "en" ? "en" : "tr-TR");
+// Etiket içerik dilinde (dil.js t() ile aynı yer tutucu kuralı); Türkçede anahtarın kendisi
+function etiketDilde(anahtar, dil, p) {
+  const s = dil === "en" && Object.hasOwn(EN_ORNEK, anahtar) ? EN_ORNEK[anahtar] : anahtar;
+  if (typeof s === "function") return s(p || {});
+  return p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (p[k] ?? m)) : s;
+}
+const tc = (anahtar, p) => etiketDilde(anahtar, icerik, p);
+// Başka modüller için: örnek sayfa listesinin dilinde etiket (ör. ornekEtiket("Örnek {n}", liste.dil, { n: 1 }))
+export const ornekEtiket = (anahtar, dil = ARAYUZ, p) => etiketDilde(anahtar, gecerliDil(dil) ? dil : ARAYUZ, p);
 
 export const PW = 800;
 export const PH = 1131;
@@ -379,10 +407,11 @@ function paragraf(ctx, src, y, { x = 80, w = 640, boy = 17, sat = 27, renk = C.i
   const yaziParca = (t, f) => ({ k: kosu(ctx, t, f, boy), duz: t, f });
   const ks = kelimeler(src).map((k) => kelime(k.map((p) => (p.tur === "m" ? (() => { const m = matKutu(ctx, p.s, boy); return { k: m, duz: m.duz }; })()
     : yaziParca(p.s, p.tur === "e" ? E : R)))));
-  // Tek parçalı düz kelimeyi kalan genişliğe sığan en uzun heceden böler: [önü + "-", arkası] ya da null
+  // Tek parçalı düz kelimeyi kalan genişliğe sığan en uzun heceden böler: [önü + "-", arkası] ya da null.
+  // Hece kuralı Türkçe: İngilizce sayfada bölünmez ("equ-ation" olurdu), satır sola dayalı kalabilir
   const bol = (k, kalan) => {
     const p = k.par[0];
-    if (k.par.length !== 1 || !p.f) return null;
+    if (k.par.length !== 1 || !p.f || icerik !== "tr") return null;
     for (const i of heceler(p.duz).reverse()) {
       const on = yaziParca(p.duz.slice(0, i) + "-", p.f);
       if (on.k.w <= kalan) return [kelime([on]), kelime([yaziParca(p.duz.slice(i), p.f)])];
@@ -430,7 +459,7 @@ function ust(ctx, sol, no) {
   ctx.fillStyle = C.muted;
   ctx.font = yazi(11, { aile: "etiket", w: 600 });
   ctx.letterSpacing = "1.4px";
-  ham(ctx, sol.toLocaleUpperCase("tr"), 80, 62);
+  ham(ctx, sol.toLocaleUpperCase(icerikYerel()), 80, 62);
   ctx.letterSpacing = "0px";
   ctx.fillStyle = C.ink;
   ctx.font = yazi(15, { aile: "baslik", w: 600 });
@@ -465,6 +494,7 @@ function etiket(ctx, metin, y, { renk = C.accent, egik = false } = {}) {
   ctx.fillStyle = renk;
   ctx.font = yazi(17, { w: 600, i: egik });
   ctx.fillText(metin, 80, y);
+  return 80 + ctx.measureText(metin).width;   // etiketin bittiği yer: İngilizce "Example 1." Türkçe etiketten uzun
 }
 
 function kutu(ctx, y, h, { zemin = C.box, serit = C.accent } = {}) {
@@ -516,34 +546,38 @@ function alistirmalar(ctx, liste, y, { sutunlar = [96, 420], sat = 40, boy = 18 
 // ---------- Kalkülüs II ----------
 
 function kalkulus1(ctx) {
-  ust(ctx, "Bölüm 3 · Türev ve uygulamaları", 47);
-  baslik(ctx, "3.4", "Zincir Kuralı", 140);
-  let y = paragraf(ctx, "Bileşke fonksiyonların türevini almak için *zincir kuralını* kullanırız. Bir fonksiyon başka bir fonksiyonun içine yerleştirildiğinde, dış fonksiyonun türevi iç fonksiyonda hesaplanır ve iç fonksiyonun türeviyle çarpılır.", 186);
+  ust(ctx, tc("Bölüm 3 · Türev ve uygulamaları"), 47);
+  baslik(ctx, "3.4", tc("Zincir Kuralı"), 140);
+  let y = paragraf(ctx, dilde("Bileşke fonksiyonların türevini almak için *zincir kuralını* kullanırız. Bir fonksiyon başka bir fonksiyonun içine yerleştirildiğinde, dış fonksiyonun türevi iç fonksiyonda hesaplanır ve iç fonksiyonun türeviyle çarpılır.",
+    "We use the *chain rule* to differentiate composite functions. When one function sits inside another, the derivative of the outer function is taken at the inner function and multiplied by the inner derivative."), 186);
 
   const kt = y - 2;
   kutu(ctx, kt, 168);
   ctx.fillStyle = C.accent;
   ctx.font = yazi(17, { aile: "baslik", w: 600 });
-  ctx.fillText("Teorem 3.4", 96, kt + 34);
-  const tw = ctx.measureText("Teorem 3.4").width;
+  const teorem = tc("Teorem {n}", { n: "3.4" });
+  ctx.fillText(teorem, 96, kt + 34);
+  const tw = ctx.measureText(teorem).width;
   ctx.font = yazi(16, { i: true });
   ctx.fillStyle = C.ink;
-  ctx.fillText("(Zincir Kuralı)", 96 + tw + 8, kt + 34);
-  paragraf(ctx, "$g$ fonksiyonu $x$ noktasında, $f$ fonksiyonu da $g(x)$ noktasında türevlenebilir ise $F = f ∘ g$ bileşkesi de $x$ noktasında türevlenebilirdir ve", kt + 62, { x: 96, w: 610, boy: 16, sat: 25 });
+  ctx.fillText(`(${tc("Zincir Kuralı")})`, 96 + tw + 8, kt + 34);
+  paragraf(ctx, dilde("$g$ fonksiyonu $x$ noktasında, $f$ fonksiyonu da $g(x)$ noktasında türevlenebilir ise $F = f ∘ g$ bileşkesi de $x$ noktasında türevlenebilirdir ve",
+    "If $g$ is differentiable at $x$ and $f$ is differentiable at $g(x)$, then the composite $F = f ∘ g$ is differentiable at $x$ and"), kt + 62, { x: 96, w: 610, boy: 16, sat: 25 });
   formul(ctx, "F′(x) = f′(g(x)) · g′(x)", kt + 114, { boy: 22, no: "3.6" });
   y = kt + 168 + 40;
 
-  y = paragraf(ctx, "Leibniz gösterimiyle, $y = f(u)$ ve $u = g(x)$ için kural şöyle yazılır:", y);
+  // İngilizcede de satır "Leibniz" ile başlar: Tekrar kesitleri onu arar (tekrar.js sayfaKesitleri)
+  y = paragraf(ctx, dilde("Leibniz gösterimiyle, $y = f(u)$ ve $u = g(x)$ için kural şöyle yazılır:", "Leibniz notation, with $y = f(u)$ and $u = g(x)$, writes the rule as:"), y);
   y = formul(ctx, "\\f{dy}{dx} = \\f{dy}{du} · \\f{du}{dx}", y - 6, { boy: 23, no: "3.7" }) + 44;
 
-  etiket(ctx, "Örnek 1.", y);
-  y = paragraf(ctx, "$y = (3x^2 + 1)^5$ fonksiyonunun türevini bulunuz.", y, { x: 160, w: 560 }) + 8;
-  etiket(ctx, "Çözüm.", y, { renk: C.ink, egik: true });
-  y = paragraf(ctx, "İç fonksiyon $u = 3x^2 + 1$, dış fonksiyon $y = u^5$ olsun. Buna göre", y, { x: 160, w: 560 });
+  const ox1 = Math.max(160, etiket(ctx, `${tc("Örnek {n}", { n: 1 })}.`, y) + 10);
+  y = paragraf(ctx, dilde("$y = (3x^2 + 1)^5$ fonksiyonunun türevini bulunuz.", "Find the derivative of $y = (3x^2 + 1)^5$."), y, { x: ox1, w: 720 - ox1 }) + 8;
+  etiket(ctx, `${tc("Çözüm")}.`, y, { renk: C.ink, egik: true });
+  y = paragraf(ctx, dilde("İç fonksiyon $u = 3x^2 + 1$, dış fonksiyon $y = u^5$ olsun. Buna göre", "Let the inner function be $u = 3x^2 + 1$ and the outer function $y = u^5$. Then"), y, { x: 160, w: 560 });
   y = formul(ctx, "\\f{dy}{du} = 5u^4, \\Q \\f{du}{dx} = 6x", y - 4, { boy: 20 }) + 14;
   y = formul(ctx, "\\f{dy}{dx} = 5(3x^2 + 1)^4 · 6x = 30x(3x^2 + 1)^4", y, { boy: 20 }) + 50;
 
-  araBaslik(ctx, "Alıştırmalar", y);
+  araBaslik(ctx, tc("Alıştırmalar"), y);
   alistirmalar(ctx, [
     [1, "y = sin 4x"], [2, "y = \\r{1 + x^3}"],
     [3, "y = e^{x^2}"], [4, "y = ln(cos x)"],
@@ -552,9 +586,10 @@ function kalkulus1(ctx) {
 }
 
 function kalkulus2(ctx) {
-  ust(ctx, "Bölüm 3 · Türev ve uygulamaları", 48);
-  baslik(ctx, "3.5", "Kapalı Türev", 140);
-  let y = paragraf(ctx, "Bazı eğriler $y = f(x)$ biçiminde açıkça yazılamaz; $x^2 + y^2 = 25$ çemberi buna bir örnektir. Bu durumda denklemin iki tarafının $x$’e göre türevini alır, $y$’yi $x$’in bir fonksiyonu gibi düşünürüz. $y$ içeren her terimde zincir kuralı gerekir.", 186);
+  ust(ctx, tc("Bölüm 3 · Türev ve uygulamaları"), 48);
+  baslik(ctx, "3.5", tc("Kapalı Türev"), 140);
+  let y = paragraf(ctx, dilde("Bazı eğriler $y = f(x)$ biçiminde açıkça yazılamaz; $x^2 + y^2 = 25$ çemberi buna bir örnektir. Bu durumda denklemin iki tarafının $x$’e göre türevini alır, $y$’yi $x$’in bir fonksiyonu gibi düşünürüz. $y$ içeren her terimde zincir kuralı gerekir.",
+    "Some curves cannot be written explicitly as $y = f(x)$; the circle $x^2 + y^2 = 25$ is one example. We then differentiate both sides of the equation with respect to $x$, treating $y$ as a function of $x$. Every term containing $y$ needs the chain rule."), 186);
 
   // Şekil: çember, yarıçap ve teğet. Teğet yarıçapa diktir.
   const cx = 400, cy = y + 196, s = 24;
@@ -591,32 +626,37 @@ function kalkulus2(ctx) {
   matYaz(ctx, "x", cx + 190, cy + 20, 16);
   matYaz(ctx, "y", cx + 10, cy - 166, 16);
   matYaz(ctx, "x^2 + y^2 = 25", cx - 5 * s * 0.71 - 104, cy - 5 * s * 0.71 - 8, 15, { renk: C.accent });
-  y = sekilYazisi(ctx, "Şekil 3.9", "$x^2 + y^2 = 25$ çemberi ve $(3, 4)$ noktasındaki teğet doğrusu.", cy + 186) + 22;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "3.9" }), dilde("$x^2 + y^2 = 25$ çemberi ve $(3, 4)$ noktasındaki teğet doğrusu.", "The circle $x^2 + y^2 = 25$ and its tangent line at $(3, 4)$."), cy + 186) + 22;
 
-  etiket(ctx, "Örnek 2.", y);
-  y = paragraf(ctx, "Çemberin $(3, 4)$ noktasındaki teğet doğrusunun denklemini bulunuz.", y, { x: 160, w: 560 }) + 8;
-  etiket(ctx, "Çözüm.", y, { renk: C.ink, egik: true });
-  y = paragraf(ctx, "İki tarafın $x$’e göre türevi alınır; $y^2$ teriminde zincir kuralı $2y\\,y′$ verir:", y, { x: 160, w: 560 });
+  const ox2 = Math.max(160, etiket(ctx, `${tc("Örnek {n}", { n: 2 })}.`, y) + 10);
+  y = paragraf(ctx, dilde("Çemberin $(3, 4)$ noktasındaki teğet doğrusunun denklemini bulunuz.", "Find the equation of the tangent line to the circle at $(3, 4)$."), y, { x: ox2, w: 720 - ox2 }) + 8;
+  etiket(ctx, `${tc("Çözüm")}.`, y, { renk: C.ink, egik: true });
+  y = paragraf(ctx, dilde("İki tarafın $x$’e göre türevi alınır; $y^2$ teriminde zincir kuralı $2y\\,y′$ verir:", "Differentiate both sides with respect to $x$; for the $y^2$ term the chain rule gives $2y\\,y′$:"), y, { x: 160, w: 560 });
   y = formul(ctx, "2x + 2y\\,y′ = 0 \\q ⟹ \\qy′ = −\\f{x}{y}", y - 4, { boy: 20 }) + 30;
-  y = paragraf(ctx, "$(3, 4)$ noktasında eğim $m = −3/4$ olduğundan teğet doğrusu", y, { x: 160, w: 560 });
+  y = paragraf(ctx, dilde("$(3, 4)$ noktasında eğim $m = −3/4$ olduğundan teğet doğrusu", "At $(3, 4)$ the slope is $m = −3/4$, so the tangent line is"), y, { x: 160, w: 560 });
   y = formul(ctx, "y − 4 = −\\f{3}{4}(x − 3) \\q ⟺ \\q3x + 4y = 25", y - 4, { boy: 20 }) + 48;
 
-  araBaslik(ctx, "Alıştırmalar", y);
+  araBaslik(ctx, tc("Alıştırmalar"), y);
   alistirmalar(ctx, [[7, "x^3 + y^3 = 6xy"], [8, "sin(x + y) = y^2 cos x"], [9, "\\r{x} + \\r{y} = 4"]], y + 42, { sutunlar: [96, 300, 540] });
 }
 
 function kalkulus3(ctx) {
-  ust(ctx, "Bölüm 3 · Türev ve uygulamaları", 49);
-  baslik(ctx, "3.6", "Logaritmik Türev", 140);
-  let y = paragraf(ctx, "Çarpım, bölüm ve kuvvetlerden oluşan bir fonksiyonun türevini doğrudan almak uzun sürer. İki tarafın doğal logaritmasını alıp ifadeyi logaritmanın özellikleriyle toplamaya çevirmek, sonra kapalı türev almak işi kısaltır.", 186);
+  ust(ctx, tc("Bölüm 3 · Türev ve uygulamaları"), 49);
+  baslik(ctx, "3.6", tc("Logaritmik Türev"), 140);
+  let y = paragraf(ctx, dilde("Çarpım, bölüm ve kuvvetlerden oluşan bir fonksiyonun türevini doğrudan almak uzun sürer. İki tarafın doğal logaritmasını alıp ifadeyi logaritmanın özellikleriyle toplamaya çevirmek, sonra kapalı türev almak işi kısaltır.",
+    "Differentiating a function made of products, quotients and powers directly takes a long time. Taking the natural log of both sides, turning the expression into a sum with the laws of logarithms, then differentiating implicitly is shorter."), 186);
 
   const kt = y - 2;
   kutu(ctx, kt, 132);
   ctx.fillStyle = C.accent;
   ctx.font = yazi(17, { aile: "baslik", w: 600 });
-  ctx.fillText("Yöntem", 96, kt + 34);
+  ctx.fillText(tc("Yöntem"), 96, kt + 34);
   let yy = kt + 62;
-  for (const [no, metin] of [["1.", "$y = f(x)$ denkleminin iki tarafının doğal logaritmasını alın ve sadeleştirin."], ["2.", "$x$’e göre kapalı türev alın."], ["3.", "Çıkan denklemi $y′$ için çözün."]]) {
+  for (const [no, metin] of [
+    ["1.", dilde("$y = f(x)$ denkleminin iki tarafının doğal logaritmasını alın ve sadeleştirin.", "Take the natural logarithm of both sides of $y = f(x)$ and simplify.")],
+    ["2.", dilde("$x$’e göre kapalı türev alın.", "Differentiate implicitly with respect to $x$.")],
+    ["3.", dilde("Çıkan denklemi $y′$ için çözün.", "Solve the resulting equation for $y′$.")],
+  ]) {
     ctx.fillStyle = C.accent;
     ctx.font = yazi(16, { w: 600 });
     ctx.fillText(no, 96, yy);
@@ -624,20 +664,21 @@ function kalkulus3(ctx) {
   }
   y = kt + 132 + 40;
 
-  etiket(ctx, "Örnek 3.", y);
-  y = paragraf(ctx, "Aşağıdaki fonksiyonun türevini bulunuz.", y, { x: 160, w: 560 });
+  const ox3 = Math.max(160, etiket(ctx, `${tc("Örnek {n}", { n: 3 })}.`, y) + 10);
+  y = paragraf(ctx, dilde("Aşağıdaki fonksiyonun türevini bulunuz.", "Find the derivative of the following function."), y, { x: ox3, w: 720 - ox3 });
   y = formul(ctx, "y = \\f{x^{3/4}\\r{x^2 + 1}}{(3x + 2)^5}", y - 2, { boy: 21 }) + 30;
-  etiket(ctx, "Çözüm.", y, { renk: C.ink, egik: true });
-  y = paragraf(ctx, "İki tarafın logaritması alınırsa", y, { x: 160, w: 560 });
+  etiket(ctx, `${tc("Çözüm")}.`, y, { renk: C.ink, egik: true });
+  y = paragraf(ctx, dilde("İki tarafın logaritması alınırsa", "Taking logarithms of both sides gives"), y, { x: 160, w: 560 });
   y = formul(ctx, "ln y = \\f{3}{4} ln x + \\f{1}{2} ln(x^2 + 1) − 5 ln(3x + 2)", y - 4, { boy: 19 }) + 26;
-  y = paragraf(ctx, "olur. $x$’e göre türev alınır ve $y$ ile çarpılırsa", y, { x: 160, w: 560 });
+  y = paragraf(ctx, dilde("olur. $x$’e göre türev alınır ve $y$ ile çarpılırsa", "Differentiating with respect to $x$ and multiplying by $y$,"), y, { x: 160, w: 560 });
   y = formul(ctx, "y′ = \\f{x^{3/4}\\r{x^2 + 1}}{(3x + 2)^5}\\,\\p{\\f{3}{4x} + \\f{x}{x^2 + 1} − \\f{15}{3x + 2}}", y - 2, { boy: 19 }) + 40;
 
-  etiket(ctx, "Örnek 4.", y);
-  y = paragraf(ctx, "$x > 0$ için $y = x^x$ fonksiyonunun türevini bulunuz. Ne kuvvet kuralı ne üstel kural uygulanır; taban da üs de değişkendir.", y, { x: 160, w: 560 });
+  const ox4 = Math.max(160, etiket(ctx, `${tc("Örnek {n}", { n: 4 })}.`, y) + 10);
+  y = paragraf(ctx, dilde("$x > 0$ için $y = x^x$ fonksiyonunun türevini bulunuz. Ne kuvvet kuralı ne üstel kural uygulanır; taban da üs de değişkendir.",
+    "Find the derivative of $y = x^x$ for $x > 0$. Neither the power rule nor the exponential rule applies; both the base and the exponent vary."), y, { x: ox4, w: 720 - ox4 });
   y = formul(ctx, "ln y = x ln x \\q ⟹ \\q\\f{y′}{y} = ln x + 1 \\q ⟹ \\qy′ = x^x(ln x + 1)", y - 2, { boy: 19 }) + 48;
 
-  araBaslik(ctx, "Alıştırmalar", y);
+  araBaslik(ctx, tc("Alıştırmalar"), y);
   alistirmalar(ctx, [
     [10, "y = x^{sin x}"], [11, "y = (ln x)^{cos x}"],
     [12, "y = \\r{\\f{x − 1}{x^4 + 1}}"], [13, "y = \\f{e^{−x} cos^2 x}{x^2 + x + 1}"],
@@ -714,12 +755,14 @@ function kirisCiz(ctx, ustY, { yukler = [], olculer = [], noktalar = [], mesnet 
 const mX = (m) => KIRIS.L + (m * (KIRIS.R - KIRIS.L)) / 6;
 
 function statik1(ctx) {
-  ust(ctx, "Bölüm 2 · Kirişler", 23);
-  baslik(ctx, "2.5", "Basit Mesnetli Kirişler", 140);
-  let y = paragraf(ctx, "Bir ucu sabit mesnede (pim), öbür ucu kayıcı mesnede oturan kirişe *basit mesnetli kiriş* denir. Sabit mesnet iki tepki kuvveti ($A_x$, $A_y$), kayıcı mesnet ise yüzeye dik tek bir tepki ($B_y$) verir. Üç bilinmeyen düzlemdeki üç denge denklemiyle bulunur; kiriş izostatiktir.", 186) + 12;
+  ust(ctx, tc("Bölüm 2 · Kirişler"), 23);
+  baslik(ctx, "2.5", tc("Basit Mesnetli Kirişler"), 140);
+  let y = paragraf(ctx, dilde("Bir ucu sabit mesnede (pim), öbür ucu kayıcı mesnede oturan kirişe *basit mesnetli kiriş* denir. Sabit mesnet iki tepki kuvveti ($A_x$, $A_y$), kayıcı mesnet ise yüzeye dik tek bir tepki ($B_y$) verir. Üç bilinmeyen düzlemdeki üç denge denklemiyle bulunur; kiriş izostatiktir.",
+    "A beam resting on a pin support at one end and a roller at the other is a *simply supported beam*. The pin gives two reactions ($A_x$, $A_y$), the roller a single reaction normal to the surface ($B_y$). The three unknowns follow from the three equilibrium equations in the plane; the beam is statically determinate."), 186) + 12;
 
-  etiket(ctx, "Örnek 2.6", y);
-  y = paragraf(ctx, "6\u00a0m uzunluğundaki AB kirişinin tamamına $w = 4\\,\\t{kN/m}$ yayılı yük, A’dan 2\u00a0m uzaktaki C noktasına $P = 18\\,\\t{kN}$ tekil yük etkimektedir. Mesnet tepkilerini bulunuz.", y, { x: 170, w: 550 });
+  etiket(ctx, tc("Örnek {n}", { n: "2.6" }), y);
+  y = paragraf(ctx, dilde("6\u00a0m uzunluğundaki AB kirişinin tamamına $w = 4\\,\\t{kN/m}$ yayılı yük, A’dan 2\u00a0m uzaktaki C noktasına $P = 18\\,\\t{kN}$ tekil yük etkimektedir. Mesnet tepkilerini bulunuz.",
+    "A distributed load $w = 4\\,\\t{kN/m}$ acts over the whole 6\u00a0m beam AB, and a point load $P = 18\\,\\t{kN}$ acts at C, 2\u00a0m from A. Find the support reactions."), y, { x: 170, w: 550 });
 
   const t1 = y + 92;
   kirisCiz(ctx, t1, {
@@ -727,7 +770,7 @@ function statik1(ctx) {
     olculer: [[KIRIS.L, mX(2), "2\\,\\t{m}"], [mX(2), KIRIS.R, "4\\,\\t{m}"]],
     noktalar: [["A", KIRIS.L - 34, 40], ["B", KIRIS.R + 34, 40], ["C", mX(2), 36]],
   });
-  y = sekilYazisi(ctx, "Şekil 2.11", "Yükleme ve mesnetler.", t1 + 136) + 26;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "2.11" }), dilde("Yükleme ve mesnetler.", "Loading and supports."), t1 + 136) + 26;
 
   // Serbest cisim diyagramı: mesnetler yerine tepkiler, yayılı yük yerine bileşkesi
   const t2 = y + 96, { L, R } = KIRIS;
@@ -764,7 +807,8 @@ function statik1(ctx) {
   arrow(ctx, R + 40, t2 - 30, R + 40, t2 - 62, 6);
   matYaz(ctx, "x", R + 76, t2 - 26, 13, { renk: C.muted });
   matYaz(ctx, "y", R + 44, t2 - 64, 13, { renk: C.muted });
-  y = sekilYazisi(ctx, "Şekil 2.12", "Serbest cisim diyagramı. Yayılı yük, bileşkesiyle (24 kN, açıklığın ortasında) gösterilmiştir.", t2 + 122) + 34;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "2.12" }), dilde("Serbest cisim diyagramı. Yayılı yük, bileşkesiyle (24 kN, açıklığın ortasında) gösterilmiştir.",
+    "Free-body diagram. The distributed load is shown by its resultant (24 kN, at midspan)."), t2 + 122) + 34;
 
   // Denge denklemleri: koşullar solda, eşitlikler hizalı
   const satirlar = [
@@ -780,14 +824,17 @@ function statik1(ctx) {
 }
 
 function statik2(ctx) {
-  ust(ctx, "Bölüm 2 · Kirişler", 24);
-  baslik(ctx, "2.6", "Kesme Kuvveti ve Eğilme Momenti", 140);
-  let y = paragraf(ctx, "Kesitteki iç kuvvetler, kesitin bir yanında kalan parçanın dengesinden bulunur. Yayılı yük $w$ aşağı doğru ise kesme kuvveti $V$ ve eğilme momenti $M$ için", 186);
+  ust(ctx, tc("Bölüm 2 · Kirişler"), 24);
+  baslik(ctx, "2.6", tc("Kesme Kuvveti ve Eğilme Momenti"), 140);
+  let y = paragraf(ctx, dilde("Kesitteki iç kuvvetler, kesitin bir yanında kalan parçanın dengesinden bulunur. Yayılı yük $w$ aşağı doğru ise kesme kuvveti $V$ ve eğilme momenti $M$ için",
+    "The internal forces at a section follow from the equilibrium of the part on one side of it. If the distributed load $w$ acts downward, the shear force $V$ and bending moment $M$ satisfy"), 186);
   y = formul(ctx, "\\f{dV}{dx} = −w(x), \\Q \\f{dM}{dx} = V(x)", y - 6, { boy: 21, no: "2.9" }) + 30;
-  y = paragraf(ctx, "Tekil yükün altında $V$ yük kadar sıçrar; $M$, kesme kuvvetinin işaret değiştirdiği yerde en büyük değerini alır.", y) + 10;
+  y = paragraf(ctx, dilde("Tekil yükün altında $V$ yük kadar sıçrar; $M$, kesme kuvvetinin işaret değiştirdiği yerde en büyük değerini alır.",
+    "Under a point load, $V$ jumps by the size of the load; $M$ is largest where the shear force changes sign."), y) + 10;
 
-  etiket(ctx, "Örnek 2.6", y);
-  y = paragraf(ctx, "(devam) $A_y = 24\\,\\t{kN}$, $B_y = 18\\,\\t{kN}$ bulunmuştu. Kesit yöntemiyle ($x$ m, $V$ kN, $M$ kN·m):", y, { x: 170, w: 550 }) + 8;
+  etiket(ctx, tc("Örnek {n}", { n: "2.6" }), y);
+  y = paragraf(ctx, dilde("(devam) $A_y = 24\\,\\t{kN}$, $B_y = 18\\,\\t{kN}$ bulunmuştu. Kesit yöntemiyle ($x$ m, $V$ kN, $M$ kN·m):",
+    "(continued) We found $A_y = 24\\,\\t{kN}$ and $B_y = 18\\,\\t{kN}$. By the method of sections ($x$ in m, $V$ in kN, $M$ in kN·m):"), y, { x: 170, w: 550 }) + 8;
   for (const [kosul, ifade] of [["0 ≤ x < 2:", "V = 24 − 4x, \\q M = 24x − 2x^2"], ["2 < x ≤ 6:", "V = 6 − 4x, \\q M = 36 + 6x − 2x^2"]]) {
     matYaz(ctx, kosul, 170, y, 18);
     matYaz(ctx, ifade, 290, y, 18);
@@ -796,12 +843,12 @@ function statik2(ctx) {
 
   // Kiriş ve iki diyagram aynı x ekseninde
   const { L, R } = KIRIS;
-  const t = y + 80;
-  kirisCiz(ctx, t, {
+  const kY = y + 80;   // t değil: çeviri işlevleri (t, tc) gölgelenmesin
+  kirisCiz(ctx, kY, {
     yukler: [{ tur: "yayili", x0: L, x1: R, etiket: "4\\,\\t{kN/m}" }, { tur: "tekil", x: mX(2), etiket: "18\\,\\t{kN}" }],
     noktalar: [["A", L - 30, 36], ["B", R + 30, 36]],
   });
-  const vY = t + 136, vK = 2.1;      // V ekseni, kN başına birim
+  const vY = kY + 136, vK = 2.1;      // V ekseni, kN başına birim
   const mY = vY + 160, mK = 1.7;     // M ekseni, kN·m başına birim
   const V = [[0, 24], [2, 16], [2, -2], [6, -18]];
   const parca = (pts, renk) => {
@@ -824,35 +871,41 @@ function statik2(ctx) {
   ctx.fill();
   cizgi(ctx, mp, { w: 1.8 });
   for (const ey of [vY, mY]) cizgi(ctx, [[L - 10, ey], [R + 14, ey]], { renk: C.muted, w: 1 });
-  cizgi(ctx, [[mX(2), t + 40], [mX(2), mY + 24]], { renk: C.muted, w: 0.8, kesik: [3, 4] });
+  cizgi(ctx, [[mX(2), kY + 40], [mX(2), mY + 24]], { renk: C.muted, w: 0.8, kesik: [3, 4] });
   matYaz(ctx, "V\\;(\\t{kN})", L - 20, vY + 5, 15, { hiza: "sag" });
   matYaz(ctx, "M\\;(\\t{kN·m})", L - 20, mY + 5, 15, { hiza: "sag" });
   matYaz(ctx, "24", mX(0) + 6, vY - 24 * vK - 8, 14);
   matYaz(ctx, "16", mX(2) - 8, vY - 16 * vK - 8, 14, { hiza: "sag" });
   matYaz(ctx, "−2", mX(2) + 6, vY + 2 * vK + 16, 14);
   matYaz(ctx, "−18", mX(6) + 8, vY + 18 * vK + 4, 14);
-  matYaz(ctx, "M_{\\t{maks}} = 40", mX(2) + 8, mY - 40 * mK - 8, 14);
+  matYaz(ctx, dilde("M_{\\t{maks}} = 40", "M_{\\t{max}} = 40"), mX(2) + 8, mY - 40 * mK - 8, 14);
   ctx.fillStyle = C.ink;
   ctx.beginPath(); ctx.arc(mX(2), mY - 40 * mK, 3, 0, Math.PI * 2); ctx.fill();
   matYaz(ctx, "x = 2\\,\\t{m}", mX(2), mY + 38, 13, { hiza: "orta", renk: C.muted });
-  y = sekilYazisi(ctx, "Şekil 2.13", "Kesme kuvveti ve eğilme momenti diyagramları.", mY + 64) + 24;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "2.13" }), dilde("Kesme kuvveti ve eğilme momenti diyagramları.", "Shear force and bending moment diagrams."), mY + 64) + 24;
 
   kutu(ctx, y - 6, 74, { zemin: "#f7f3ea", serit: "#b8871b" });
-  paragraf(ctx, "*Not.* $V$, C noktasında $+16$’dan $−2$’ye atlayarak işaret değiştirir; en büyük moment buradadır: $M_{\\t{maks}} = 24(2) − 2(2)^2 = 40\\,\\t{kN·m}$.", y + 22, { x: 96, w: 610, boy: 16, sat: 24 });
+  paragraf(ctx, dilde("*Not.* $V$, C noktasında $+16$’dan $−2$’ye atlayarak işaret değiştirir; en büyük moment buradadır: $M_{\\t{maks}} = 24(2) − 2(2)^2 = 40\\,\\t{kN·m}$.",
+    "*Note.* At C, $V$ changes sign by jumping from $+16$ to $−2$; the largest moment is here: $M_{\\t{max}} = 24(2) − 2(2)^2 = 40\\,\\t{kN·m}$."), y + 22, { x: 96, w: 610, boy: 16, sat: 24 });
 }
 
 function statik3(ctx) {
-  ust(ctx, "Bölüm 2 · Kirişler", 25);
-  baslik(ctx, "", "Problem 2.7", 140);
-  let y = paragraf(ctx, "Şekildeki AB kirişi A noktasında sabit mesnet, B noktasında kayıcı mesnet ile taşınmaktadır. C noktasına $12\\,\\t{kN}$’luk tekil yük, CB aralığına $4\\,\\t{kN/m}$’lik yayılı yük etkimektedir.", 186);
-  const t = y + 118, Cx = KIRIS.L + 300;
-  kirisCiz(ctx, t, {
+  ust(ctx, tc("Bölüm 2 · Kirişler"), 25);
+  baslik(ctx, "", tc("Problem {n}", { n: "2.7" }), 140);
+  let y = paragraf(ctx, dilde("Şekildeki AB kirişi A noktasında sabit mesnet, B noktasında kayıcı mesnet ile taşınmaktadır. C noktasına $12\\,\\t{kN}$’luk tekil yük, CB aralığına $4\\,\\t{kN/m}$’lik yayılı yük etkimektedir.",
+    "Beam AB in the figure has a pin support at A and a roller at B. A point load of $12\\,\\t{kN}$ acts at C, and a distributed load of $4\\,\\t{kN/m}$ acts over CB."), 186);
+  const kY = y + 118, Cx = KIRIS.L + 300;   // t değil: çeviri işlevleri (t, tc) gölgelenmesin
+  kirisCiz(ctx, kY, {
     yukler: [{ tur: "yayili", x0: Cx, x1: KIRIS.R, etiket: "4\\,\\t{kN/m}" }, { tur: "tekil", x: Cx, etiket: "12\\,\\t{kN}" }],
     olculer: [[KIRIS.L, Cx, "3\\,\\t{m}"], [Cx, KIRIS.R, "2\\,\\t{m}"]],
     noktalar: [["A", KIRIS.L - 34, 40], ["B", KIRIS.R + 34, 40], ["C", Cx, 36]],
   });
-  y = sekilYazisi(ctx, "Şekil P2.7", "", t + 136) + 28;
-  for (const [h, q] of [["a)", "Serbest cisim diyagramını çiziniz."], ["b)", "A ve B mesnet tepkilerini bulunuz."], ["c)", "Kesme kuvveti ve eğilme momenti diyagramlarını çiziniz; en büyük momentin yerini ve değerini belirtiniz."]]) {
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "P2.7" }), "", kY + 136) + 28;
+  for (const [h, q] of [
+    ["a)", dilde("Serbest cisim diyagramını çiziniz.", "Draw the free-body diagram.")],
+    ["b)", dilde("A ve B mesnet tepkilerini bulunuz.", "Find the support reactions at A and B.")],
+    ["c)", dilde("Kesme kuvveti ve eğilme momenti diyagramlarını çiziniz; en büyük momentin yerini ve değerini belirtiniz.", "Draw the shear force and bending moment diagrams; give the location and value of the largest moment.")],
+  ]) {
     ctx.fillStyle = C.accent;
     ctx.font = yazi(17, { w: 600 });
     ctx.fillText(h, 96, y);
@@ -866,12 +919,13 @@ function statik3(ctx) {
   ctx.fillStyle = "#a8b2bd";
   ctx.font = yazi(11, { aile: "etiket", w: 600 });
   ctx.letterSpacing = "1.4px";
-  ctx.fillText("ÇÖZÜM", 80, y + 32);
+  ctx.fillText(tc("ÇÖZÜM"), 80, y + 32);
   ctx.letterSpacing = "0px";
   // Cevap anahtarı sayfanın dibinde, küçük
   ctx.fillStyle = C.rule;
   ctx.fillRect(80, 1030, 120, 1);
-  paragraf(ctx, "*Cevaplar.* $A_x = 0$, $A_y = 6,4\\,\\t{kN}$, $B_y = 13,6\\,\\t{kN}$; $M_{\\t{maks}} = 19,2\\,\\t{kN·m}$ (C noktasında).", 1054, { boy: 13.5, sat: 20, renk: C.muted, hiza: "sol" });
+  paragraf(ctx, dilde("*Cevaplar.* $A_x = 0$, $A_y = 6,4\\,\\t{kN}$, $B_y = 13,6\\,\\t{kN}$; $M_{\\t{maks}} = 19,2\\,\\t{kN·m}$ (C noktasında).",
+    "*Answers.* $A_x = 0$, $A_y = 6.4\\,\\t{kN}$, $B_y = 13.6\\,\\t{kN}$; $M_{\\t{max}} = 19.2\\,\\t{kN·m}$ (at C)."), 1054, { boy: 13.5, sat: 20, renk: C.muted, hiza: "sol" });
 }
 
 // ---------- Üst Ekstremite Anatomisi ----------
@@ -879,9 +933,10 @@ function statik3(ctx) {
 const ON = C.bordo, ARKA = C.accent;
 
 function anatomi1(ctx) {
-  ust(ctx, "Bölüm 4 · Üst ekstremite", 61);
-  baslik(ctx, "4.2", "Plexus Brachialis", 140);
-  let y = paragraf(ctx, "Üst ekstremitenin duyu ve motor innervasyonunun neredeyse tamamı *plexus brachialis*’ten gelir. Ağ, C5-T1 spinal sinirlerinin ön dallarından (rami anteriores) oluşur; m. scalenus anterior ile m. scalenus medius arasından çıkar, klavikulanın arkasından geçerek aksillaya ulaşır.", 186);
+  ust(ctx, tc("Bölüm 4 · Üst ekstremite"), 61);
+  baslik(ctx, "4.2", tc("Plexus Brachialis"), 140);
+  let y = paragraf(ctx, dilde("Üst ekstremitenin duyu ve motor innervasyonunun neredeyse tamamı *plexus brachialis*’ten gelir. Ağ, C5-T1 spinal sinirlerinin ön dallarından (rami anteriores) oluşur; m. scalenus anterior ile m. scalenus medius arasından çıkar, klavikulanın arkasından geçerek aksillaya ulaşır.",
+    "Nearly all sensory and motor supply of the upper limb comes from the *brachial plexus*. The network is formed by the anterior rami of spinal nerves C5-T1; it emerges between the anterior and middle scalene muscles and passes behind the clavicle to reach the axilla."), 186);
 
   // Şema: kökler, trunkuslar, bölümler, kordlar, terminal dallar
   const Y = y + 84;
@@ -890,12 +945,12 @@ function anatomi1(ctx) {
   const kord = { lat: Y + 30, arka: Y + 100, med: Y + 168 };
   const dal = { mc: Y - 4, ax: Y + 50, rad: Y + 94, med: Y + 140, uln: Y + 188 };
   const xK = 130, xT = 222, xB = 290, xC = 404, xD = 462, xE = 566, xM = 518;
-  ctx.sekil = "Şekil 4.3";   // şema etiketleri aramada düzyazıdan sonra, kendi adıyla gelir (metinCikar)
+  ctx.sekil = tc("Şekil {n}", { n: "4.3" });   // şema etiketleri aramada düzyazıdan sonra, kendi adıyla gelir (metinCikar)
   ctx.fillStyle = C.muted;
   ctx.font = yazi(10.5, { aile: "etiket", w: 600 });
   ctx.letterSpacing = "1.2px";
   ctx.textAlign = "center";
-  for (const [t, x] of [["KÖKLER", 116], ["TRUNKUSLAR", 256], ["BÖLÜMLER", 347], ["KORDLAR", 433], ["DALLAR", 620]]) ctx.fillText(t, x, Y - 40);
+  for (const [m, x] of [[tc("KÖKLER"), 116], [tc("TRUNKUSLAR"), 256], [tc("BÖLÜMLER"), 347], [tc("KORDLAR"), 433], [tc("DALLAR"), 620]]) ctx.fillText(m, x, Y - 40);
   ctx.letterSpacing = "0px";
   ctx.textAlign = "left";
   const yol = (pts, renk, w, halo = false) => {
@@ -934,10 +989,13 @@ function anatomi1(ctx) {
   ctx.textAlign = "center";
   ctx.font = yazi(12.5, { i: true });
   ctx.fillStyle = C.muted;
-  for (const [t, yy] of [["üst", tr.ust], ["orta", tr.orta], ["alt", tr.alt]]) ctx.fillText(t, (xT + xB) / 2, yy - 8);
+  for (const [m, yy] of [[dilde("üst", "upper"), tr.ust], [dilde("orta", "middle"), tr.orta], [dilde("alt", "lower"), tr.alt]]) ctx.fillText(m, (xT + xB) / 2, yy - 8);
   for (const [t, yy, r] of [["lateral", kord.lat, ON], ["posterior", kord.arka, ARKA], ["medial", kord.med, ON]]) { ctx.fillStyle = r; ctx.fillText(t, (xC + xD) / 2, yy - 8); }
   ctx.textAlign = "left";
-  for (const [ad, kok, yy, r] of [["N. musculocutaneus", "C5-C7", dal.mc, ON], ["N. axillaris", "C5-C6", dal.ax, ARKA], ["N. radialis", "C5-T1", dal.rad, ARKA], ["N. medianus", "C6-T1", dal.med, ON], ["N. ulnaris", "C8-T1", dal.uln, ON]]) {
+  for (const [ad, kok, yy, r] of [
+    [dilde("N. musculocutaneus", "Musculocutaneous n."), "C5-C7", dal.mc, ON], [dilde("N. axillaris", "Axillary n."), "C5-C6", dal.ax, ARKA],
+    [dilde("N. radialis", "Radial n."), "C5-T1", dal.rad, ARKA], [dilde("N. medianus", "Median n."), "C6-T1", dal.med, ON], [dilde("N. ulnaris", "Ulnar n."), "C8-T1", dal.uln, ON],
+  ]) {
     ctx.fillStyle = r;
     ctx.beginPath(); ctx.arc(xE, yy, 3, 0, Math.PI * 2); ctx.fill();
     ctx.font = yazi(14, { w: 600 });
@@ -952,20 +1010,24 @@ function anatomi1(ctx) {
   cizgi(ctx, [[420, ay], [448, ay]], { renk: ARKA, w: 2.6 });
   ctx.font = yazi(13);
   ctx.fillStyle = C.ink;
-  ctx.fillText("Ön bölümler ve dalları", 216, ay + 4);
-  ctx.fillText("Arka bölümler ve dalları", 456, ay + 4);
+  ctx.fillText(tc("Ön bölümler ve dalları"), 216, ay + 4);
+  ctx.fillText(tc("Arka bölümler ve dalları"), 456, ay + 4);
   ctx.sekil = null;
-  y = sekilYazisi(ctx, "Şekil 4.3", "Plexus brachialis şeması (sağ taraf). Kordlar a. axillaris’e göre konumlarıyla adlandırılır.", ay + 40) + 20;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "4.3" }), dilde("Plexus brachialis şeması (sağ taraf). Kordlar a. axillaris’e göre konumlarıyla adlandırılır.",
+    "Brachial plexus (right side). The cords are named for their position around the axillary artery."), ay + 40) + 20;
 
-  y = paragraf(ctx, "Üç trunkusun her biri ön ve arka bölüme ayrılır. Üst ve orta trunkusun ön bölümleri lateral kordu, alt trunkusun ön bölümü medial kordu, üç arka bölüm birlikte posterior kordu yapar. N. medianus lateral ve medial kordlardan gelen iki kökün birleşmesiyle oluşur.", y) + 14;
+  y = paragraf(ctx, dilde("Üç trunkusun her biri ön ve arka bölüme ayrılır. Üst ve orta trunkusun ön bölümleri lateral kordu, alt trunkusun ön bölümü medial kordu, üç arka bölüm birlikte posterior kordu yapar. N. medianus lateral ve medial kordlardan gelen iki kökün birleşmesiyle oluşur.",
+    "Each of the three trunks splits into an anterior and a posterior division. The anterior divisions of the upper and middle trunks form the lateral cord, that of the lower trunk the medial cord, and all three posterior divisions the posterior cord. The median nerve forms where roots from the lateral and medial cords join."), y) + 14;
 
   const kt = y - 4;
   kutu(ctx, kt, 154, { zemin: "#f8f1f1", serit: ON });
   ctx.fillStyle = ON;
   ctx.font = yazi(17, { aile: "baslik", w: 600 });
-  ctx.fillText("Klinik not", 96, kt + 32);
-  let yy = paragraf(ctx, "*Üst trunkus yaralanması* (Erb-Duchenne, C5-C6): kol addüksiyon ve iç rotasyonda, önkol ekstansiyon ve pronasyonda kalır; “bahşiş bekleyen garson” duruşu.", kt + 58, { x: 96, w: 610, boy: 15.5, sat: 23 });
-  paragraf(ctx, "*Alt trunkus yaralanması* (Klumpke, C8-T1): elin küçük kasları tutulur, pençe el gelişir.", yy + 4, { x: 96, w: 610, boy: 15.5, sat: 23 });
+  ctx.fillText(tc("Klinik not"), 96, kt + 32);
+  let yy = paragraf(ctx, dilde("*Üst trunkus yaralanması* (Erb-Duchenne, C5-C6): kol addüksiyon ve iç rotasyonda, önkol ekstansiyon ve pronasyonda kalır; “bahşiş bekleyen garson” duruşu.",
+    "*Upper trunk injury* (Erb-Duchenne, C5-C6): the arm stays adducted and medially rotated, the forearm extended and pronated; the “waiter’s tip” posture."), kt + 58, { x: 96, w: 610, boy: 15.5, sat: 23 });
+  paragraf(ctx, dilde("*Alt trunkus yaralanması* (Klumpke, C8-T1): elin küçük kasları tutulur, pençe el gelişir.",
+    "*Lower trunk injury* (Klumpke, C8-T1): the small muscles of the hand are affected and a claw hand develops."), yy + 4, { x: 96, w: 610, boy: 15.5, sat: 23 });
 }
 
 // Tablo: sütunlar [{ ad, w }], satırlar ya hücre dizisi ya { grup }
@@ -977,7 +1039,7 @@ function tablo(ctx, y, sutunlar, satirlar, { boy = 13, sat = 18.5 } = {}) {
   ctx.letterSpacing = "1px";
   ctx.fillStyle = C.muted;
   let x = x0;
-  for (const s of sutunlar) { ctx.fillText(s.ad.toLocaleUpperCase("tr"), x + pad, y + 22); x += s.w; }
+  for (const s of sutunlar) { ctx.fillText(s.ad.toLocaleUpperCase(icerikYerel()), x + pad, y + 22); x += s.w; }
   ctx.letterSpacing = "0px";
   y += 32;
   ctx.fillStyle = C.ink;
@@ -1022,16 +1084,26 @@ function tablo(ctx, y, sutunlar, satirlar, { boy = 13, sat = 18.5 } = {}) {
 }
 
 function anatomi2(ctx) {
-  ust(ctx, "Bölüm 4 · Üst ekstremite", 62);
-  baslik(ctx, "4.3", "Kolun Kasları", 140);
-  let y = paragraf(ctx, "Kol, septa intermuscularia ile ön (fleksör) ve arka (ekstansör) iki bölmeye ayrılır. Ön bölmenin üç kasını n. musculocutaneus, arka bölmenin kaslarını n. radialis innerve eder.", 186) + 10;
+  ust(ctx, tc("Bölüm 4 · Üst ekstremite"), 62);
+  baslik(ctx, "4.3", tc("Kolun Kasları"), 140);
+  let y = paragraf(ctx, dilde("Kol, septa intermuscularia ile ön (fleksör) ve arka (ekstansör) iki bölmeye ayrılır. Ön bölmenin üç kasını n. musculocutaneus, arka bölmenin kaslarını n. radialis innerve eder.",
+    "Intermuscular septa divide the arm into an anterior (flexor) and a posterior (extensor) compartment. The musculocutaneous nerve supplies the three anterior muscles, the radial nerve the posterior ones."), 186) + 10;
   ctx.fillStyle = C.muted;
   ctx.font = yazi(13.5, { w: 600 });
-  ctx.fillText("Tablo 4.2", 80, y);
-  const tw = ctx.measureText("Tablo 4.2").width;
+  const tablo42 = tc("Tablo {n}", { n: "4.2" });
+  ctx.fillText(tablo42, 80, y);
+  const tw = ctx.measureText(tablo42).width;
   ctx.font = yazi(13.5, { i: true });
-  ctx.fillText("Kolun kasları: köken, sokulma, innervasyon ve fonksiyon.", 80 + tw + 10, y);
-  y = tablo(ctx, y + 14, [{ ad: "Kas", w: 108 }, { ad: "Köken", w: 156 }, { ad: "Sokulma", w: 116 }, { ad: "İnnervasyon", w: 134 }, { ad: "Fonksiyon", w: 126 }], [
+  ctx.fillText(tc("Kolun kasları: köken, sokulma, innervasyon ve fonksiyon."), 80 + tw + 10, y);
+  y = tablo(ctx, y + 14, [{ ad: tc("Kas"), w: 108 }, { ad: tc("Köken"), w: 156 }, { ad: tc("Sokulma"), w: 116 }, { ad: tc("İnnervasyon"), w: 134 }, { ad: tc("Fonksiyon"), w: 126 }], icerik === "en" ? [
+    { grup: "Anterior compartment" },
+    ["Biceps brachii", "Long head: supraglenoid tubercle; short head: coracoid process", "Radial tuberosity; bicipital aponeurosis", "Musculocutaneous n. (C5-C6)", "Supinates and flexes the forearm; weak flexor of the arm"],
+    ["Brachialis", "Distal half of the anterior humerus", "Coronoid process and ulnar tuberosity", "Musculocutaneous n. (C5-C6); radial n. to its lateral part", "Main flexor of the forearm at the elbow"],
+    ["Coracobrachialis", "Coracoid process", "Medial surface of the humeral shaft, middle third", "Musculocutaneous n. (C5-C7)", "Flexes and adducts the arm"],
+    { grup: "Posterior compartment" },
+    ["Triceps brachii", "Long head: infraglenoid tubercle; lateral and medial heads: posterior humerus", "Olecranon", "Radial n. (C6-C8)", "Extends the forearm; long head extends and adducts the shoulder"],
+    ["Anconeus", "Lateral epicondyle of the humerus", "Lateral olecranon, posterior ulna", "Radial n. (C7-C8)", "Assists elbow extension"],
+  ] : [
     { grup: "Ön bölme" },
     ["M. biceps brachii", "Caput longum: tuberculum supraglenoidale; caput breve: proc. coracoideus", "Tuberositas radii; aponeurosis bicipitalis", "N. musculocutaneus (C5-C6)", "Önkolun supinasyonu ve fleksiyonu; kolun zayıf fleksiyonu"],
     ["M. brachialis", "Humerus ön yüzünün distal yarısı", "Proc. coronoideus ve tuberositas ulnae", "N. musculocutaneus (C5-C6); lateral kısmına n. radialis", "Dirsekte önkolun asıl fleksörü"],
@@ -1041,9 +1113,13 @@ function anatomi2(ctx) {
     ["M. anconeus", "Epicondylus lateralis humeri", "Olecranonun lateral yüzü, ulnanın arka yüzü", "N. radialis (C7-C8)", "Dirsek ekstansiyonuna yardım"],
   ], { boy: 12.5, sat: 17 }) + 44;
 
-  araBaslik(ctx, "Akılda tutun", y, { renk: ON, boy: 19 });
+  araBaslik(ctx, tc("Akılda tutun"), y, { renk: ON, boy: 19 });
   y += 36;
-  for (const m of [
+  for (const m of icerik === "en" ? [
+    "Biceps brachii is the strongest supinator of the forearm; its supinating power is greatest with the elbow flexed.",
+    "Brachialis flexes the elbow whatever the position of the forearm; it is the main flexor.",
+    "The radial nerve runs in the radial groove, pressed against the humerus. It can be injured in fractures of the humeral shaft; the result is wrist drop.",
+  ] : [
     "M. biceps brachii önkolun en güçlü supinatörüdür; supinasyon gücü dirsek fleksiyondayken en fazladır.",
     "M. brachialis önkol hangi pozisyonda olursa olsun dirseği büker; asıl fleksör odur.",
     "N. radialis, sulcus n. radialis içinde humerusa yaslanarak ilerler. Humerus cismi kırıklarında yaralanabilir; sonuç düşük el (el bileği düşmesi) olur.",
@@ -1099,9 +1175,10 @@ function dirsekCiz(ctx) {
 }
 
 function anatomi3(ctx) {
-  ust(ctx, "Bölüm 4 · Üst ekstremite", 63);
-  baslik(ctx, "4.4", "Fossa Cubitalis", 140);
-  let y = paragraf(ctx, "Dirseğin önündeki üçgen biçimli çukurdur. Kolu önkola bağlayan damar ve sinirler buradan geçer; venöz kan alma ve tansiyon ölçümünde stetoskop bu bölgeye konur.", 186);
+  ust(ctx, tc("Bölüm 4 · Üst ekstremite"), 63);
+  baslik(ctx, "4.4", tc("Fossa Cubitalis"), 140);
+  let y = paragraf(ctx, dilde("Dirseğin önündeki üçgen biçimli çukurdur. Kolu önkola bağlayan damar ve sinirler buradan geçer; venöz kan alma ve tansiyon ölçümünde stetoskop bu bölgeye konur.",
+    "The triangular hollow in front of the elbow. Vessels and nerves passing from the arm to the forearm run through it; blood is drawn here, and the stethoscope sits here when blood pressure is measured."), 186);
 
   const k = 0.7, oy = y + 20;
   const T = (px, py) => [400 + (px - 400) * k, oy + py * k];
@@ -1112,7 +1189,7 @@ function anatomi3(ctx) {
   dirsekCiz(ctx);
   ctx.restore();
   // Etiketler: solda sağa, sağda sola dayalı; ince kılavuz çizgisi ve uçta nokta
-  ctx.sekil = "Şekil 4.5";
+  ctx.sekil = tc("Şekil {n}", { n: "4.5" });
   const etiketle = (metin, sag, ty, px, py) => {
     const [x, yy] = T(px, py), tx = sag ? 512 : 288, ey = oy + ty * k;
     cizgi(ctx, [[sag ? tx - 6 : tx + 6, ey - 4], [x, yy]], { renk: C.muted, w: 0.8 });
@@ -1123,16 +1200,19 @@ function anatomi3(ctx) {
     ctx.fillText(metin, tx, ey);
     ctx.textAlign = "left";
   };
-  for (const [m, ty, px, py] of [["M. biceps brachii", 130, 380, 130], ["Caput radii", 372, 382, 403], ["Tuberositas radii", 422, 388, 446], ["M. brachioradialis", 486, 342, 470], ["Radius", 600, 362, 600]]) etiketle(m, false, ty, px, py);
-  for (const [m, ty, px, py] of [["Humerus", 22, 401, 20], ["M. brachialis", 262, 432, 262], ["Epicondylus medialis", 326, 462, 350], ["Aponeurosis bicipitalis", 372, 440, 380], ["M. pronator teres", 440, 418, 440], ["Ulna", 600, 425, 600]]) etiketle(m, true, ty, px, py);
+  for (const [m, ty, px, py] of [[dilde("M. biceps brachii", "Biceps brachii"), 130, 380, 130], [dilde("Caput radii", "Head of radius"), 372, 382, 403], [dilde("Tuberositas radii", "Radial tuberosity"), 422, 388, 446], [dilde("M. brachioradialis", "Brachioradialis"), 486, 342, 470], ["Radius", 600, 362, 600]]) etiketle(m, false, ty, px, py);
+  for (const [m, ty, px, py] of [["Humerus", 22, 401, 20], [dilde("M. brachialis", "Brachialis"), 262, 432, 262], [dilde("Epicondylus medialis", "Medial epicondyle"), 326, 462, 350], [dilde("Aponeurosis bicipitalis", "Bicipital aponeurosis"), 372, 440, 380], [dilde("M. pronator teres", "Pronator teres"), 440, 418, 440], ["Ulna", 600, 425, 600]]) etiketle(m, true, ty, px, py);
   ctx.sekil = null;
-  y = sekilYazisi(ctx, "Şekil 4.5", "Sağ dirsek, önden görünüş. Noktalı çizgi iki epicondylus arasındaki üst sınırdır.", oy + 640 * k + 30) + 20;
+  y = sekilYazisi(ctx, tc("Şekil {n}", { n: "4.5" }), dilde("Sağ dirsek, önden görünüş. Noktalı çizgi iki epicondylus arasındaki üst sınırdır.",
+    "Right elbow, anterior view. The dotted line is the upper border between the two epicondyles."), oy + 640 * k + 30) + 20;
 
-  y = paragraf(ctx, "*Sınırlar.* Üstte iki epicondylus arasındaki çizgi, lateralde m. brachioradialis, medialde m. pronator teres. Tabanını m. brachialis ile m. supinator, tavanını fascia ve aponeurosis bicipitalis oluşturur.", y) + 4;
-  y = paragraf(ctx, "*İçerik* (lateralden mediale): m. biceps brachii tendonu, a. brachialis ve n. medianus. N. radialis lateral kenarda, m. brachioradialis’in altında kalır.", y) + 16;
+  y = paragraf(ctx, dilde("*Sınırlar.* Üstte iki epicondylus arasındaki çizgi, lateralde m. brachioradialis, medialde m. pronator teres. Tabanını m. brachialis ile m. supinator, tavanını fascia ve aponeurosis bicipitalis oluşturur.",
+    "*Borders.* Above, the line between the two epicondyles; laterally, brachioradialis; medially, pronator teres. Brachialis and supinator form its floor, fascia and the bicipital aponeurosis its roof."), y) + 4;
+  y = paragraf(ctx, dilde("*İçerik* (lateralden mediale): m. biceps brachii tendonu, a. brachialis ve n. medianus. N. radialis lateral kenarda, m. brachioradialis’in altında kalır.",
+    "*Contents* (lateral to medial): the biceps brachii tendon, the brachial artery and the median nerve. The radial nerve lies at the lateral edge, under brachioradialis."), y) + 16;
 
   kutu(ctx, y - 4, 50, { zemin: "#f8f1f1", serit: ON });
-  paragraf(ctx, "*Akılda tutun:* lateralden mediale TAN, yani Tendon, Arter, Nerv.", y + 25, { x: 96, w: 610, boy: 16, sat: 24 });
+  paragraf(ctx, dilde("*Akılda tutun:* lateralden mediale TAN, yani Tendon, Arter, Nerv.", "*Remember:* lateral to medial, TAN: Tendon, Artery, Nerve."), y + 25, { x: 96, w: 610, boy: 16, sat: 24 });
 }
 
 // ---------- sayfa tablosu ----------
@@ -1159,32 +1239,67 @@ function metinCikar(draw) {
 // Satır kırılımları yazı tipine bağlı: yazı tipleri gelince metin bir kez daha çıkarılır
 let yaziSurumu = 0;
 yaziTipleri.then(() => { yaziSurumu++; });
-const sayfa = (draw) => {
+// Her dilin kendi sayfa nesnesi: çizim o dilde akar. Sarmalayıcı adı korur (app.js sayfalariTasi sayfayı
+// draw.name ile tanır) ve kaynak metni verir (arama.js dizin imzası kaynağın uzunluğuna bakar); İngilizce
+// kaynağa dil eki eklenir ki iki dilin imzası ayrılsın, Türkçe imza eskisiyle aynı kalır.
+const sayfa = (ciz, dil) => {
+  const draw = (...a) => {
+    const onceki = icerik;
+    icerik = dil;
+    try { return ciz(...a); } finally { icerik = onceki; }
+  };
+  Object.defineProperty(draw, "name", { value: ciz.name });
+  draw.toString = () => (dil === "tr" ? Function.prototype.toString.call(ciz) : `${Function.prototype.toString.call(ciz)}/*${dil}*/`);
   let m = null, surum = -1;
   return { draw, get text() { if (surum !== yaziSurumu) { m = metinCikar(draw); surum = yaziSurumu; } return m; } };
 };
-const GRUPLAR = {
-  kalkulus: [kalkulus1, kalkulus2, kalkulus3].map(sayfa),
-  statik: [statik1, statik2, statik3].map(sayfa),
-  anatomi: [anatomi1, anatomi2, anatomi3].map(sayfa),
-};
+const grup = (dil, cizimler) => Object.assign(cizimler.map((c) => sayfa(c, dil)), { dil });
+const GRUPLAR = Object.fromEntries(DILLER.map((d) => [d, {
+  kalkulus: grup(d, [kalkulus1, kalkulus2, kalkulus3]),
+  statik: grup(d, [statik1, statik2, statik3]),
+  anatomi: grup(d, [anatomi1, anatomi2, anatomi3]),
+}]));
 
-// Belgenin örnek sayfaları sırasıyla; her öğe { draw, text }. Tanınmayan belge Kalkülüs'ü alır.
-export function ornekSayfalari(belgeId) {
-  return GRUPLAR[belgeId] || GRUPLAR.kalkulus;
+// Örnek PDF'in içerik dili. Kayıttaki "ornekDil" alanı; alanı olmayan kayıt İngilizceden önce, yalnız Türkçe varken
+// kurulmuştur: "tr". Yeni kurulumun örnekleri aşağıda arayüz diliyle damgalanır. Kaydı bulunamayan kimlik: arayüz dili.
+const kayitBul = (id) => {
+  try { return ORTAK.belgeBul(id) || ORTAK.store.cop?.find((g) => g?.belge?.id === id)?.belge || null; } catch { return null; }
+};
+export function ornekSayfaDili(belge) {
+  const b = belge && typeof belge === "object" ? belge : kayitBul(belge);
+  if (!b) return ARAYUZ;
+  return gecerliDil(b.ornekDil) ? b.ornekDil : "tr";
+}
+// İlk kurulum: kayıt yüklenmeden önce store.belgeler ortak.js'in örnekleridir. Dosyasız örnek PDF'ler arayüz dilini
+// alır ve kayda öyle yazılır. Kayıtlı durum yüklenince liste kayıttakiyle değişir (kayit.js), damga oraya geçmez.
+// ortak.js bu modülü içe aktarırsa (döngü) store henüz kurulmamış olur: o zaman modüller bitince damgalanır.
+const damgala = () => {
+  for (const b of ORTAK.store.belgeler) {
+    if (b && b.tur === "pdf" && !b.dosya && Object.hasOwn(GRUPLAR.tr, b.id) && !gecerliDil(b.ornekDil)) b.ornekDil = ARAYUZ;
+  }
+};
+try { damgala(); } catch { queueMicrotask(() => { try { damgala(); } catch { /* damgasız kayıt Türkçe açılır */ } }); }
+
+// Belgenin örnek sayfaları sırasıyla; her öğe { draw, text }, listenin dili .dil alanında. belge: kimlik ya da kayıt.
+// dil verilmezse kaydın içerik dili. Tanınmayan belge (ör. çoğaltılmış örnek) Kalkülüs'ü alır.
+export function ornekSayfalari(belge, dil = ornekSayfaDili(belge)) {
+  const g = GRUPLAR[gecerliDil(dil) ? dil : "tr"];
+  const id = belge && typeof belge === "object" ? belge.id : belge;
+  return g[id] || g.kalkulus;
 }
 
-// Geriye uyum: ilk sürümün üç sayfası (Kalkülüs 47, 48 ve Statik Problem 2.7). Kapak, kırpıntı ve
+// Geriye uyum: ilk sürümün üç sayfası (Kalkülüs 47, 48 ve Statik Problem 2.7), arayüz dilinde. Kapak, kırpıntı ve
 // Tekrar örnekleri bu sıralarla çizer; belge sayfaları ornekSayfalari(belgeId) ile kurulur.
-export const PDF_PAGES = [GRUPLAR.kalkulus[0], GRUPLAR.kalkulus[1], GRUPLAR.statik[2]];
+export const PDF_PAGES = Object.assign([GRUPLAR[ARAYUZ].kalkulus[0], GRUPLAR[ARAYUZ].kalkulus[1], GRUPLAR[ARAYUZ].statik[2]], { dil: ARAYUZ });
 
 // ---------- defter kâğıtları ----------
 
+// label arayüz dilinde (dil sayfa yüklenirken sabit); id kayıtta durur, çevrilmez
 export const TEMPLATES = [
-  { id: "blank", label: "Boş" },
-  { id: "lined", label: "Çizgili" },
-  { id: "grid", label: "Kareli" },
-  { id: "dotted", label: "Noktalı" },
+  { id: "blank", label: t("Boş") },
+  { id: "lined", label: t("Çizgili") },
+  { id: "grid", label: t("Kareli") },
+  { id: "dotted", label: t("Noktalı") },
   { id: "cornell", label: "Cornell" },
 ];
 
@@ -1213,8 +1328,8 @@ export function drawTemplate(ctx, kind) {
     line(0, 76, PW, 76);
     ctx.fillStyle = "#8a99a8";
     font(ctx, 12, { weight: 600, family: SANS });
-    ctx.fillText("ANAHTAR KELİMELER", 24, 60);
-    ctx.fillText("NOTLAR", 254, 60);
-    ctx.fillText("ÖZET", 24, 948);
+    ctx.fillText(t("ANAHTAR KELİMELER"), 24, 60);
+    ctx.fillText(t("NOTLAR"), 254, 60);
+    ctx.fillText(t("ÖZET"), 24, 948);
   }
 }

@@ -1,7 +1,7 @@
 // Kenar Notu (prototip) hizmet çalışanı. Dosya listesi ya da davranış değişince VERSION artırılır.
 // Ağ önce, yoksa önbellek: tablet çevrimiçiyken hep son sürümü alır, internetsizken son görüleni açar.
 // Paylaşım hedefi: ./paylas POST'u yakalanır, içerik IndexedDB'ye konur, ./#paylasim adresine 303 ile dönülür.
-const VERSION = "6.2.0";
+const VERSION = "7.1.0";
 const ONBELLEK = `kn-tasarim-${VERSION}`;
 const YAZI_ONBELLEK = "kn-tasarim-yazi"; // yazı tipleri sürümden bağımsız: adresleri değişmez
 // Çeviri motoru (lib/ceviri, wasm 5 MB): kabuğa girmez, ilk kullanımda alınır; sürüm artınca yeniden inmesin diye ayrı önbellekte
@@ -15,16 +15,17 @@ const MOTOR_DOSYALARI = ["bergamot-translator-worker.js", "bergamot-translator-w
 
 const KABUK = [
   "./", "./index.html", "./manifest.webmanifest",
-  "./tasarim.css", "./duzenleyici.css", "./okuma.css", "./koltuk.css", "./tekrar.css", "./asistan.css", "./arama.css", "./ses.css", "./izler.css", "./cizgi.css",
+  "./tasarim.css", "./atmosfer.css", "./duzenleyici.css", "./okuma.css", "./koltuk.css", "./tekrar.css", "./asistan.css", "./arama.css", "./ses.css", "./izler.css", "./cizgi.css",
   "./app.js", "./ortak.js", "./kalem.js", "./sayfalar.js",
-  "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./tekrar.js", "./asistan.js",
-  "./kayit.js", "./kitap-klasoru.js", "./pdf-belge.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
+  "./duzenleyici.js", "./okuma.js", "./okuma-metni.js", "./koltuk.js", "./sesli-okuma.js", "./tekrar.js", "./tekrar-istatistik.js", "./asistan.js",
+  "./kayit.js", "./kitap-klasoru.js", "./pdf-belge.js", "./pdf-sayfa.js", "./epub-belge.js", "./disa-aktar.js", "./paylasim.js",
   "./arama.js", "./ses.js", "./izler.js", "./cizgi.js", "./cizgi-belge.js", "./cizgi-ornek.js",
   "./cekmece.js", "./rehber.js", "./anki.js", "./yedek-isci.js",
   "./ceviri.js", "./ceviri-isci.js",
-  "./matematik.js", "./disa-kopru.js", "./hakkinda.js", "./gizlilik.html",
+  "./matematik.js", "./disa-kopru.js", "./iz-bag.js", "./hakkinda.js", "./gizlilik.html",
+  "./dil.js", "./dil/en.js", "./dil/en-app-1.js", "./dil/en-app-2.js", "./dil/en-app-3.js", "./dil/en-duzenleyici-1.js", "./dil/en-duzenleyici-2.js", "./dil/en-okuma-1.js", "./dil/en-okuma-2.js", "./dil/en-asistan.js", "./dil/en-tekrar.js", "./dil/en-izler.js", "./dil/en-kayit-arama.js", "./dil/en-ortak.js", "./dil/en-araclar.js", "./dil/en-cizgi.js",
   "../lib/temml/temml.min.js", "../lib/temml/Temml-Local.css", "../lib/temml/Temml.woff2",
-  "./ikon/ikon.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
+  "./ikon/ikon.svg", "./ikon/ikon-kucuk.svg", "./ikon/ikon-tek-renk.svg", "./ikon/ikon-192.png", "./ikon/ikon-512.png",
   "./ikon/ikon-maskable-192.png", "./ikon/ikon-maskable-512.png", "./ikon/apple-touch-icon.png",
   "../lib/jszip.min.js", "../lib/sql-wasm.js", "../lib/sql-wasm.wasm",
   "../lib/pdf.min.mjs", "../lib/pdf.worker.min.mjs", "../lib/pdf-lib.esm.min.js",

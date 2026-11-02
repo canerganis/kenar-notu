@@ -16,7 +16,7 @@
 
 /* Ana düğme: Kaydet (kırmızı nokta), Durdur (kare), Oynat/Duraklat */
 /* Çerçeveli düğmeler 36px görünür, dokunma alanı şeridin 44px'i */
-.ses-ana::after, .ses-hiz::after { content: ""; position: absolute; inset: -4px -2px; }
+.ses-ana::after, .ses-hiz::after { content: ""; position: absolute; inset: -5px -2px; }   /* görünür 36 px, dokunma 46 px */
 .ses-ana { height: 36px; padding: 0 14px 0 10px; border: 0; background: var(--surface); box-shadow: var(--golge-1); }
 .ses-ana.kaydet .ses-sekil { color: var(--danger); }
 /* Kaydet: 8px dolu kırmızı lamba */
@@ -100,6 +100,47 @@
 .ses-bos { margin: 6px 10px 10px; color: var(--muted); font: 450 var(--fs-13)/20px var(--f-arayuz); }
 
 @media (max-width: 559px) { .ses-not.ses-ipucu { visibility: hidden; } }
+
+/* ================= 7.0 Işıklı Kenar (TASARIM-5 8.5.4) ================= */
+/* Şerit cam kapsüldür: 48 px'lik yer aynı kalır (Masa yerleşimi --ses-serit'ten okur), kapsül içinde 4 px ve 12 px
+   boşlukla yüzer. Sayfaların üstünde bulanıklık yok (sert kural 2): yoğun cam yüzey, kıl kenar ve gölge. */
+.ses-serit { background: transparent; border-bottom: 0; padding: 0 20px 0 18px; isolation: isolate; }
+.ses-serit::before { content: ""; position: absolute; inset: 4px 10px; z-index: -1; border-radius: 22px;
+  background: var(--cam-parilti, none), var(--cam-yuzey-yogun); box-shadow: var(--cam-cizgi), var(--golge-3); }
+.ses-dugme { border-radius: var(--r-md); }
+.ses-ana { height: 34px; border-radius: var(--r-tam); background: color-mix(in srgb, var(--surface) 85%, transparent); box-shadow: var(--cam-cizgi), var(--golge-1); color: var(--ink); }
+.ses-ana.durdur { box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent), var(--golge-1); color: var(--danger); }
+/* Kayıt lambası --danger; gece kiplerinde 6 px ışıma ve sakin nabız (yalnız opaklık) */
+.ses-kayit-lamba { width: 9px; height: 9px; }
+.ses-serit .lamba[data-durum="kayit"] { width: 8px; height: 8px; border-radius: 50%; animation: ses-nabiz 1.4s ease-in-out infinite alternate; }
+html[data-kip="gece"] .ses-serit .lamba[data-durum="kayit"], html[data-kip="gece"] .ses-kayit-lamba { box-shadow: 0 0 6px color-mix(in srgb, var(--danger) 70%, transparent); }
+@keyframes ses-nabiz { to { opacity: .45; } }
+.ses-gosterge .t-daktilo { font: 600 11px/14px var(--f-arayuz); letter-spacing: .08em; text-transform: uppercase; }
+/* Dalga --accent: kayıt boyunca akan ince iz, camsız kapsül pencerede */
+.ses-iz.cam { height: 30px; border-radius: var(--r-tam); background: color-mix(in srgb, var(--vurgu-1) 8%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--vurgu-1) 30%, transparent); text-shadow: none; }
+.ses-iz path { stroke: var(--accent); stroke-width: 1.5; }
+.ses-bosta.cam { height: 30px; border-radius: var(--r-tam); box-shadow: var(--cam-cizgi); }
+.ses-bosta span, .ses-sayac { font-variant-numeric: tabular-nums; }
+/* Sayaç: laboratuvar fosforu yerine Plex Mono ölçü kapsülü (5. bölüm: Plex yalnız ölçüde) */
+.ses-serit .cam:not(.ses-iz):not(.ses-bosta) { height: 30px; padding: 0 10px; border-radius: var(--r-tam); background: color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: var(--cam-cizgi); color: var(--ink); text-shadow: none; font: 500 13px/20px var(--f-olcu); letter-spacing: .02em; }
+.ses-serit .cam.ses-sayac .ayrac { color: var(--muted); }
+.ses-serit .cam.soluk { color: var(--ink-2); }
+/* Oynatma: ilerleme dolumu ışıklı gradyan (6.13), imleç vurgu */
+.ses-cetvel-dolu { height: 2px; border-radius: 2px; background: var(--vurgu-gradyan); box-shadow: 0 0 8px color-mix(in srgb, var(--vurgu-1) 45%, transparent); }
+.ses-cetvel-imlec { border-color: var(--accent); border-radius: 6px; }
+.ses-cetvel-imlec::after { background: var(--accent); }
+.ses-hiz { border: 0; border-radius: var(--r-tam); box-shadow: var(--cam-cizgi); font-family: var(--f-olcu); }
+/* Kayıtlar fişi: yoğun cam menü (6.17) */
+.ses-liste.fis { border-radius: var(--r-lg); background: var(--cam-parilti, none), var(--cam-yuzey-yogun); box-shadow: var(--cam-cizgi), var(--golge-4); }
+.ses-satir { border-radius: var(--r-md); }
+.ses-satir.caliyor { background: var(--accent-soft); }
+.ses-satir + .ses-satir { border-top-color: var(--line); }
+:root[data-hareket="sade"] .ses-serit .lamba[data-durum="kayit"] { animation: none; }
+@media (prefers-reduced-motion: reduce) { .ses-serit .lamba[data-durum="kayit"] { animation: none; } }
+.yaziyor .ses-serit .lamba[data-durum="kayit"] { animation-play-state: paused; }
+@media (prefers-contrast: more) { .ses-serit::before, .ses-liste.fis { background: var(--surface); } }
+@media (max-width: 720px) { .ses-serit { padding: 0 16px 0 14px; } .ses-serit::before { inset: 4px 6px; } }
 
 /* Dar ekran: ad ve uzun not gizlenir, iz kısalır */
 @media (max-width: 720px) {

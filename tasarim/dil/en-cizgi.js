@@ -1,0 +1,47 @@
+// İngilizce sözlük parçası: cizgi. Anahtar Türkçe kaynak metin, değer İngilizce metin ya da işlev (çoğul için).
+export default {
+  // kalem renkleri, görünüm ve yön
+  "Mürekkep mavisi": "Ink blue",
+  "Siyah": "Black",
+  "Bordo": "Burgundy",
+  "Kızıl": "Red",
+  "Yeşil": "Green",
+  // görünüm adları ve sayı: cizgi.js tc() ile "çizgi:" önekli, başka parçaların aynı anahtarını ezmez
+  "çizgi:Sayfa": "Page",
+  "çizgi:Genişlik": "Width",
+  "çizgi:Panel": "Panel",
+  "Soldan sağa": "Left to right",
+  "Manga": "Manga",
+  "Manga: sağdan sola": "Manga: right to left",
+  "Okuma yönü: {ad}": "Reading direction: {ad}",
+  // açılış ve hatalar
+  "Açılıyor": "Opening",
+  "Dosyanın kayıtlı kopyası bulunamadı.": "The saved copy of this file wasn't found.",
+  "Bu PDF parolalı. Masa'da açıp parolayı gir, sonra burada okuyabilirsin.": "This PDF is password protected. Open it on the Desk and enter the password, then you can read it here.",
+  "Bu PDF parolalı, parola girilmedi.": "This PDF is password protected and no password was entered.",
+  "Parola kabul edilmedi.": "The password wasn't accepted.",
+  "Bu çizgi roman açılamadı.": "This comic couldn't be opened.",
+  "Dosya bozuk ya da desteklenmiyor.": "The file is damaged or not supported.",
+  "Kitaplığa dön": "Back to library",
+  "Arşiv açılamadı. Dosya bozuk ya da CBZ değil.": "Couldn't open the archive. The file is damaged or isn't a CBZ.",
+  "Arşivde sayfa görseli bulunamadı.": "No page images were found in the archive.",
+  "CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.": "CBR (RAR) isn't supported. Convert the file to CBZ and try again.",
+  // çubuklar
+  "çizgi:Sayı {n}": "Issue {n}",
+  "Çizgi roman": "Comic",
+  "Kalem rengi": "Pen color",
+  "Parmakla ya da fareyle çiz": "Draw with finger or mouse",
+  "Silgi": "Eraser",
+  "Geri al": "Undo",
+  "Sayfalar": "Pages",
+  "Sayfa {n}": "Page {n}",
+  // okuma
+  "Son.": "The end.",
+  "Geri alınacak bir şey yok": "Nothing to undo",
+  "Geri alındı": "Undone",
+  "Kareden kareye geçmek için sağa dokun. Bütün sayfa için iki kez dokun.": "Tap the right side to go from panel to panel. Double tap to see the whole page.",
+  // ekran okuyucu duyuruları
+  "Sayfa {s}, kare {k} / {n}": "Page {s}, panel {k} of {n}",
+  "Sayfa {s} / {n}": "Page {s} of {n}",
+  "Sayfa {a} ve {b} / {n}": "Pages {a} and {b} of {n}",
+};

@@ -1,16 +1,39 @@
 // Kenar Notu: gerçek PDF dosyası (PDF.js 6.4.299, ../lib içinde yerel).
 // Sözleşme OZELLIKLER-3 "pdf-belge.js": pdfAc(blob) ve pdfBilgi(blob).
 // Boyutlar PDF puntosu, sayfa sırası 0'dan. Döndürülmüş sayfalarda boyut döndürülmüş hâlidir.
+//
+// 7.0 (TASARIM-5 10.4, PDF parolası): pdfAc(blob, { parola }). Parola gerekirse ya da yanlışsa Error fırlatır:
+// hata.name "PasswordException" (eski denetimler çalışsın), hata.kod "parola" (parola verilmedi) ya da "parola-yanlis".
+// parolaHatirla(belgeId, parola) ve parolaAl(belgeId): oturumluk bellek, diske hiç yazılmaz. pdfAc belge kimliği bilmez.
+// Sayfa döndürme (Masa sayfa işlemleri): boyut, ciz, satirlar, metinKutulari, baglantilar ve notlar "don" alır
+// (0, 90, 180, 270; saat yönünde, sayfanın kendi /Rotate değerine eklenir). Verilmezse davranış eskisiyle aynı.
 
 import * as pdfjsLib from "../lib/pdf.min.mjs";
+import { t } from "./dil.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("../lib/pdf.worker.min.mjs", import.meta.url).href;
 
 const IPTAL = "RenderingCancelledException";
 
-export async function pdfAc(blob) {
+// Oturumluk parola belleği: sekme kapanınca gider. Parola yanlış çıkınca çağıran temizler.
+const parolalar = new Map();
+export function parolaHatirla(belgeId, parola) {
+  if (!belgeId) return;
+  if (parola) parolalar.set(belgeId, String(parola)); else parolalar.delete(belgeId);
+}
+export const parolaAl = (belgeId) => (belgeId && parolalar.get(belgeId)) || null;
+const donNorm = (don) => ((Math.round((+don || 0) / 90) * 90) % 360 + 360) % 360;
+
+export async function pdfAc(blob, { parola = null } = {}) {
   const veri = new Uint8Array(await blob.arrayBuffer());
-  const gorev = pdfjsLib.getDocument({ data: veri, isEvalSupported: false, enableXfa: false });
-  const doc = await gorev.promise;
+  const gorev = pdfjsLib.getDocument({ data: veri, isEvalSupported: false, enableXfa: false, ...(parola ? { password: String(parola) } : {}) });
+  let doc;
+  try { doc = await gorev.promise; }
+  catch (e) {
+    if (e?.name !== "PasswordException") throw e;
+    try { gorev.destroy(); } catch { /* boş */ }
+    const yanlis = !!parola || e.code === pdfjsLib.PasswordResponses?.INCORRECT_PASSWORD;
+    throw Object.assign(new Error(yanlis ? t("Parola yanlış") : t("Dosya parolalı")), { name: "PasswordException", kod: yanlis ? "parola-yanlis" : "parola" });
+  }
   const n = doc.numPages;
 
   // Sayfa nesneleri tembel alınır; ilk sayfanın boyutu hemen, kalanlar arka planda
@@ -21,6 +44,8 @@ export async function pdfAc(blob) {
   };
   const boyutlar = new Array(n).fill(null);
   const olc = (p) => { const v = p.getViewport({ scale: 1 }); return { w: v.width, h: v.height }; };
+  // Sayfanın görünüm dönüşümü: kendi /Rotate değeri + kullanıcının döndürmesi
+  const gorunum = (p, scale, don) => (don ? p.getViewport({ scale, rotation: (p.rotate + don) % 360 }) : p.getViewport({ scale }));
   boyutlar[0] = olc(await sayfa(0));
   let kapali = false;
 
@@ -41,12 +66,14 @@ export async function pdfAc(blob) {
 
   // Sayfanın metin parçaları sayfa biriminde (genişlik 800, y aşağı, y taban çizgisi).
   // dx, dy: metnin ilerleme yönü; ux, uy: harfin yukarı yönü (birim vektör; döndürülmüş sayfada dikeydir)
-  function satirlar(i) {
-    if (!metinler.has(i)) {
-      metinler.set(i, (async () => {
+  function satirlar(i, don = 0) {
+    don = donNorm(don);
+    const an = don ? `${i}|${don}` : i;
+    if (!metinler.has(an)) {
+      metinler.set(an, (async () => {
         const p = await sayfa(i);
         // it.width sayfa biriminde; viewport ise /UserUnit ile büyür, genişlik de o çarpanı almalı
-        const vp = p.getViewport({ scale: 1 }), s = 800 / vp.width, gs = s * (vp.userUnit || 1);
+        const vp = gorunum(p, 1, don), s = 800 / vp.width, gs = s * (vp.userUnit || 1);
         const tc = await p.getTextContent();
         const sonuc = [];
         for (const it of tc.items) {
@@ -61,22 +88,26 @@ export async function pdfAc(blob) {
         }
         sonuc.oran = vp.height / vp.width;
         return sonuc;
-      })().catch((e) => { metinler.delete(i); throw e; }));
+      })().catch((e) => { metinler.delete(an); throw e; }));
     }
-    return metinler.get(i);
+    return metinler.get(an);
   }
 
   const pdf = {
     sayfaSayisi: n,
     boyutlarHazir,
-    // Bilinmeyen boyut: ilk sayfanınki (çoğu belgede hepsi aynı)
-    boyut: (i) => boyutlar[i] || boyutlar[0],
+    parolali: !!parola,
+    // Bilinmeyen boyut: ilk sayfanınki (çoğu belgede hepsi aynı). don 90 ya da 270 ise en ile boy yer değiştirir
+    boyut: (i, don = 0) => {
+      const b = boyutlar[i] || boyutlar[0];
+      return donNorm(don) % 180 ? { w: b.h, h: b.w } : b;
+    },
 
     // olcek: PDF puntosu başına piksel. Tuval bu boyuta getirilir ve beyaz zemine çizilir.
     // Aynı tuval için yeni çağrı öncekini iptal eder. Bitince true, iptalde false döner.
     // arka: ekranda olmayan iş (kapak). PDF.js "print" amacıyla requestAnimationFrame beklemez; sekme arkadayken de biter.
     // bekle(): true döndükçe süren çizim dilimler arasında durur (kalem yazarken ana iş parçacığı boş kalsın)
-    async ciz(i, canvas, olcek, { arka = false, bekle = null } = {}) {
+    async ciz(i, canvas, olcek, { arka = false, bekle = null, don = 0 } = {}) {
       const eski = gorevler.get(canvas);
       const kayit = { no: (eski?.no || 0) + 1, task: null };
       eski?.task?.cancel();
@@ -84,7 +115,7 @@ export async function pdfAc(blob) {
       let p;
       try { p = await sayfa(i); } catch { return false; }
       if (gorevler.get(canvas) !== kayit || kapali) return false;
-      const vp = p.getViewport({ scale: olcek });
+      const vp = gorunum(p, olcek, donNorm(don));
       const w = Math.max(1, Math.round(vp.width)), hh = Math.max(1, Math.round(vp.height));
       if (canvas.width !== w) canvas.width = w;
       if (canvas.height !== hh) canvas.height = hh;
@@ -144,9 +175,9 @@ export async function pdfAc(blob) {
     // Metin parçalarının kutuları: [{ str, x, y, w, h }], sayfaya göre 0..1 oransal, y aşağı (OZELLIKLER-5).
     // Kutu PDF.js metin katmanı gibi: tabandan asc kadar yukarı, yazı boyu kadar yüksek; döndürülmüş metinde
     // eksene hizalı dış kutu. kelime: true ise parçalar kelimelere bölünür (genişlik harf ölçüsüyle orantılanır).
-    async metinKutulari(i, { kelime = false } = {}) {
+    async metinKutulari(i, { kelime = false, don = 0 } = {}) {
       let r;
-      try { r = await satirlar(i); } catch { return []; }
+      try { r = await satirlar(i, don); } catch { return []; }
       const W = 800, H = 800 * (r.oran || 1);
       const kutu = (x, y, w, boyut, it) => {
         const ax = it.ux * boyut * it.asc, ay = it.uy * boyut * it.asc;              // tabandan üste
@@ -200,7 +231,7 @@ export async function pdfAc(blob) {
         const kok = await doc.getOutline().catch(() => null);
         if (!kok?.length) return [];
         const coz = (dugumler, derinlik) => Promise.all(dugumler.map(async (o) => ({
-          baslik: String(o.title || "").replace(/\s+/g, " ").trim() || "Başlıksız",
+          baslik: String(o.title || "").replace(/\s+/g, " ").trim() || t("Başlıksız"),
           derinlik,
           hedef: o.dest ? await pdf.hedefCoz(o.dest) : null,
           url: o.url || null,
@@ -212,10 +243,12 @@ export async function pdfAc(blob) {
     },
     // Sayfanın Link notları, sayfa biriminde kutu: [{ x, y, w, h, hedef | null, url | null }].
     // Dış adres yalnız http, https, mailto ve tel ise alınır (javascript: ve dosya yolu açılmaz).
-    baglantilar(i) {
-      if (!baglantiSoz.has(i)) {
-        baglantiSoz.set(i, (async () => {
-          const p = await sayfa(i), vp = p.getViewport({ scale: 1 }), s = 800 / vp.width;
+    baglantilar(i, don = 0) {
+      don = donNorm(don);
+      const an = don ? `${i}|${don}` : i;
+      if (!baglantiSoz.has(an)) {
+        baglantiSoz.set(an, (async () => {
+          const p = await sayfa(i), vp = gorunum(p, 1, don), s = 800 / vp.width;
           const notlar = await p.getAnnotations({ intent: "display" });
           const sonuc = [];
           for (const a of notlar) {
@@ -236,9 +269,52 @@ export async function pdfAc(blob) {
             if (hedef || url) sonuc.push({ x, y, w, h, hedef, url });
           }
           return sonuc;
-        })().catch((e) => { console.warn("[pdf-belge] bağlantılar:", e); baglantiSoz.delete(i); return []; }));
+        })().catch((e) => { console.warn("[pdf-belge] bağlantılar:", e); baglantiSoz.delete(an); return []; }));
       }
-      return baglantiSoz.get(i);
+      return baglantiSoz.get(an);
+    },
+
+    // Sayfadaki kalem ve vurgu notları (Ink, Highlight, Underline, StrikeOut), sayfa biriminde (genişlik 800, y aşağı).
+    // Başka uygulamada (Acrobat, Samsung Notes, Zotero) yapılan notlar Kenar Notu çizgisine çevrilebilsin diye.
+    // -> [{ tur: "ink" | "highlight" | "underline" | "strikeout", renk: "#rrggbb", w, opak, yollar: [[[x, y], ...]], dortgenler: [[x0, y0, x1, y1]] }]
+    async notlar(i, don = 0) {
+      try {
+        const p = await sayfa(i), vp = gorunum(p, 1, donNorm(don)), s = 800 / vp.width;
+        const hepsi = await p.getAnnotations({ intent: "display" });
+        const nokta = (x, y) => { const [a, b] = vp.convertToViewportPoint(x, y); return [Math.round(a * s * 100) / 100, Math.round(b * s * 100) / 100]; };
+        const hex = (c) => (c && c.length >= 3 ? "#" + [...c].slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase() : "#1B1B1F");
+        const sonuc = [];
+        for (const a of hepsi) {
+          const tur = String(a.subtype || "").toLowerCase();
+          if (!["ink", "highlight", "underline", "strikeout"].includes(tur)) continue;
+          const o = { tur, renk: hex(a.color), w: Math.max(0.5, (a.borderStyle?.width || 1) * s), opak: Number.isFinite(a.opacity) ? a.opacity : 1, yollar: [], dortgenler: [] };
+          if (tur === "ink") o.yollar = (a.inkLists || []).map((l) => [...(l || [])].map((q) => nokta(q.x, q.y)));
+          else {
+            const Q = a.quadPoints || [];
+            for (let k = 0; k + 7 < Q.length; k += 8) {
+              const xs = [], ys = [];
+              for (let m = 0; m < 8; m += 2) { const [x, y] = nokta(Q[k + m], Q[k + m + 1]); xs.push(x); ys.push(y); }
+              o.dortgenler.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+            }
+            if (!o.dortgenler.length && a.rect?.length >= 4) {
+              const [x1, y1] = nokta(a.rect[0], a.rect[1]), [x2, y2] = nokta(a.rect[2], a.rect[3]);
+              o.dortgenler.push([Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]);
+            }
+          }
+          if (o.yollar.some((y) => y.length) || o.dortgenler.length) sonuc.push(o);
+        }
+        return sonuc;
+      } catch (e) { console.warn("[pdf-belge] notlar:", e); return []; }
+    },
+
+    // Belgenin kendi başlığı (XMP dc:title, yoksa bilgi sözlüğündeki Title); yoksa boş metin.
+    // Anlamlı olup olmadığına çağıran bakar (kayit.js içe aktarırken "Untitled" gibi artıkları atar)
+    async baslik() {
+      try {
+        const { info, metadata } = await doc.getMetadata();
+        const t = metadata?.get?.("dc:title") || info?.Title || "";
+        return typeof t === "string" ? t : "";
+      } catch { return ""; }
     },
 
     async kapak(genislik = 360) {
@@ -270,10 +346,12 @@ function metinOlcer() {
   return (m) => (m ? olcerBaglam.measureText(m).width : 0);
 }
 
-export async function pdfBilgi(blob) {
-  const pdf = await pdfAc(blob);
+export async function pdfBilgi(blob, { parola = null } = {}) {
+  const pdf = await pdfAc(blob, { parola });
   try {
-    return { sayfaSayisi: pdf.sayfaSayisi, kapak: await pdf.kapak(360) };
+    // Başlık kapakla aynı anda okunur; takılırsa 2 sn sonra boş geçilir, içe aktarma onu beklemez
+    const [kapak, baslik] = await Promise.all([pdf.kapak(360), Promise.race([pdf.baslik(), new Promise((r) => setTimeout(() => r(""), 2000))])]);
+    return { sayfaSayisi: pdf.sayfaSayisi, kapak, baslik };
   } finally {
     pdf.kapat();
   }

@@ -3,6 +3,7 @@
 // Dosya (PDF, EPUB): içe aktarılır ve açılır. Görüntü: kırpıntı. Metin ya da adres: bekleyen asistana cevap,
 // bekleyen yoksa "Gelen not" kırpıntısı.
 import { bus, kirpintiEkle, toast, store } from "./ortak.js";
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 const PAYLASIM_DB = "kenar-notu-paylasim";
 const PAYLASIM_DEPO = "bekleyen";
@@ -93,7 +94,7 @@ async function isle() {
   const hata = location.hash === "#paylasim-hata";
   // #paylasim adresi geçmişte kalmasın; yönlendirme kitaplığı görür
   if (/^#paylasim/.test(location.hash)) history.replaceState(history.state, "", location.pathname + location.search);
-  if (hata) toast("Paylaşılan içerik alınamadı.");
+  if (hata) toast(t("Paylaşılan içerik alınamadı."));
   if (!("indexedDB" in window)) return;
 
   let liste;
@@ -153,7 +154,7 @@ async function isle() {
       k.dosyalar = (k.dosyalar || []).filter((d) => !d.alindi);
       k.deneme = (k.deneme || 0) + 1;
       if (k.deneme < 3) { geriKoy.push(k); continue; }
-      reddedilen.push(...k.dosyalar.map((d) => d.ad), ...(k.metinAlindi ? [] : ["metin"]));
+      reddedilen.push(...k.dosyalar.map((d) => d.ad), ...(k.metinAlindi ? [] : [t("metin")]));
     }
     biten.push(k.id);
   }
@@ -161,20 +162,21 @@ async function isle() {
   let yazildi = false;
   try { yazildi = await (await import("./kayit.js")).hemenKaydet(); } catch { yazildi = false; }
   if (yazildi) await bekleyenleriGuncelle(biten, geriKoy).catch((e) => console.warn("[kenar-notu] paylaşım kuyruğu güncellenemedi", e));
-  const yarim = geriKoy.length ? " Bir kısmı alınamadı, uygulama yeniden açılınca tekrar denenecek." : "";
+  const yarim = geriKoy.length ? " " + t("Bir kısmı alınamadı, uygulama yeniden açılınca tekrar denenecek.") : "";
 
-  if (reddedilen.length) toast(`Açılamadı: ${reddedilen.join(", ")}. PDF, EPUB ya da görüntü paylaş.`);
+  if (reddedilen.length) toast(t("Açılamadı: {adlar}. PDF, EPUB ya da görüntü paylaş.", { adlar: reddedilen.join(", ") }));
   else if (yarim && !acilacak && !gorselSayisi && !notSayisi) toast(yarim.trim());
   if (acilacak) {
-    if (belgeSayisi > 1 || yarim) toast(`${belgeSayisi === 1 ? "Belge" : `${belgeSayisi} belge`} kitaplığa eklendi.${yarim}`);
+    if (belgeSayisi > 1 || yarim) toast((belgeSayisi === 1 ? t("Belge kitaplığa eklendi.") : t("{n} belge kitaplığa eklendi.", { n: belgeSayisi })) + yarim);
     bus.emit("git", { ekran: "belge", belgeId: acilacak.id });
     return;
   }
   const parca = [];
-  if (gorselSayisi) parca.push(gorselSayisi === 1 ? "Görüntü kırpıntılara eklendi" : `${gorselSayisi} görüntü kırpıntılara eklendi`);
-  if (notSayisi) parca.push(notSayisi === 1 ? "Gelen not kırpıntılara eklendi" : `${notSayisi} gelen not kırpıntılara eklendi`);
+  if (gorselSayisi) parca.push(gorselSayisi === 1 ? t("Görüntü kırpıntılara eklendi") : t("{n} görüntü kırpıntılara eklendi", { n: gorselSayisi }));
+  if (notSayisi) parca.push(notSayisi === 1 ? t("Gelen not kırpıntılara eklendi") : t("{n} gelen not kırpıntılara eklendi", { n: notSayisi }));
   if (cevap && !parca.length) return; // asistan cevabı kendi panelinde gösterir
-  if (parca.length) toast(parca.join(", ") + "." + yarim, { etiket: "Göster", calistir: () => bus.emit("git", { ekran: "kitaplik", gorunum: "kirpilanlar" }) });
+  // İngilizcede her parça ayrı cümle (büyük harfle başlıyor), Türkçede virgülle
+  if (parca.length) toast(parca.join(ingilizceMi ? ". " : ", ") + "." + yarim, { etiket: t("Göster"), calistir: () => bus.emit("git", { ekran: "kitaplik", gorunum: "kirpilanlar" }) });
 }
 
 function metniTopla(k) {
@@ -208,7 +210,7 @@ async function belgeAl(d) {
 /* ---------- kırpıntılar ---------- */
 async function gorselKirpinti(d, not = "", kaynak) {
   const gorsel = await gorselKucult(d.blob, d.tur);
-  kirpintiyiYaz({ gorsel, belgeId: null, belgeAd: adSadelestir(d.ad) || "Paylaşılan görüntü", sayfa: 1 }, not, kaynak);
+  kirpintiyiYaz({ gorsel, belgeId: null, belgeAd: adSadelestir(d.ad) || t("Paylaşılan görüntü"), sayfa: 1 }, not, kaynak);
 }
 // Not alanı kısa durur (240); uzun metnin tamamı "metin" alanında saklanır, büyütülünce görünür
 function kirpintiyiYaz(alanlar, not, kaynak) {
@@ -246,7 +248,7 @@ const blobDataUrl = (blob) => new Promise((coz, red) => {
 // Metin kırpıntısı: pano kartı görsel ister, metin kâğıt fiş olarak basılır
 async function metinKirpinti(metin, baslik = "", kaynak) {
   const gorsel = await metinGorseli(metin, baslik);
-  kirpintiyiYaz({ gorsel, belgeId: null, belgeAd: "Gelen not", sayfa: 1 }, baslik ? `${baslik}: ${metin}` : metin, kaynak);
+  kirpintiyiYaz({ gorsel, belgeId: null, belgeAd: t("Gelen not"), sayfa: 1 }, baslik ? `${baslik}: ${metin}` : metin, kaynak);
 }
 
 async function metinGorseli(metin, baslik) {
@@ -272,7 +274,7 @@ async function metinGorseli(metin, baslik) {
   g.fillStyle = "#685E51";
   g.font = baslikYazi;
   g.textBaseline = "top";
-  g.fillText((baslik || "Gelen not").toLocaleUpperCase("tr").slice(0, 48), PAD, PAD);
+  g.fillText((baslik || t("Gelen not")).toLocaleUpperCase(yerel).slice(0, 48), PAD, PAD);
   g.fillStyle = "#221E19";
   g.font = govdeYazi;
   satirlar.forEach((s, i) => g.fillText(s, PAD, PAD + 34 + i * 34));

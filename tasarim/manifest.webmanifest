@@ -3,14 +3,15 @@
   "name": "Kenar Notu",
   "short_name": "Kenar Notu",
   "description": "PDF, EPUB ve çizgi roman okuma, kalemle not alma ve tekrar.",
+  "description_localized": { "en": "Read PDFs, EPUBs and comics, take notes with your pen, and review what you learn." },
   "lang": "tr",
   "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "theme_color": "#F7F5F0",
-  "background_color": "#F7F5F0",
+  "theme_color": "#0B0C11",
+  "background_color": "#0B0C11",
   "categories": [
     "education",
     "productivity",
@@ -21,7 +22,8 @@
     { "src": "ikon/ikon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "ikon/ikon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "ikon/ikon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "ikon/ikon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "ikon/ikon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "ikon/ikon-tek-renk.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "monochrome" }
   ],
   "share_target": {
     "action": "./paylas",
@@ -64,8 +66,8 @@
     }
   ],
   "shortcuts": [
-    { "name": "Kart çalış", "short_name": "Tekrar", "url": "./#tekrar", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
-    { "name": "Her yerde ara", "short_name": "Ara", "url": "./#arama", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
-    { "name": "İzlerim", "short_name": "İzlerim", "url": "./#izler", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] }
+    { "name": "Kart çalış", "short_name": "Tekrar", "name_localized": { "en": "Study cards" }, "short_name_localized": { "en": "Review" }, "url": "./#tekrar", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
+    { "name": "Her yerde ara", "short_name": "Ara", "name_localized": { "en": "Search everywhere" }, "short_name_localized": { "en": "Search" }, "url": "./#arama", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] },
+    { "name": "İzlerim", "short_name": "İzlerim", "name_localized": { "en": "My marks" }, "short_name_localized": { "en": "My marks" }, "url": "./#izler", "icons": [{ "src": "ikon/ikon-192.png", "sizes": "192x192" }] }
   ]
 }

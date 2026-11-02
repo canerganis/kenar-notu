@@ -950,6 +950,74 @@ export function silgi(cizgiler, x, y, r, { sadeceFosforlu = false, onceki = null
   return silinen;
 }
 
+// Kısmi silgi (TASARIM-5 11.4 M3): silgi dairesinin değdiği yer çizgiden kesilir, kalan parçalar aynı biçimle
+// (tür, renk, kalınlık, basınç dizisi) yeni çizgi olur. Dizi yerinde değişir: eski çizginin yerine parçaları girer
+// (üst üste binme sırası korunur). En uzun parça eski kimliği taşır (izler ona bağlı kalır), öbürleri idUret() alır.
+// Dönen: değişen ya da silinen eski çizgiler (yeniden çizim bölgesi için; parçalar onların kutusunun içindedir).
+// Şekiller (dikdörtgen, elips, ok) nesne sayılır: bütün olarak silinir. Silginin iki konum arası yolu da sınanır.
+export function kismiSilgi(cizgiler, x, y, r, { sadeceFosforlu = false, onceki = null, idUret = null } = {}) {
+  const konumlar = [[x, y]];
+  if (onceki) {
+    const L = Math.hypot(x - onceki[0], y - onceki[1]), adim = Math.max(0.5, r * 0.5);
+    for (let s = adim; s < L; s += adim) konumlar.push([onceki[0] + ((x - onceki[0]) * s) / L, onceki[1] + ((y - onceki[1]) * s) / L]);
+  }
+  let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity;
+  for (const [px, py] of konumlar) { if (px < sx0) sx0 = px; if (px > sx1) sx1 = px; if (py < sy0) sy0 = py; if (py > sy1) sy1 = py; }
+  sx0 -= r; sy0 -= r; sx1 += r; sy1 += r;
+  const giden = [];
+  for (let i = cizgiler.length - 1; i >= 0; i--) {
+    const c = cizgiler[i];
+    if (!c || !c.p || !c.p.length) continue;
+    if (sadeceFosforlu && c.tur !== "fosforlu") continue;
+    const k = kutu(c);
+    if (sx1 < k.x0 || sx0 > k.x1 || sy1 < k.y0 || sy0 > k.y1) continue;
+    if (!konumlar.some(([px, py]) => cizgiyeDokunuyor(c, px, py, r))) continue;
+    if (c.tur === "sekil") { giden.unshift(cizgiler.splice(i, 1)[0]); continue; }
+    const parcalar = parcala(c, konumlar, r);
+    if (!parcalar) continue;   // mürekkebe değdi ama orta çizgiden nokta düşmedi (kalın çizginin kıyısı)
+    let uzun = -1, enUzun = -1;
+    parcalar.forEach((P, j) => { const L = yolBoyu(P); if (L > enUzun) { enUzun = L; uzun = j; } });
+    const yeniler = parcalar.map((P, j) => {
+      const n = { ...c, p: P, id: j === uzun ? c.id : idUret ? idUret() : c.id + "-" + j };
+      delete n.duz; delete n.metinIz; delete n.dortgen; delete n.grup; delete n.soluk;
+      return n;
+    });
+    cizgiler.splice(i, 1, ...yeniler);
+    giden.unshift(c);
+  }
+  return giden;
+}
+// Orta çizgiyi sık örnekler, silgiye değen noktaları atar, kalan ardışık koşuları döner (değişiklik yoksa null)
+function parcala(c, konumlar, r) {
+  const P0 = noktalar(c), w = kalinlik(c), adim = Math.max(0.6, Math.min(2, r / 3));
+  const P = [];
+  for (let i = 0; i < P0.length; i++) {
+    const q = P0[i];
+    if (i) {
+      const a = P0[i - 1], L = Math.hypot(q[0] - a[0], q[1] - a[1]);
+      for (let s = adim; s < L - adim * 0.5; s += adim) {
+        const t = s / L, ba = basincOku(a), bq = basincOku(q);
+        P.push([Math.round((a[0] + (q[0] - a[0]) * t) * 100) / 100, Math.round((a[1] + (q[1] - a[1]) * t) * 100) / 100, Math.round((ba + (bq - ba) * t) * 1000) / 1000]);
+      }
+    }
+    P.push(q.slice());
+  }
+  let silindi = false;
+  const kalan = P.map((q) => {
+    const R = r + Math.max(EN_INCE, genislik(c.tur, w, basincOku(q))) / 2, R2 = R * R;
+    const sil = konumlar.some(([px, py]) => (q[0] - px) ** 2 + (q[1] - py) ** 2 <= R2);
+    if (sil) silindi = true;
+    return !sil;
+  });
+  if (!silindi) return null;
+  const kosular = [];
+  let su = null;
+  P.forEach((q, i) => { if (kalan[i]) (su ||= []).push(q); else if (su) { kosular.push(su); su = null; } });
+  if (su) kosular.push(su);
+  // Tek noktalık kırıntı (silgi kıyısında kalan) atılır; nokta (i'nin noktası) kendi başına çizgiyse korunur
+  return kosular.filter((K) => K.length >= 2 || P0.length === 1);
+}
+
 // Kement için çizgiyi temsil eden noktalar: iki noktalı çizgi ve şekiller örneklenir
 function temsilNoktalari(c) {
   if (c.tur === "sekil") {

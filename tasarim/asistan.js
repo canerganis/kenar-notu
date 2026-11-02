@@ -5,40 +5,46 @@
 import { h, icon, bus, store, toast, ayarla, kartEkle, panoyaYaz, belgeBul, YZ_UYGULAMALAR, YZ_SAGLAYICILAR } from "./ortak.js";
 import * as SAYFALAR from "./sayfalar.js";
 import { formulleriCiz } from "./matematik.js";
+import { webAraDugmeleri } from "./iz-bag.js";
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 /* ================= Sabitler ================= */
+// Üçüncü öğe yapay zekâya giden istemdir; o da arayüz diliyle gider
 const HAZIR_METIN = [
-  ["acikla", "Açıkla", "Bunu açıkla."],
-  ["ozetle", "Özetle", "Bunu kısaca özetle."],
-  ["basitlestir", "Basitleştir", "Bunu daha basit anlat, konuya yeni başlıyormuşum gibi."],
-  ["ornek", "Örnek ver", "Bununla ilgili somut bir örnek ver."],
-  ["soru-uret", "Soru üret", "Bu konudan kendimi sınamam için üç soru üret, cevapları en sonda olsun."],
+  ["acikla", t("Açıkla"), t("Bunu açıkla.")],
+  ["ozetle", t("Özetle"), t("Bunu kısaca özetle.")],
+  ["basitlestir", t("Basitleştir"), t("Bunu daha basit anlat, konuya yeni başlıyormuşum gibi.")],
+  ["ornek", t("Örnek ver"), t("Bununla ilgili somut bir örnek ver.")],
+  ["soru-uret", t("Soru üret"), t("Bu konudan kendimi sınamam için üç soru üret, cevapları en sonda olsun.")],
 ];
 const HAZIR_GORSEL = [
-  ["formul", "Bu formülü açıkla", "Bu formülü açıkla: her terim ne anlama geliyor?"],
-  ["coz", "Bu soruyu çöz", "Bu soruyu çöz."],
-  ["adim", "Adım adım göster", "Adım adım göster, her adımın gerekçesini yaz."],
-  ["ozetle", "Özetle", "Bu bölgedekileri kısaca özetle."],
+  ["formul", t("Bu formülü açıkla"), t("Bu formülü açıkla: her terim ne anlama geliyor?")],
+  ["coz", t("Bu soruyu çöz"), t("Bu soruyu çöz.")],
+  ["adim", t("Adım adım göster"), t("Adım adım göster, her adımın gerekçesini yaz.")],
+  ["ozetle", t("Özetle"), t("Bu bölgedekileri kısaca özetle.")],
 ];
-const HAZIR_ANLAM = ["anlam", "Anlamı", "Bu kelimenin bu bağlamdaki anlamını bir iki cümleyle ver; kökeni biliniyorsa kısaca ekle."];
+const HAZIR_ANLAM = ["anlam", t("Anlamı"), t("Bu kelimenin bu bağlamdaki anlamını bir iki cümleyle ver; kökeni biliniyorsa kısaca ekle.")];
 const hazirBul = (id, gorsel) =>
   (gorsel ? HAZIR_GORSEL : HAZIR_METIN).find((x) => x[0] === id) ||
   [...HAZIR_METIN, ...HAZIR_GORSEL, HAZIR_ANLAM].find((x) => x[0] === id) || null;
 
 // Uygulama adının ünlü uyumu: ChatGPT'de, Gemini'de, Claude'da
 const EK = { chatgpt: "'de", gemini: "'de", claude: "'da" };
+// "{yer}" yer tutucusu: Türkçede "ChatGPT'de", İngilizcede yalnız ad ("in ChatGPT" cümlenin kendisinde)
+const uygulamada = (u) => (ingilizceMi ? u.ad : `${u.ad}${EK[u.id] || "'de"}`);
 const MONOGRAM = { chatgpt: "Ch", gemini: "Ge", claude: "Cl" };
-const buyuk = (s) => s.toLocaleUpperCase("tr");
+const buyuk = (s) => s.toLocaleUpperCase(yerel);
 
+// eylem Türkçe kimlik olarak kalır (karşılaştırma buna bakar), ekranda t() ile yazılır
 const HATALAR = {
-  anahtar: { lamba: "hata", metin: "Anahtar kabul edilmedi. Ayarlar'dan kontrol et.", eylem: "Ayarları aç" },
-  model: { lamba: "hata", metin: "Model adını Ayarlar'dan kontrol et.", eylem: "Ayarları aç" },
-  istek: { lamba: "hata", metin: "Sağlayıcı isteği kabul etmedi. Model adını ve ayarları kontrol et.", eylem: "Ayarları aç" },
-  sinir: { lamba: "denenmedi", metin: "Sağlayıcının sınırına ulaşıldı. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
-  sunucu: { lamba: "denenmedi", metin: "Sağlayıcı şu an cevap veremiyor. Biraz sonra yeniden dene.", eylem: "Yeniden dene" },
-  ag: { lamba: "", metin: "Şu an bağlantı yok. Bağlantı gelince yeniden dene; okuma, yazma ve arama internetsiz çalışır.", eylem: "Yeniden dene" },
-  zaman: { lamba: "denenmedi", metin: "Sağlayıcı 60 saniyedir cevap vermiyor. Bağlantını kontrol edip yeniden dene.", eylem: "Yeniden dene" },
-  ret: { lamba: null, metin: "Bu soruya cevap verilemedi.", eylem: "Soruyu değiştir" },
+  anahtar: { lamba: "hata", metin: t("Anahtar kabul edilmedi. Ayarlar'dan kontrol et."), eylem: "Ayarları aç" },
+  model: { lamba: "hata", metin: t("Model adını Ayarlar'dan kontrol et."), eylem: "Ayarları aç" },
+  istek: { lamba: "hata", metin: t("Sağlayıcı isteği kabul etmedi. Model adını ve ayarları kontrol et."), eylem: "Ayarları aç" },
+  sinir: { lamba: "denenmedi", metin: t("Sağlayıcının sınırına ulaşıldı. Biraz sonra yeniden dene."), eylem: "Yeniden dene" },
+  sunucu: { lamba: "denenmedi", metin: t("Sağlayıcı şu an cevap veremiyor. Biraz sonra yeniden dene."), eylem: "Yeniden dene" },
+  ag: { lamba: "", metin: t("Şu an bağlantı yok. Bağlantı gelince yeniden dene; okuma, yazma ve arama internetsiz çalışır."), eylem: "Yeniden dene" },
+  zaman: { lamba: "denenmedi", metin: t("Sağlayıcı 60 saniyedir cevap vermiyor. Bağlantını kontrol edip yeniden dene."), eylem: "Yeniden dene" },
+  ret: { lamba: null, metin: t("Bu soruya cevap verilemedi."), eylem: "Soruyu değiştir" },
 };
 
 class AsistanHatasi extends Error {
@@ -113,10 +119,10 @@ function indir(dosya) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 const kelimeSay = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
-const sayiTr = (n, k = 1) => n.toLocaleString("tr-TR", { maximumFractionDigits: k, minimumFractionDigits: k });
-const saatTr = (z = new Date()) => z.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-const tarihTr = (z = new Date()) => z.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
-const kaynakSatiri = (k) => [k.belgeAd, k.sayfa ? `s. ${k.sayfa}` : ""].filter(Boolean).join(" · ");
+const sayiTr = (n, k = 1) => n.toLocaleString(yerel, { maximumFractionDigits: k, minimumFractionDigits: k });
+const saatTr = (z = new Date()) => z.toLocaleTimeString(yerel, { hour: "2-digit", minute: "2-digit" });
+const tarihTr = (z = new Date()) => z.toLocaleDateString(yerel, { day: "2-digit", month: "2-digit", year: "numeric" });
+const kaynakSatiri = (k) => [k.belgeAd, k.sayfa ? t("s. {n}", { n: k.sayfa }) : ""].filter(Boolean).join(" · ");
 
 /* ================= Cevap biçimi: paragraf, liste, $...$ ================= */
 const kacis = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -222,7 +228,7 @@ async function* sseOku(res) {
     for (;;) {
       let parca;
       try { parca = await okuyucu.read(); } catch (e) {
-        if (sure?.doldu()) throw new AsistanHatasi("zaman", "60 SN · ZAMAN AŞIMI");
+        if (sure?.doldu()) throw new AsistanHatasi("zaman", t("60 SN · ZAMAN AŞIMI"));
         throw e;
       }
       const { value, done } = parca;
@@ -247,29 +253,29 @@ async function* sseOku(res) {
 
 /* ================= HTTP ve hata eşleme ================= */
 function httpHatasi(durum, govde) {
-  if (durum === 401 || durum === 403) return new AsistanHatasi("anahtar", `${durum} · ANAHTAR`);
+  if (durum === 401 || durum === 403) return new AsistanHatasi("anahtar", t("{d} · ANAHTAR", { d: durum }));
   if (durum === 404) return new AsistanHatasi("model", "404 · MODEL");
-  if (durum === 429) return new AsistanHatasi("sinir", "429 · SINIR");
-  if (durum === 400 && /API_KEY_INVALID|api[ _-]?key|authentication/i.test(govde)) return new AsistanHatasi("anahtar", "400 · ANAHTAR");
+  if (durum === 429) return new AsistanHatasi("sinir", t("429 · SINIR"));
+  if (durum === 400 && /API_KEY_INVALID|api[ _-]?key|authentication/i.test(govde)) return new AsistanHatasi("anahtar", t("400 · ANAHTAR"));
   if (durum === 400 && /model/i.test(govde) && /not found|not exist|invalid|unknown|unsupported/i.test(govde)) return new AsistanHatasi("model", "400 · MODEL");
-  if (durum === 400) return new AsistanHatasi("istek", "400 · İSTEK");
-  if (durum === 529 || durum === 503) return new AsistanHatasi("sunucu", `${durum} · YOĞUN`);
-  return new AsistanHatasi("sunucu", `${durum} · SUNUCU`);
+  if (durum === 400) return new AsistanHatasi("istek", t("400 · İSTEK"));
+  if (durum === 529 || durum === 503) return new AsistanHatasi("sunucu", t("{d} · YOĞUN", { d: durum }));
+  return new AsistanHatasi("sunucu", t("{d} · SUNUCU", { d: durum }));
 }
 // Akış içinde gelen hata nesnesi (Claude "error" olayı, OpenAI "error" / "response.failed")
 function akisHatasi(tip = "", kod = "") {
-  const t = `${tip} ${kod}`;
-  if (/authentication|permission|invalid_api_key/i.test(t)) return new AsistanHatasi("anahtar", "401 · ANAHTAR");
-  if (/not_found|model_not_found/i.test(t)) return new AsistanHatasi("model", "404 · MODEL");
-  if (/rate_limit|quota|429/i.test(t)) return new AsistanHatasi("sinir", "429 · SINIR");
-  if (/overloaded|529|503/i.test(t)) return new AsistanHatasi("sunucu", "529 · YOĞUN");
-  return new AsistanHatasi("sunucu", "AKIŞ · HATA");
+  const s = `${tip} ${kod}`;
+  if (/authentication|permission|invalid_api_key/i.test(s)) return new AsistanHatasi("anahtar", t("401 · ANAHTAR"));
+  if (/not_found|model_not_found/i.test(s)) return new AsistanHatasi("model", "404 · MODEL");
+  if (/rate_limit|quota|429/i.test(s)) return new AsistanHatasi("sinir", t("429 · SINIR"));
+  if (/overloaded|529|503/i.test(s)) return new AsistanHatasi("sunucu", t("529 · YOĞUN"));
+  return new AsistanHatasi("sunucu", t("AKIŞ · HATA"));
 }
 // Sağlayıcı 60 sn ses vermezse istek kesilir: cevap başlamadan önce ve akış sırasında (her parça süreyi yeniler).
 // Kullanıcının durdurması (dış signal) AbortError olarak kalır ve sessizce biter; zaman aşımı kendi hatasıdır.
 const ZAMAN_ASIMI = 60_000;
 async function istekAt(url, secenek) {
-  if (navigator.onLine === false) throw new AsistanHatasi("ag", "AĞ YOK");
+  if (navigator.onLine === false) throw new AsistanHatasi("ag", t("AĞ YOK"));
   const dis = secenek.signal;
   if (dis?.aborted) throw new DOMException("Durduruldu", "AbortError");
   const denetci = new AbortController();
@@ -280,9 +286,9 @@ async function istekAt(url, secenek) {
   let res;
   try { res = await fetch(url, { ...secenek, signal: denetci.signal }); } catch (e) {
     sure.birak();
-    if (doldu) throw new AsistanHatasi("zaman", "60 SN · ZAMAN AŞIMI");
+    if (doldu) throw new AsistanHatasi("zaman", t("60 SN · ZAMAN AŞIMI"));
     if (e.name === "AbortError") throw e;
-    throw new AsistanHatasi("ag", "AĞ YOK");
+    throw new AsistanHatasi("ag", t("AĞ YOK"));
   }
   if (!res.ok) {
     let govde = "";
@@ -375,7 +381,7 @@ const ADAPTORLER = {
     await bekle(520 + Math.random() * 380, signal);
     if (test) {
       const k = test[1].toLowerCase();
-      if (k === "ag") throw new AsistanHatasi("ag", "AĞ YOK");
+      if (k === "ag") throw new AsistanHatasi("ag", t("AĞ YOK"));
       if (k === "ret") throw new AsistanHatasi("ret");
       throw httpHatasi(+k, "");
     }
@@ -393,22 +399,30 @@ const ADAPTORLER = {
 // Çevrimdışı hazır cevaplar konuya göre seçilir: önce seçilen metin, sonra örnek sayfanın metni, en son belge adı taranır.
 // Konu bilinmiyorsa matematik dışı metinde metnin kendisinden kurulan genel bir cevap gelir.
 const sozBasi = (s) => new RegExp(`(?<!\\p{L})(?:${s})`, "iu");
+// Her konuda İngilizce örnek sayfalar için İngilizce terimler de aranır
 const KONULAR = [
-  { id: "logturev", ad: "logaritmik türev", re: [/logaritmik türev/i, /ln\s*y\s*=/] },
-  { id: "kapali", ad: "kapalı türev", re: [/kapalı türev|kapalı fonksiyon|kapalı olarak/i, /x(?:²|\^?2)\s*\+\s*y(?:²|\^?2)/i] },
-  { id: "zincir", ad: "zincir kuralı", re: [/zincir kural/i, /bileşke fonksiyon/i, /f\s*∘\s*g|f′\s*\(\s*g\s*\(x\)\s*\)|dy\s*\/\s*du/i, /iç fonksiyon|dış fonksiyon/i] },
-  { id: "difdenk", ad: "ayrılabilir diferansiyel denklemler", re: [/diferansiyel denklem|değişkenlerine ayır|ayrılabilir/i, /y′\s*=\s*\d*\s*y\b/] },
-  { id: "statik", ad: "kiriş ve mesnet tepkileri", re: [sozBasi("kiriş|mesnet|moment|kesme kuvvet|serbest cisim|yayılı yük|tekil yük|statik"), /\d\s*kN\b/],
+  { id: "logturev", ad: "logaritmik türev", re: [/logaritmik türev|logarithmic differentiation/i, /ln\s*y\s*=/] },
+  { id: "kapali", ad: "kapalı türev", re: [/kapalı türev|kapalı fonksiyon|kapalı olarak|implicit differentiation|implicitly/i, /x(?:²|\^?2)\s*\+\s*y(?:²|\^?2)/i] },
+  { id: "zincir", ad: "zincir kuralı", re: [/zincir kural|chain rule/i, /bileşke fonksiyon|composite function/i, /f\s*∘\s*g|f′\s*\(\s*g\s*\(x\)\s*\)|dy\s*\/\s*du/i, /iç fonksiyon|dış fonksiyon|inner function|outer function/i] },
+  { id: "difdenk", ad: "ayrılabilir diferansiyel denklemler", re: [/diferansiyel denklem|değişkenlerine ayır|ayrılabilir|differential equation|separable|separate the variables/i, /y′\s*=\s*\d*\s*y\b/] },
+  { id: "statik", ad: "kiriş ve mesnet tepkileri", re: [sozBasi("kiriş|mesnet|moment|kesme kuvvet|serbest cisim|yayılı yük|tekil yük|statik|beam|shear force|free body|distributed load|point load|statics"), /\d\s*kN\b/],
     // Örnek sayfaların hangisi: problem, örnek ya da kesme-moment bölümü
-    alt: [[/problem 2\.7/i, "statik"], [/dV\s*\/\s*dx|eğilme momenti diyagram|kesit yöntemi/i, "statikVM"], [/örnek 2\.6|basit mesnetli/i, "statik26"]] },
-  { id: "anatomi", ad: "üst ekstremitenin kas ve sinirleri", re: [sozBasi("pleksus|plexus|brakiyal|brachial|ekstremite|innervasyon|humerus|n\\.\\s|m\\.\\s|sinir"), /(?<!\p{L})kas(?:ı|ın|lar\p{L}*)?(?!\p{L})/iu],
-    alt: [[/fossa cubitalis|dirsek çukuru/i, "anatomiFossa"], [/pleksus|plexus/i, "anatomi"], [/biceps|triceps|brachialis|coracobrachialis|kolun kasları/i, "anatomiKas"]] },
-  { id: "turev", ad: "türev", re: [sozBasi("türev|limit|teğet|eğim|anlık değişim"), /f′|f'\(|dy\s*\/\s*dx/] },
+    alt: [[/problem 2\.7/i, "statik"], [/dV\s*\/\s*dx|eğilme momenti diyagram|kesit yöntemi|bending moment diagram|method of sections/i, "statikVM"], [/örnek 2\.6|basit mesnetli|example 2\.6|simply supported/i, "statik26"]] },
+  { id: "anatomi", ad: "üst ekstremitenin kas ve sinirleri", re: [sozBasi("pleksus|plexus|brakiyal|brachial|ekstremite|innervasyon|humerus|n\\.\\s|m\\.\\s|sinir|upper limb|innervat|nerve"), /(?<!\p{L})kas(?:ı|ın|lar\p{L}*)?(?!\p{L})|(?<!\p{L})muscles?(?!\p{L})/iu],
+    alt: [[/fossa cubitalis|dirsek çukuru|cubital fossa/i, "anatomiFossa"], [/pleksus|plexus/i, "anatomi"], [/biceps|triceps|brachialis|coracobrachialis|kolun kasları|muscles of the arm/i, "anatomiKas"]] },
+  { id: "turev", ad: "türev", re: [sozBasi("türev|limit|teğet|eğim|anlık değişim|derivative|tangent|slope|instantaneous rate"), /f′|f'\(|dy\s*\/\s*dx/] },
 ];
 const KONU_AD = {
   ...Object.fromEntries(KONULAR.map((x) => [x.id, x.ad])),
   statik26: "basit mesnetli kirişte mesnet tepkileri", statikVM: "kesme kuvveti ve eğilme momenti",
   anatomiKas: "kolun kasları", anatomiFossa: "fossa cubitalis",
+};
+const KONU_AD_EN = {
+  logturev: "logarithmic differentiation", kapali: "implicit differentiation", zincir: "the chain rule",
+  difdenk: "separable differential equations", statik: "beams and support reactions",
+  anatomi: "the muscles and nerves of the upper limb", turev: "the derivative",
+  statik26: "support reactions in a simply supported beam", statikVM: "shear force and bending moment",
+  anatomiKas: "the muscles of the arm", anatomiFossa: "the cubital fossa",
 };
 // Örnek belgede sayfanın metni (gerçek PDF'te sayfa metni zaten "sor" yüküyle gelir)
 function ornekSayfaMetni(k) {
@@ -905,6 +919,471 @@ Sonuç: $f′(x) = 2x$.`,
 Kısaca bölge, türevin geometrik anlamını özetliyor.`,
   },
 };
+// İngilizce kipte aynı hazır cevaplar (aynı konu ve tuş kimlikleriyle)
+const DENEME_KONU_EN = {
+  zincir: {
+    acikla: `The chain rule takes the derivative of a nested (composite) function one layer at a time.
+1. Split the function into two layers: an outer function $f$ and an inner function $g$, so $F(x) = f(g(x))$.
+2. Take the derivative of the outer function but leave the inside alone: $f′(g(x))$.
+3. Multiply by the derivative of the inner function: $F′(x) = f′(g(x)) · g′(x)$.
+Why a product? When $x$ changes a little, $u = g(x)$ changes $g′(x)$ times as much; when $u$ changes, $y$ changes $f′(u)$ times as much. Two magnifications in a row multiply.
+In Leibniz notation, $dy/dx = (dy/du) · (du/dx)$; thinking of the $du$ terms as canceling helps you remember the rule.`,
+    ozetle: `Summary in three lines:
+- If $F(x) = f(g(x))$ is a composite function, then $F′(x) = f′(g(x)) · g′(x)$.
+- In short: the outer derivative (inside unchanged) times the inner derivative.
+- For example, for $y = (3x^2 + 1)^5$, $y′ = 5(3x^2 + 1)^4 · 6x = 30x(3x^2 + 1)^4$.`,
+    basitlestir: `Think of the chain rule as interlocking gears: gear $x$ turns gear $u$, and gear $u$ turns gear $y$.
+If $u$ turns 3 times for each turn of $x$, and $y$ turns 2 times for each turn of $u$, then $y$ turns $3 · 2 = 6$ times for each turn of $x$.
+Derivatives are these "how many times" ratios: $dy/dx = (dy/du) · (du/dx)$.
+Practical rule: first take the derivative of the outermost operation without touching the inside, then multiply by the derivative of the inside expression.`,
+    ornek: `A concrete example: $y = (3x^2 + 1)^5$.
+1. Inner function $u = 3x^2 + 1$, outer function $y = u^5$.
+2. Outer derivative: $dy/du = 5u^4 = 5(3x^2 + 1)^4$.
+3. Inner derivative: $du/dx = 6x$.
+4. Multiply: $y′ = 5(3x^2 + 1)^4 · 6x = 30x(3x^2 + 1)^4$.
+Check: at $x = 0$ you get $y′ = 0$. Indeed, $3x^2 + 1$ has its smallest value at $x = 0$, and the tangent is horizontal there.`,
+    "soru-uret": `Three questions to test yourself:
+1. If $y = sin(4x)$, what is $y′$?
+2. Find the derivative of $y = ln(cos x)$.
+3. What is $y′$ for $y = tan^2(3x)$? Hint: the chain rule is applied twice.
+**Answers**
+1. $y′ = cos(4x) · 4 = 4cos(4x)$.
+2. $y′ = (1/cos x) · (−sin x) = −tan x$.
+3. $y′ = 2tan(3x) · sec^2(3x) · 3 = 6tan(3x)sec^2(3x)$.`,
+    formul: `The expression in the image is the chain rule: $F′(x) = f′(g(x)) · g′(x)$.
+1. $F = f ∘ g$: the composite function that applies $g$ first, then $f$.
+2. $g′(x)$: the rate of change of the inner function at $x$.
+3. $f′(g(x))$: the derivative of the outer function, evaluated at $g(x)$, not at $x$. The most common mistake is writing $f′(x)$ here.
+4. Leibniz form: if $u = g(x)$, then $dy/dx = (dy/du) · (du/dx)$.
+Condition: $g$ must be differentiable at $x$, and $f$ must be differentiable at $g(x)$.`,
+    coz: `Example 1 on the page: $y = (3x^2 + 1)^5$.
+1. Separate the layers: $u = 3x^2 + 1$ and $y = u^5$.
+2. Outer derivative: $dy/du = 5u^4$.
+3. Inner derivative: $du/dx = 6x$.
+4. Chain rule: $dy/dx = 5u^4 · 6x = 30x(3x^2 + 1)^4$.
+Result: $y′ = 30x(3x^2 + 1)^4$.`,
+    adim: `Step by step, with $y = tan^2(3x)$ from the exercises on the page:
+1. Separate the layers: $y = u^2$, $u = tan v$, $v = 3x$. Reason: there are three nested operations, and each one brings a factor.
+2. Outermost layer: $dy/du = 2u = 2tan(3x)$. Reason: the power rule, with the inside unchanged.
+3. Middle layer: $du/dv = sec^2 v = sec^2(3x)$. Reason: $(tan v)′ = sec^2 v$.
+4. Inner layer: $dv/dx = 3$.
+5. Multiply: $y′ = 2tan(3x) · sec^2(3x) · 3 = 6tan(3x)sec^2(3x)$.
+The number of factors should equal the number of layers; if one is missing, a layer was forgotten.`,
+    "ozetle-gorsel": `This area has three parts:
+- Theorem: if $F = f ∘ g$, then $F′(x) = f′(g(x)) · g′(x)$.
+- Leibniz form: $dy/dx = (dy/du) · (du/dx)$.
+- Example 1: for $y = (3x^2 + 1)^5$, $y′ = 30x(3x^2 + 1)^4$.
+In short, the area sums up the derivative of a composite function as "outer derivative times inner derivative".`,
+  },
+  kapali: {
+    acikla: `Implicit differentiation is how you take derivatives in equations where you can't isolate $y$ in terms of $x$.
+1. Differentiate both sides of the equation with respect to $x$.
+2. The chain rule applies to every term with $y$: since $y$ is a function of $x$, $(y^2)′ = 2y · y′$.
+3. Gather the terms with $y′$ on one side and solve for $y′$.
+Example: if $x^2 + y^2 = 25$, then $2x + 2y · y′ = 0$, so $y′ = −x/y$.
+The result depends on both $x$ and $y$; you need both coordinates of the point to find the slope.`,
+    ozetle: `Summary in three lines:
+- Implicit differentiation lets you differentiate equations of the form $F(x, y) = c$ without isolating $y$.
+- Every term with $y$ is differentiated with the chain rule and gets a factor of $y′$.
+- For the circle $x^2 + y^2 = 25$, $y′ = −x/y$; at $(3, 4)$ the slope of the tangent is $−3/4$.`,
+    basitlestir: `Some curves can't be written as "$y = ...$"; a circle is one of them, because one $x$ value gives two $y$ values.
+With implicit differentiation you don't try to isolate $y$. You differentiate the equation as it is, and add a $y′$ to the end of every $y$ term, because $y$ changes when $x$ changes.
+Circle $x^2 + y^2 = 25$: differentiating gives $2x + 2y · y′ = 0$, so $y′ = −x/y$.
+At the upper right point $(3, 4)$ the slope is $−3/4$: the curve is going down there, as expected.`,
+    ornek: `Example: the tangent to the curve $x^3 + y^3 = 6xy$ (folium of Descartes) at $(3, 3)$.
+1. Is the point on the curve: $27 + 27 = 54 = 6 · 3 · 3$. Yes.
+2. Differentiate both sides: $3x^2 + 3y^2 y′ = 6y + 6xy′$. The product rule was used on the right.
+3. Collect $y′$: $y′(3y^2 − 6x) = 6y − 3x^2$, so $y′ = (2y − x^2)/(y^2 − 2x)$.
+4. At $(3, 3)$: $y′ = (6 − 9)/(9 − 6) = −1$.
+5. Tangent: $y − 3 = −(x − 3)$, so $y = −x + 6$.`,
+    "soru-uret": `Three questions to test yourself:
+1. What is the slope of the tangent to the circle $x^2 + y^2 = 25$ at $(−3, 4)$?
+2. Find $y′$ for $x^2 + xy + y^2 = 7$.
+3. What is $y′$ for $sin(x + y) = y$?
+**Answers**
+1. $y′ = −x/y = 3/4$.
+2. $2x + y + xy′ + 2yy′ = 0$, so $y′ = −(2x + y)/(x + 2y)$.
+3. $cos(x + y)(1 + y′) = y′$, so $y′ = cos(x + y)/(1 − cos(x + y))$.`,
+    formul: `The result in the image is $y′ = −x/y$: the slope of the tangent at every point of the circle $x^2 + y^2 = 25$.
+1. $x^2 + y^2 = 25$: the circle centered at the origin with radius $5$.
+2. Differentiating gives $2x + 2y · y′ = 0$; the $2y · y′$ term comes from the chain rule.
+3. $−x/y$: the slope depends on the point. At $(±5, 0)$, where $y = 0$, the tangent is vertical and the slope is undefined.
+Geometric meaning: the slope of the radius is $y/x$ and the slope of the tangent is $−x/y$; their product is $−1$, so the tangent is perpendicular to the radius.`,
+    coz: `The tangent to the circle on the page at $(3, 4)$:
+1. Implicit derivative: $2x + 2y · y′ = 0$, so $y′ = −x/y$.
+2. Slope at the point: $y′ = −3/4$.
+3. Point-slope form: $y − 4 = −(3/4)(x − 3)$.
+4. Rearrange: $y = −(3/4)x + 25/4$, or $3x + 4y = 25$.
+Check: plugging in $(3, 4)$ gives $9 + 16 = 25$; the tangent passes through the point.`,
+    adim: `Step by step, $y′$ for $x^3 + y^3 = 6xy$:
+1. Differentiate the left side: $(x^3)′ = 3x^2$, $(y^3)′ = 3y^2 y′$. Reason: the $y$ term is differentiated with the chain rule.
+2. Differentiate the right side: $(6xy)′ = 6y + 6xy′$. Reason: a product of $x$ and $y$, so the product rule.
+3. Set them equal: $3x^2 + 3y^2 y′ = 6y + 6xy′$.
+4. Move the $y′$ terms to the left and the rest to the right: $y′(3y^2 − 6x) = 6y − 3x^2$.
+5. Divide and simplify: $y′ = (2y − x^2)/(y^2 − 2x)$.
+Where the denominator is zero, the tangent is vertical.`,
+    "ozetle-gorsel": `This area has three things:
+- A curve: the circle $x^2 + y^2 = 25$ and the tangent line at one point.
+- A method: both sides are differentiated with respect to $x$, and $y′$ is added to the $y$ terms.
+- A result: $y′ = −x/y$; the tangent is perpendicular to the radius at every point.
+In short, the area shows how to find a slope without isolating $y$.`,
+  },
+  difdenk: {
+    acikla: `In a separable differential equation, the $y$ terms can be gathered on one side and the $x$ terms on the other.
+1. Write $dy/dx = 2y$ instead of $y′ = 2y$.
+2. Separate the variables: $dy/y = 2dx$.
+3. Integrate both sides: $ln|y| = 2x + c$.
+4. Exponentiate: $y = Ce^{2x}$, where $C = ±e^c$.
+5. The initial condition fixes the constant: if $y(0) = 3$, then $C = 3$, so $y = 3e^{2x}$.
+Meaning: the rate of change is proportional to the current amount. Population, compound interest and bacterial growth all fit this pattern.`,
+    ozetle: `Summary in three lines:
+- An equation of the form $y′ = ky$ is solved by separating the variables: $dy/y = k dx$.
+- The general solution is $y = Ce^{kx}$; $C$ comes from the initial condition.
+- In the example on the page, $y′ = 2y$ with $y(0) = 3$ gives $y = 3e^{2x}$; check: $y′ = 6e^{2x} = 2y$.`,
+    basitlestir: `Think of money in a bank: interest is earned on whatever is in the account at that moment. As the money grows, the growth speeds up too.
+$y′ = 2y$ says exactly this: the rate of growth is twice the current amount.
+Anything that grows like this follows an exponential formula: $y = Ce^{2x}$. $C$ is the starting amount; if $y(0) = 3$, then $y = 3e^{2x}$.`,
+    ornek: `A concrete example: radioactive decay. The amount of substance is $y$, and it decreases at a rate proportional to the amount: $y′ = −0.1y$, starting at $y(0) = 50$ g.
+1. Separate: $dy/y = −0.1dt$.
+2. Integrate: $ln|y| = −0.1t + c$, so $y = Ce^{−0.1t}$.
+3. Condition: $C = 50$, so $y = 50e^{−0.1t}$.
+4. Half-life: if $50e^{−0.1t} = 25$, then $t = ln 2/0.1 ≈ 6.93$.
+With the sign flipped, the same equation describes growth.`,
+    "soru-uret": `Three questions to test yourself:
+1. Solve $y′ = 3y$, $y(0) = 2$.
+2. Find the general solution of $y′ = xy$.
+3. Show that $y = 3e^{2x}$ satisfies $y′ = 2y$.
+**Answers**
+1. $y = 2e^{3x}$.
+2. $dy/y = xdx$, $ln|y| = x²/2 + c$, so $y = Ce^{x²/2}$.
+3. $y′ = 6e^{2x} = 2 · 3e^{2x} = 2y$.`,
+    formul: `The result in the image, $y = 3e^{2x}$, is the solution of $y′ = 2y$.
+1. $e^{2x}$: a function whose derivative is $2$ times itself; exactly what the equation asks for.
+2. $3$: the initial value, $y = 3$ when $x = 0$.
+3. The $2$ in the exponent: the growth rate. The larger it is, the faster the curve steepens.
+Check: $y′ = 6e^{2x} = 2y$.`,
+    coz: `Example: $y′ = 2y$, $y(0) = 3$.
+1. Separate: $dy/y = 2dx$.
+2. Integrate: $ln|y| = 2x + c$.
+3. Exponentiate: $y = Ce^{2x}$.
+4. Condition: $y(0) = C = 3$.
+Result: $y = 3e^{2x}$. Check: $y′ = 6e^{2x} = 2y$.`,
+  },
+  statik: {
+    acikla: `Problem 2.7 is an equilibrium problem for a simply supported beam. The beam rests on a pin support at $A$ (two reactions: $A_x$, $A_y$) and a roller support at $B$ (one reaction: $B_y$).
+1. Free body diagram: remove the supports and draw the reaction forces in their place. Loads: $12$ kN at $C$ and $4$ kN/m along $CB$.
+2. Replace the distributed load with its resultant: $4 · 2 = 8$ kN, at the middle of $CB$, so $4$ m from $A$.
+3. Write the equilibrium equations: $ΣF_x = 0$, $ΣF_y = 0$, $ΣM_A = 0$. Three unknowns, three equations.
+4. Taking moments about $A$ drops $A_x$ and $A_y$ from the equation, so $B_y$ comes out directly.
+Shear force and bending moment are found by cutting the beam at a point and looking at the equilibrium of the left part.`,
+    ozetle: `Summary in three lines:
+- $A$ is a pin support ($A_x$, $A_y$) and $B$ is a roller ($B_y$); the loads are a $12$ kN point load and $4$ kN/m distributed.
+- From equilibrium, $A_x = 0$, $A_y = 6.4$ kN, $B_y = 13.6$ kN.
+- The largest bending moment is at $C$: $M_C = 19.2$ kN·m.`,
+    basitlestir: `Think of the beam as a plank carried on the shoulders of two people. $A$ and $B$ are the two carriers, and the loads are weights placed on the plank.
+Whoever is closer to the weight carries more. Here most of the load is near $B$, so $B_y = 13.6$ kN and $A_y = 6.4$ kN.
+The total load is $12 + 8 = 20$ kN; the two carriers' shares also add up to $20$ kN.
+Moment is the turning effect on the plank: force times distance. If the plank isn't turning, the turning effects in the two directions cancel out.`,
+    coz: `Problem 2.7: $AC = 3$ m, $CB = 2$ m.
+1. No horizontal load: $A_x = 0$.
+2. The resultant of the distributed load is $4 · 2 = 8$ kN, $4$ m from $A$.
+3. $ΣM_A = 0$: $B_y · 5 − 12 · 3 − 8 · 4 = 0$, so $B_y = 68/5 = 13.6$ kN.
+4. $ΣF_y = 0$: $A_y = 12 + 8 − 13.6 = 6.4$ kN.
+5. Check with moments about $B$: $6.4 · 5 − 12 · 2 − 8 · 1 = 32 − 24 − 8 = 0$.
+The shear force is $6.4$ kN along $AC$; at $C$ it drops by $12$ kN to $−5.6$ kN, and falls to $−13.6$ kN at $B$. The moment is largest at $C$, where the shear changes sign: $M_C = 6.4 · 3 = 19.2$ kN·m.`,
+    adim: `Shear and moment step by step; the reactions are $A_y = 6.4$ kN, $B_y = 13.6$ kN:
+1. $0 < x < 3$ (between $A$ and $C$): only $A_y$ is to the left of the cut. $V = 6.4$ kN, $M = 6.4x$. Reason: equilibrium of the left part.
+2. Point load at $C$: the shear drops suddenly by $12$ kN, $V = −5.6$ kN. The moment stays continuous: $M_C = 19.2$ kN·m.
+3. $3 < x < 5$ (between $C$ and $B$): $V = −5.6 − 4(x − 3)$, $M = 6.4x − 12(x − 3) − 2(x − 3)^2$. Reason: a distributed load changes the shear linearly and the moment parabolically.
+4. At $x = 5$, $M = 32 − 24 − 8 = 0$. The moment must be zero at the roller; the check works.
+Rule: $dM/dx = V$. Where the shear crosses zero, the moment peaks; here that is $C$.`,
+    formul: `The basic expressions in beam problems are the equilibrium equations:
+1. $ΣF_x = 0$ and $ΣF_y = 0$: the beam isn't translating, so the forces add up to zero.
+2. $ΣM_A = 0$: the beam isn't rotating; the moments about any point add up to zero. Moment is force times perpendicular distance, in kN·m.
+3. The resultant of a distributed load is $W = q · L$; it acts at the centroid of the load area. Here $W = 4 · 2 = 8$ kN.
+4. The internal forces are related by $dV/dx = −q$ and $dM/dx = V$.
+Choose a sign convention at the start and keep it to the end.`,
+    "soru-uret": `Three questions to test yourself:
+1. How many reaction components do a pin support and a roller support give?
+2. A $10$ kN point load is placed at the middle of a simply supported beam with a $6$ m span. What are the support reactions and the largest moment?
+3. A $3$ kN/m distributed load acts over $4$ m. What is its resultant, and where does it act?
+**Answers**
+1. A pin support gives two ($A_x$, $A_y$), a roller gives one ($B_y$).
+2. By symmetry $A_y = B_y = 5$ kN; $M_{max} = 5 · 3 = 15$ kN·m, at the middle of the beam.
+3. $W = 3 · 4 = 12$ kN, at the middle of the loaded region.`,
+    "ozetle-gorsel": `This area has three things:
+- A beam: a pin support at $A$ and a roller at $B$; spans of $3$ m and $2$ m.
+- Loads: $12$ kN at $C$ and $4$ kN/m distributed along $CB$.
+- What's asked: a free body diagram, the support reactions, and the shear and moment diagrams.
+In short, the area asks you to set up the equilibrium of a beam step by step.`,
+  },
+  anatomi: {
+    acikla: `The brachial plexus (plexus brachialis) is the network of nerves that supplies the motor and sensory nerves of the upper limb.
+1. Roots: the anterior rami of spinal nerves C5, C6, C7, C8 and T1.
+2. Trunks: superior (C5, C6), middle (C7) and inferior (C8, T1).
+3. Divisions: each trunk splits into an anterior and a posterior division; anterior divisions go to flexors, posterior divisions to extensors.
+4. Cords: lateral, posterior and medial, named for their position relative to the axillary artery.
+5. Terminal branches: the musculocutaneous nerve from the lateral cord, the axillary and radial nerves from the posterior cord, the ulnar nerve from the medial cord; the median nerve forms from one root each of the lateral and medial cords.
+Numbers to memorize: 5 roots, 3 trunks, 6 divisions, 3 cords, 5 terminal branches.`,
+    ozetle: `Summary in three lines:
+- The plexus forms from the anterior rami of C5 to T1: roots, trunks, divisions, cords, terminal branches.
+- Five terminal branches: musculocutaneous, axillary, radial, median and ulnar.
+- Clinically, upper trunk injury causes Erb palsy (C5, C6), and lower trunk injury causes Klumpke palsy (C8, T1).`,
+    basitlestir: `Think of the plexus as a city's power distribution center. Five cables come from the spinal cord (C5 to T1), join and mix in the center, and leave for the arm as five main lines.
+The benefit of mixing: even if one root is damaged, no muscle loses power completely, because most nerves carry fibers from more than one root.
+Roughly what the five main lines do:
+- Musculocutaneous: the front of the arm; bends the elbow.
+- Axillary: the deltoid, which lifts the arm to the side.
+- Radial: the back of the arm and forearm; extends the wrist and fingers.
+- Median: most of the front of the forearm and the thumb muscles.
+- Ulnar: most of the small muscles of the hand, fine finger movements.`,
+    ornek: `A clinical example: a fracture of the middle of the humeral shaft.
+1. The radial nerve runs close to the bone in the radial groove on the back of the humerus; it is easily injured in a fracture.
+2. Result: the wrist and finger extensors stop working and the wrist drops (wrist drop). There is sensory loss on the back of the hand, between the thumb and index finger.
+3. The triceps is usually spared, because its branches leave before the nerve enters the groove.
+By the same logic, a surgical neck fracture of the humerus endangers the axillary nerve, and trauma to the medial epicondyle endangers the ulnar nerve.`,
+    adim: `Draw the plexus on paper step by step:
+1. On the left, write the five roots one under another: C5, C6, C7, C8, T1.
+2. Join C5 and C6 (superior trunk), continue C7 straight (middle trunk), join C8 and T1 (inferior trunk).
+3. Split each trunk in two: an anterior division and a posterior division.
+4. Join the three posterior divisions: the posterior cord. The anterior divisions of the superior and middle trunks form the lateral cord, and the anterior division of the inferior trunk forms the medial cord.
+5. Add the branches: musculocutaneous from the lateral cord, axillary and radial from the posterior cord, ulnar from the medial cord. Take one root each from the lateral and medial cords and draw an M in the middle: the median nerve.
+The M shape in the middle is the easiest sign for recognizing the plexus in dissection and imaging.`,
+    "soru-uret": `Three questions to test yourself:
+1. Which cord lies behind the axillary artery, and which terminal branches does it give?
+2. After a difficult birth, a baby's arm is internally rotated, with the forearm extended and pronated. Which roots are affected?
+3. Which nerve is compressed in carpal tunnel syndrome, and what are the first signs?
+**Answers**
+1. The posterior cord; the axillary and radial nerves.
+2. C5 and C6, the superior trunk: Erb-Duchenne palsy (waiter's tip hand).
+3. The median nerve; numbness in the thumb, index finger, middle finger and half of the ring finger, later weakness and wasting of the thenar muscles.`,
+  },
+  logturev: {
+    acikla: `Logarithmic differentiation is a way to simplify a function full of products, quotients and powers before differentiating it.
+1. Take the natural log of both sides: $ln y = ln f(x)$.
+2. Use the log rules to turn products into sums, quotients into differences and powers into coefficients: $ln(ab) = ln a + ln b$, $ln(a/b) = ln a − ln b$, $ln a^n = n ln a$.
+3. Differentiate implicitly with respect to $x$: the left side becomes $y′/y$.
+4. Multiply by $y$: $y′ = y · (...)$.
+When both the base and the exponent vary (like $x^x$), this is the only way; neither the power rule nor the exponential rule works alone.`,
+    ozetle: `Summary in three lines:
+- Take the log of both sides, turning products and quotients into sums.
+- Implicit differentiation gives $y′/y$, which is then multiplied by $y$.
+- Example: for $y = x^x$, $ln y = x ln x$, so $y′ = x^x(ln x + 1)$.`,
+    basitlestir: `The derivative of a product is tedious; the derivative of a sum is easy. A logarithm is like a machine that turns products into sums.
+So first you take $ln$: products become sums, quotients become differences, powers become the numbers in front. Then you differentiate each term separately.
+Don't forget one thing at the end: since the derivative of $ln y$ is $y′/y$, you multiply the answer by $y$.`,
+    ornek: `Example: $y = x^x$ for $x > 0$.
+1. Take the log: $ln y = x ln x$.
+2. Differentiate: $y′/y$ on the left, and on the right, by the product rule, $ln x + x · (1/x) = ln x + 1$.
+3. Multiply by $y$: $y′ = x^x(ln x + 1)$.
+Check: at $x = 1$, $y′ = 1$; the slope of $x^x$ at $(1, 1)$ really is $1$.`,
+    coz: `Example 3 on the page: $y = x^{3/4} √(x^2 + 1)/(3x + 2)^5$.
+1. Take the log: $ln y = (3/4)ln x + (1/2)ln(x^2 + 1) − 5ln(3x + 2)$.
+2. Differentiate: $y′/y = 3/(4x) + x/(x^2 + 1) − 15/(3x + 2)$.
+3. Multiply by $y$: $y′ = y · (3/(4x) + x/(x^2 + 1) − 15/(3x + 2))$, where $y$ is the original expression.
+Each term was differentiated on its own; reaching the same result with the quotient rule would take much longer.`,
+    adim: `Step by step, with $y = x^{sin x}$ from the exercises:
+1. Take the log: $ln y = sin x · ln x$. Reason: $ln a^b = b ln a$, the exponent comes down.
+2. Differentiate the right side with the product rule: $cos x · ln x + sin x · (1/x)$.
+3. Left side: $(ln y)′ = y′/y$. Reason: the chain rule.
+4. Multiply by $y$: $y′ = x^{sin x}(cos x · ln x + sin x/x)$.
+When both the base and the exponent vary, this is the only clean way.`,
+    formul: `The chain in the image: $ln y = x ln x$, then $y′/y = ln x + 1$, then $y′ = x^x(ln x + 1)$.
+1. $ln y = x ln x$: the log brings the exponent down; now the product rule is enough.
+2. $y′/y$: the derivative of $ln y$ with respect to $x$, from the chain rule.
+3. $ln x + 1$: the derivative of $x ln x$ by the product rule, $1 · ln x + x · (1/x)$.
+4. In the last step both sides are multiplied by $y = x^x$.`,
+    "soru-uret": `Three questions to test yourself:
+1. What is $y′$ for $y = x^{√x}$?
+2. Find the derivative of $y = (x^2 + 1)^3(x − 2)^4$ with logarithmic differentiation.
+3. When is logarithmic differentiation required?
+**Answers**
+1. $ln y = √x ln x$, $y′/y = (ln x + 2)/(2√x)$, so $y′ = x^{√x}(ln x + 2)/(2√x)$.
+2. $y′ = (x^2 + 1)^3(x − 2)^4 · (6x/(x^2 + 1) + 4/(x − 2))$.
+3. When both the base and the exponent vary; for example $x^x$ or $x^{sin x}$.`,
+    "ozetle-gorsel": `This area has three things:
+- The method: log of both sides, simplify, differentiate implicitly, multiply by $y$.
+- Example 3: an expression with products and quotients turns into a sum of three terms with logs.
+- Example 4: for $y = x^x$, $y′ = x^x(ln x + 1)$.
+In short, the area shows how to simplify complicated expressions with logs before differentiating.`,
+  },
+  statik26: {
+    acikla: `A simply supported beam rests on a pin support at one end and a roller at the other. The pin gives two reactions ($A_x$, $A_y$), the roller gives one ($B_y$).
+1. In the plane there are three equilibrium equations for the three unknowns: $ΣF_x = 0$, $ΣF_y = 0$, $ΣM = 0$. So the beam is statically determinate and can be solved with statics alone.
+2. The distributed load is replaced with its resultant: in Example 2.6, $4 · 6 = 24$ kN, at the middle of the span, $3$ m from $A$.
+3. Taking moments about $A$ drops $A_x$ and $A_y$, so $B_y$ comes out directly.
+Result: $A_x = 0$, $B_y = 18$ kN, $A_y = 24$ kN.`,
+    ozetle: `Summary in three lines:
+- In a simply supported beam, the pin gives $A_x$ and $A_y$ and the roller gives $B_y$; the beam is statically determinate.
+- The distributed load is replaced with its resultant: $W = w · L$, at the middle of the loaded region.
+- Example 2.6: $A_x = 0$, $A_y = 24$ kN, $B_y = 18$ kN.`,
+    basitlestir: `Think of the beam as a plank carried on the shoulders of two people: $A$ and $B$ are the two carriers.
+The total load is $18 + 24 = 42$ kN. The distributed load is shared equally by the two ends, but the $18$ kN point load is closer to $A$ ($2$ m). So $A$ carries more: $A_y = 24$ kN, $B_y = 18$ kN.
+Moment is the turning effect on the plank: force times distance. If the plank isn't turning, the turning effects in the two directions cancel out.`,
+    coz: `Example 2.6: $AB = 6$ m, $w = 4$ kN/m over the whole span, $P = 18$ kN at $C$, $2$ m from $A$.
+1. No horizontal load: $A_x = 0$.
+2. The resultant of the distributed load is $4 · 6 = 24$ kN, $3$ m from $A$.
+3. $ΣM_A = 0$: $6B_y − 18 · 2 − 24 · 3 = 0$, so $B_y = 108/6 = 18$ kN.
+4. $ΣF_y = 0$: $A_y = 18 + 24 − 18 = 24$ kN.
+5. Check with moments about $B$: $24 · 6 − 18 · 4 − 24 · 3 = 144 − 72 − 72 = 0$.`,
+    adim: `Support reactions step by step:
+1. Free body diagram: remove the supports and draw $A_x$, $A_y$, $B_y$ in their place. Reason: what is in equilibrium is the sum of the external forces.
+2. Turn the distributed load into a single $24$ kN force and place it at $x = 3$ m. Reason: the resultant acts at the centroid of the load area.
+3. $ΣM_A = 0$: $6B_y = 18 · 2 + 24 · 3 = 108$, so $B_y = 18$ kN. Reason: the unknowns at $A$ have no moment about $A$.
+4. $ΣF_y = 0$: $A_y = 42 − 18 = 24$ kN.
+5. $ΣF_x = 0$: $A_x = 0$.
+To check, take moments about $B$; it should come out to zero.`,
+    "ozetle-gorsel": `This area has three things:
+- A definition: in a simply supported beam, the pin gives two reactions and the roller gives one.
+- Example 2.6: a $6$ m beam, $4$ kN/m over the whole span and $18$ kN at $C$.
+- The solution: $ΣM_A = 0$ gives $B_y = 18$ kN, and $ΣF_y = 0$ gives $A_y = 24$ kN.
+In short, the area shows the path from the free body diagram to the reactions.`,
+  },
+  statikVM: {
+    acikla: `Shear force $V$ and bending moment $M$ are found by cutting the beam at a point and looking at the equilibrium of the part on one side.
+1. Relation to the load: $dV/dx = −w(x)$. Under a distributed load $V$ decreases linearly; with no load it stays constant.
+2. Relation to the shear: $dM/dx = V(x)$. When $V$ is positive $M$ increases; when it is negative $M$ decreases.
+3. Under a point load, $V$ jumps by the size of the load; $M$ has a kink there but stays continuous.
+4. $M$ is largest where $V$ changes sign.
+In Example 2.6, $V$ jumps from $+16$ to $−2$ at $C$; $M_{max} = 24 · 2 − 2 · 2^2 = 40$ kN·m.`,
+    ozetle: `Summary in three lines:
+- Method of sections: $V$ and $M$ come from the equilibrium of the part on one side of the cut.
+- $dV/dx = −w$ and $dM/dx = V$; under a point load, $V$ jumps.
+- In Example 2.6, $V$ jumps from $+16$ to $−2$ at $C$, and $M_{max} = 40$ kN·m.`,
+    basitlestir: `Shear force is the force that tries to slide the two parts of the beam up and down past each other when you cut it at a point. Moment is the effect that tries to bend the beam at that point.
+The two are linked: the slope of the moment graph is the shear force. When the shear crosses zero, the moment peaks; just as a ball thrown in the air is highest at the moment its speed is zero.
+In Example 2.6 that moment is point $C$: $M_{max} = 40$ kN·m.`,
+    coz: `Example 2.6 (continued): $A_y = 24$ kN, $B_y = 18$ kN.
+1. $0 ≤ x < 2$: $V = 24 − 4x$, $M = 24x − 2x^2$.
+2. The $18$ kN at $C$: $V$ jumps from $24 − 8 = 16$ to $16 − 18 = −2$.
+3. $2 < x ≤ 6$: $V = 6 − 4x$, $M = 36 + 6x − 2x^2$.
+4. Ends: $M(0) = 0$ and $M(6) = 36 + 36 − 72 = 0$. The moment is zero at the supports; the check works.
+5. The largest moment is at $x = 2$, where $V$ changes sign: $M_{max} = 40$ kN·m.`,
+    adim: `The method of sections step by step (Example 2.6):
+1. Cut at point $x$ and take the left part. Reason: the left part has fewer forces.
+2. $0 ≤ x < 2$: on the left are $A_y = 24$ kN and a distributed load of $4x$ kN. $ΣF_y = 0$ gives $V = 24 − 4x$.
+3. Moment about the cut: $M = 24x − 4x · (x/2) = 24x − 2x^2$. Reason: the resultant of the distributed load is at the middle of the part.
+4. $x > 2$: the $18$ kN also enters the left part. $V = 6 − 4x$, $M = 24x − 2x^2 − 18(x − 2) = 36 + 6x − 2x^2$.
+5. Check: $dM/dx = 6 − 4x = V$. The relation holds.`,
+    formul: `The relations in the image: $dV/dx = −w(x)$ and $dM/dx = V(x)$.
+1. $w(x)$: the distributed load per unit length, positive downward.
+2. $dV/dx = −w$: the slope of the $V$ diagram is the negative of the load. With no load, $V$ is flat.
+3. $dM/dx = V$: the slope of the $M$ diagram is the shear force. Where $V = 0$, $M$ peaks.
+4. Integral form: the difference in $M$ between two sections equals the area of the $V$ diagram between them.`,
+    "soru-uret": `Three questions to test yourself:
+1. On a stretch with no distributed load, what do the $V$ and $M$ diagrams look like?
+2. If $V(x) = 10 − 2x$ on a stretch, at what $x$ is $M$ largest?
+3. If $20$ kN is placed at the middle of a $5$ m simple beam, what is the largest moment?
+**Answers**
+1. $V$ constant, $M$ linear.
+2. Where $V = 0$: $x = 5$.
+3. The reactions are $10$ kN each; $M_{max} = 10 · 2.5 = 25$ kN·m, at the middle.`,
+  },
+  anatomiKas: {
+    acikla: `The arm is divided into two compartments, and each compartment has its own nerve; that is the key to remembering the table.
+1. Anterior (flexor) compartment: biceps brachii, brachialis, coracobrachialis. All three are innervated by the musculocutaneous nerve.
+2. Posterior (extensor) compartment: triceps brachii and anconeus. They are innervated by the radial nerve.
+3. The biceps both flexes the forearm and is the strongest supinator; supination is strongest with the elbow flexed.
+4. The brachialis flexes the elbow whatever the position of the forearm; it is the main flexor.
+5. The long head of the triceps also crosses the shoulder joint, so it also extends and adducts the arm.`,
+    ozetle: `Summary in three lines:
+- Anterior compartment (biceps, brachialis, coracobrachialis): musculocutaneous nerve.
+- Posterior compartment (triceps, anconeus): radial nerve.
+- The biceps is the strongest supinator and the brachialis the main elbow flexor; in a humeral shaft fracture the radial nerve can be injured, causing wrist drop.`,
+    basitlestir: `Think of the arm as benders in front and straighteners in back.
+The ones in front bend the elbow, and all three share one nerve: musculocutaneous. The triceps in back straightens the elbow; its nerve is the radial.
+The biceps also turns the palm up (supination). It is the strong muscle working when you open a jar lid or drive a screw with your right hand.`,
+    ornek: `An everyday example: driving a screw with a screwdriver in your right hand is a supination movement.
+1. The strongest muscle for this movement is the biceps brachii.
+2. Because the biceps attaches to the radial tuberosity, it rotates the radius around its own axis.
+3. Supination is strongest with the elbow bent at about 90 degrees; that is why driving a screw is easier with the arm bent rather than straight.
+The clinical side: if the radial nerve is injured in a humeral shaft fracture, the triceps is usually spared but the wrist extensors stop working and the wrist drops.`,
+    "soru-uret": `Three questions to test yourself:
+1. Where does the brachialis insert, and what does it do?
+2. Where do the two heads of the biceps brachii originate?
+3. After a humeral shaft fracture, the patient can't lift the hand at the wrist. Which nerve is injured, and where?
+**Answers**
+1. The coronoid process and the ulnar tuberosity; it is the main flexor of the forearm at the elbow.
+2. The long head from the supraglenoid tubercle, the short head from the coracoid process.
+3. The radial nerve, in the radial groove on the back of the humerus.`,
+  },
+  anatomiFossa: {
+    acikla: `The cubital fossa (fossa cubitalis) is the triangular hollow in front of the elbow.
+1. Borders: above, the line between the two epicondyles; laterally the brachioradialis, medially the pronator teres.
+2. The floor is the brachialis and supinator; the roof is fascia and the bicipital aponeurosis.
+3. Contents, from lateral to medial: the biceps brachii tendon, the brachial artery, the median nerve. Mnemonic: TAN (Tendon, Artery, Nerve).
+4. The radial nerve stays at the lateral edge, under the brachioradialis.
+Clinical importance: venous blood is drawn from the superficial veins here, and when measuring blood pressure the stethoscope goes over the brachial artery.`,
+    ozetle: `Summary in three lines:
+- A triangular hollow in front of the elbow, bordered laterally by the brachioradialis and medially by the pronator teres.
+- Contents from lateral to medial, TAN: biceps tendon, brachial artery, median nerve.
+- Blood draws and blood pressure measurements are done in this area.`,
+    basitlestir: `Think of the hollow on the inside of your elbow. Two muscles draw a V: the brachioradialis on the outside, the pronator teres on the inside.
+Inside the hollow, three things lie side by side from outside to inside: the biceps tendon, the artery and the nerve. TAN for short.
+The veins used for blood draws are on top of these, just under the skin.`,
+    ornek: `A clinical example: drawing blood at the elbow.
+1. The needle enters the superficial veins, most often the median cubital vein.
+2. The bicipital aponeurosis lies under this vein and covers the brachial artery and median nerve, protecting the deeper structures.
+3. If the needle goes too deep and too medial, the artery or the median nerve can be injured.
+So if the vein can't be found, another vessel is chosen instead of probing deeper and further in.`,
+    "soru-uret": `Three questions to test yourself:
+1. Which muscles form the medial and lateral borders of the cubital fossa?
+2. List its contents from lateral to medial.
+3. When drawing blood, which structure protects the deeper artery and nerve?
+**Answers**
+1. Medially the pronator teres, laterally the brachioradialis.
+2. The biceps brachii tendon, the brachial artery, the median nerve.
+3. The bicipital aponeurosis.`,
+  },
+  turev: {
+    acikla: `The core idea here: the derivative is the instantaneous rate of change of a quantity.
+1. First write the average change between two points: $(f(x+h) − f(x))/h$.
+2. Then shrink the interval. If this ratio approaches a number as $h → 0$, that number is $f′(x)$.
+3. Geometric meaning: $f′(x)$ is the slope of the line tangent to the graph at $x$.
+For example, for $f(x) = x^2$ the ratio is $2x + h$; as $h → 0$, $f′(x) = 2x$.`,
+    ozetle: `Summary in three lines:
+- The derivative is a function's instantaneous rate of change at a point: as $h → 0$, $f′(x) = lim (f(x+h) − f(x))/h$.
+- On the graph this number equals the slope of the tangent line.
+- The product, quotient and chain rules let you differentiate without going back to the limit every time; for example $(x^3)′ = 3x^2$.`,
+    basitlestir: `Think of a car's speedometer. If you drove 60 km in an hour, your average speed is 60 km/h, but the speedometer shows your speed right now. The derivative is that speedometer.
+If the distance is $s(t)$, the instantaneous speed is $s′(t)$. For example, if $s(t) = 5t^2$, then $s′(t) = 10t$; at 3 seconds the speed is $10 · 3 = 30$ m/s.
+In short: average speed looks at the span between two moments, the derivative looks at a single moment.`,
+    ornek: `A concrete example: the volume of a balloon with radius $r$ is $V = (4/3)πr^3$.
+1. The derivative of the volume with respect to the radius is $dV/dr = 4πr^2$.
+2. At $r = 3$ cm this is $4π · 9 ≈ 113$ cm³/cm.
+3. So at a radius of 3 cm, inflating it 1 mm more increases the volume by about $113 · 0.1 ≈ 11.3$ cm³.
+Notice that $4πr^2$ is the surface area of the sphere: the volume grows by adding a thin layer to the surface.`,
+    "soru-uret": `Three questions to test yourself:
+1. If $f(x) = 3x^2 − 4x$, what is $f′(2)$?
+2. Find the derivative of $g(x) = sin(x^2)$.
+3. What is the equation of the tangent to $y = x^3$ at $x = 1$?
+**Answers**
+1. $f′(x) = 6x − 4$, so $f′(2) = 8$.
+2. $g′(x) = cos(x^2) · 2x$.
+3. Slope $3$, point $(1, 1)$; the tangent is $y = 3x − 2$.`,
+    formul: `The definition in the image: $f′(a) = lim (f(a+h) − f(a))/h$, as $h → 0$.
+1. $f(a+h) − f(a)$: the change in the function when you move forward by $h$.
+2. Divided by $h$: the rate of this change per unit, that is, the slope of the secant line.
+3. $h → 0$: the secant turns into the line tangent at the point.
+The tangent line's equation: $y = f(a) + f′(a)(x − a)$.`,
+    coz: `Example: the tangent to $f(x) = x^3 − 3x$ at $x = 2$.
+1. Derivative: $f′(x) = 3x^2 − 3$.
+2. Slope: $f′(2) = 12 − 3 = 9$.
+3. Point: $f(2) = 8 − 6 = 2$, so $(2, 2)$.
+4. Tangent: $y − 2 = 9(x − 2)$, so $y = 9x − 16$.`,
+    adim: `Step by step, the derivative of $f(x) = x^2$ from the definition:
+1. Write the difference quotient: $(f(x+h) − f(x))/h = ((x+h)^2 − x^2)/h$. Reason: the definition of the derivative.
+2. Expand: $(x^2 + 2xh + h^2 − x^2)/h = (2xh + h^2)/h$.
+3. Simplify: $2x + h$. Reason: dividing is allowed while $h ≠ 0$.
+4. Limit: as $h → 0$, $2x + h → 2x$.
+Result: $f′(x) = 2x$.`,
+    "ozetle-gorsel": `This area has three things:
+- A definition: the derivative of a function at a point, $f′(a) = lim (f(a+h) − f(a))/h$.
+- A figure: the line tangent to the curve at $a$.
+- A result: the tangent line's equation, $y = f(a) + f′(a)(x − a)$.
+In short, the area sums up the geometric meaning of the derivative.`,
+  },
+};
 // Görsel tuşu konuda yoksa en yakın metin cevabı
 const DENEME_YEDEK = { formul: "acikla", coz: "ornek", adim: "acikla", "ozetle-gorsel": "ozetle", ozetle: "acikla", ornek: "coz" };
 // Alt konuda olmayan tuş ana konudan gelir (kesme-moment sayfasında "Örnek ver" ana konunun çözümü olmasın diye önce yedek)
@@ -994,14 +1473,109 @@ Okurken şuna dikkat et: ${tema.dikkat}`;
   }
 }
 
+// İngilizce kipte edebî cevap: aynı kurgu, İngilizce metin için İngilizce ipuçları
+const EDEBI_TEMALAR_EN = [
+  { re: /margin|\bnotes?\b|pencil|underlin|marginalia/i, ad: "the quiet conversation between a reader and a text",
+    sade: "A note written in the margin of a book is the reader's reply to the author. Someone who reads that note years later hears both the book and the reader who came before.",
+    ornek: "Think of a note someone left in pencil in a library book. You don't know who wrote it, but you know you both stopped at the same sentence to think. That is the feeling the text describes: a closeness built on a page between two strangers.",
+    dikkat: "a small object, a note or a line, carries a big question. Is reading really something done alone?" },
+  { re: /\bink|alphabet|handwrit|writing|calligraph|printing|printer/i, ad: "the permanence of writing and knowledge passed down through generations",
+    sade: "Writing is the remedy people found against forgetting. What goes onto paper outlives the person who wrote it and reaches later generations.",
+    ornek: "If your family has a handwritten recipe notebook, think of it. The small notes added next to the recipes over the years turn it from a cookbook into a family history.",
+    dikkat: "the writing tool itself (ink, letters, paper) is treated almost like a character in the story." },
+  { re: /\btime\b|\byears?\b|\bold\b|yellow|memor|rememb|forget|forgot|\bpast\b/i, ad: "time and memory",
+    sade: "As time passes, things grow old, but they keep traces. The text is about looking at those traces to think about the past again.",
+    ornek: "Think of a date written on the back of an old photograph. Even if you don't know the person in it, that date tells you something about a moment, a life and a lost context.",
+    dikkat: "the narrator doesn't tell the past directly; they read it from the traces left on objects." },
+  { re: /\bletters?\b|\brepl|answer|voice|speak|talk/i, ad: "a delayed act of communication",
+    sade: "Sometimes words find their answer not when they are written but years later. The text describes this delayed meeting.",
+    ornek: "Imagine finding a letter written to someone years ago and never sent. It wasn't written to you, but as you read it, it feels as if it is waiting for a reply.",
+    dikkat: "the conversation is with a reader at the other end of time, not with one person." },
+];
+const EDEBI_GENEL_EN = { ad: "the mark reading leaves on a person",
+  sade: "The text describes an experience and invites the reader to think about their own. What matters is not the events themselves but the feeling they leave.",
+  ornek: "Think of rereading a book years later. The same sentences touch you in different places this time; the book hasn't changed, the reader has.",
+  dikkat: "the narrator starts from concrete details and arrives at a general thought." };
+
+function edebiCevapEn(hazir, metin) {
+  const c = cumleler(metin);
+  const tema = EDEBI_TEMALAR_EN.find((x) => x.re.test(metin)) || EDEBI_GENEL_EN;
+  const benBir = /(?<!\p{L})(?:I|me|my|mine|myself)(?!\p{L})/u.test(metin);
+  const anlatici = benBir ? "a first-person narrator" : "the narrator";
+  const benzetme = c.find((s) => /(?<!\p{L})(?:like|as if|as though)(?!\p{L})/iu.test(s));
+  const hukumRe = /(?<!\p{L})(?:is|are)(?!\p{L})/iu;
+  const hukum = c.find((s) => s !== benzetme && s !== c[0] && hukumRe.test(s) && !/\?["”»’]*$/.test(s) && s.split(" ").length >= 5);
+  const sorular = c.filter((s) => /\?["”»’]*$/.test(s)).length;
+  const ilk = c[0] || metin, son = c.length > 2 ? c[c.length - 1] : "";
+  const ilkHukum = !benzetme && hukumRe.test(ilk) && !/\?["”»’]*$/.test(ilk);
+  const tirnak = (s, n) => kisalt(s, n).replace(/[.!?…]+["”»’]*$/u, "");   // soru içinde alıntı noktasız
+  switch (hazir) {
+    case "ozetle":
+      return [`In short:`,
+        `- Starting point: ${kisalt(ilk, 120)}`,
+        son ? `- Where it ends up: ${kisalt(son, 120)}` : "",
+        `- Theme: ${tema.ad}.`].filter(Boolean).join("\n");
+    case "basitlestir":
+      return `Put more simply: ${tema.sade}
+Rather than saying it directly, the author tells it ${benzetme ? "through a comparison" : "through concrete details"}; the feeling comes across more easily that way.${benzetme ? `\nWhere the comparison appears: “${kisalt(benzetme, 100)}”` : ""}`;
+    case "ornek":
+      return `An everyday example of the idea in the text:\n${tema.ornek}`;
+    case "soru-uret":
+      return [`Three questions to test yourself:`,
+        `1. What is the narrator trying to say with “${tirnak(ilk, 70)}”?`,
+        benzetme ? `2. In the sentence “${tirnak(benzetme, 70)}”, what is compared to what?` : `2. Find a concrete object in the passage. What idea does the author use it to express?`,
+        `3. What is the main theme of the passage? Explain it with an example from your own life.`,
+        `**Answers**`,
+        `1. The sentence sets the direction of the passage; from here the narrator moves to the idea of ${tema.ad}.`,
+        benzetme ? `2. Separate the two ends of the comparison: the thing being described and the image it is compared to. What they share is what the author wants to stress.` : `2. The concrete object carries an abstract idea; find it and ask "what does this stand for?"`,
+        `3. The main theme is ${tema.ad}. Your example can be personal; what matters is linking it to the theme.`].join("\n");
+    default: {   // açıkla ve serbest soru
+      const ikinci = benzetme
+        ? `Comparison: “${kisalt(benzetme, 110)}” An abstract idea is tied to something you can see, so the reader can picture it.`
+        : ilkHukum
+          ? "Structure: the first sentence is built like a firm definition. The author states the idea as a verdict without proving it, which gives the text the feel of an essay."
+          : hukum
+          ? `Verdict sentence: “${kisalt(hukum, 110)}” The author states the idea like a firm definition, which gives the text the feel of an essay.`
+          : "Details: instead of big words, the narrator moves through small, concrete details; the objects do the talking.";
+      const ucuncu = sorular
+        ? `Questions: the passage has ${sorular === 1 ? "one question" : `${sorular} questions`}. The narrator invites the reader to think more than they give answers.`
+        : "Tone: calm and thoughtful; the narrator shares an experience more than proving a point.";
+      return `In this passage, ${anlatici} reflects on ${tema.ad}.
+1. Starting point: “${kisalt(ilk, 110)}”
+2. ${ikinci}
+3. ${ucuncu}
+While reading, notice this: ${tema.dikkat}`;
+    }
+  }
+}
+
 // Konu tanınmadı: seçilen metnin kendisinden çalışma yönergesi
+const DURAK_EN = new Set("about after again because before between could during every first other their there these those through under where which while would should being having itself without within another however therefore although rather".split(" "));
 const DURAK = new Set("olarak olduğu olduğunu arasında birlikte üzerinde sonra önce kadar ancak çünkü dolayısıyla böylece şöyle bunların bunlar onların ayrıca yalnızca neredeyse herhangi".split(" "));
 function anahtarlar(metin, n = 3) {
   const say = new Map();
-  for (const k of String(metin).toLocaleLowerCase("tr").match(/\p{L}{6,}/gu) || []) if (!DURAK.has(k)) say.set(k, (say.get(k) || 0) + 1);
+  const durak = ingilizceMi ? DURAK_EN : DURAK;
+  for (const k of String(metin).toLocaleLowerCase(yerel).match(/\p{L}{6,}/gu) || []) if (!durak.has(k)) say.set(k, (say.get(k) || 0) + 1);
   return [...say].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length).slice(0, n).map((x) => x[0]);
 }
+function genelCevapEn(hazir, k) {
+  const sonNot = "Demo mode didn't recognize this topic. For a detailed answer, choose a provider in Settings.";
+  if (!k.metin) {
+    return `Demo mode can't read the area you clipped and didn't recognize the topic of ${k.belgeAd ? `“${k.belgeAd}”` : "this page"}.
+For a real answer, choose a provider in Settings, or take the question to ChatGPT, Gemini or Claude with your account.`;
+  }
+  const c = cumleler(k.metin), a = anahtarlar(k.metin);
+  const kavram = a.length ? a.map((x) => `“${x}”`).join(", ") : "the main terms in the text";
+  if (hazir === "ozetle") return `In short:\n- ${kisalt(c[0] || k.metin, 130)}${c.length > 2 ? `\n- ${kisalt(c[c.length - 1], 130)}` : ""}\n- Key concepts: ${kavram}.\n${sonNot}`;
+  if (hazir === "soru-uret") return `Three questions to test yourself:\n1. ${a[0] ? `Define “${a[0]}” in your own words.` : "Write the main idea of the passage in one sentence."}\n2. ${a[1] ? `How are “${a[0]}” and “${a[1]}” related?` : "What is the most important detail in the passage, and why?"}\n3. How would you apply this to an example?\n**Answers**\nCheck your answers against the text yourself. ${sonNot}`;
+  return `The core of the part you selected: “${kisalt(c[0] || k.metin, 120)}”
+1. First, pick out the key concepts: ${kavram}.
+2. Define each one in your own words; a concept you can't define is where the gap is.
+3. State how the concepts relate in one sentence.
+${sonNot}`;
+}
 function genelCevap(hazir, k) {
+  if (ingilizceMi) return genelCevapEn(hazir, k);
   const sonNot = "Deneme modu bu konuyu tanımadı; ayrıntılı cevap için Ayarlar'dan bir sağlayıcı seç.";
   if (!k.metin) {
     return `Deneme modu kırptığın bölgeyi okuyamaz ve ${k.belgeAd ? `«${k.belgeAd}» belgesinin` : "bu sayfanın"} konusunu tanımadı.
@@ -1052,19 +1626,63 @@ const DENEME_SOZLUK = [
   [/^bileşke/, "Birkaç şeyin birleşmesinden çıkan sonuç. Matematikte fonksiyonların art arda uygulanması, fizikte kuvvetlerin toplamı."],
   [/^teğe[tdğ]/, "Bir eğriye bir noktada dokunan ve orada eğriyle aynı yönde ilerleyen doğru."],
 ];
+// İngilizce kipte örnek kitapların İngilizce metninden kelimeler
+const DENEME_SOZLUK_EN = [
+  [/^melanchol/, "A lasting, deep sadness. It comes from the old medical theory of black bile: Greek melas “black” and kholē “bile”."],
+  [/^derivativ/, "The instantaneous rate at which one quantity changes with respect to another. In everyday use it also means “something that comes from something else”."],
+  [/^memor/, "The ability to keep what you have lived through and recall it when needed. From Latin memoria, from memor “mindful”."],
+  [/^paper/, "A thin sheet made from plant fibers, used for writing on. From Latin papyrus, the reed the Egyptians wrote on."],
+  [/^bookseller|^bookshop|^secondhand/, "Someone who buys and sells old and secondhand books, or their shop."],
+  [/^typesett|^compositor/, "In a print shop, the person who sets letters and lines ready for printing."],
+  [/^printer/, "Someone who runs a print shop or works in one."],
+  [/^printing|^press(?:es)?$/, "The printing press: the machine, or the shop, where books and newspapers are printed."],
+  [/^marginal|^margin/, "Marginalia: notes and comments written in the margins of a text. From Latin margo “edge”."],
+  [/^ink(?!l)/, "Colored liquid used for writing and printing. From Old French enque, from Latin encaustum, a purple ink."],
+  [/^calligraph/, "The art of beautiful handwriting. From Greek kallos “beauty” and graphein “to write”."],
+  [/^fan(?:s|ned|ning)?$/, "A device you wave to cool yourself, which opens and closes. Also used in an image for pages flicked through quickly."],
+  [/^humbl/, "Not thinking of yourself as better than others; modest."],
+  [/^advi[cs]/, "A suggestion given to someone for their own good."],
+  [/^gratitud|^grateful/, "Thankfulness felt and expressed for a kindness. From Latin gratus “pleasing, thankful”."],
+  [/^avalanch/, "A mass of snow that breaks loose from a mountain and grows as it rolls down."],
+  [/^hesita/, "Indecision; a pause before acting."],
+  [/^cop(?:y|ies)$/, "One of the reproductions of a book or text."],
+  [/^yellow/, "Yellowed: faded to a yellow color. Old paper yellows over time with light and air."],
+  [/^touching|^moving/, "Something that stirs the feelings and goes straight to the heart."],
+  [/^generation/, "All the people born and living at about the same time."],
+  [/^confess/, "Saying openly something hidden or hard to say. From Latin confiteri “to acknowledge”."],
+  [/^highlighter/, "A bright felt-tip pen used to color over text."],
+  [/^moment/, "The turning effect of a force about a point: force times perpendicular distance. In everyday use it also means “an instant”."],
+  [/^support/, "In a structure, the point that carries it and restrains its movement."],
+  [/^beam/, "A long structural member that carries loads and passes them to its supports."],
+  [/^ple[kx]us/, "A network where nerves or vessels join and branch again. Latin for “braid”."],
+  [/^composit/, "Made by combining several things. In math, a composite function applies functions one after another; in physics, a resultant is the sum of forces."],
+  [/^tangent/, "A line that touches a curve at one point and runs in the same direction as the curve there."],
+];
 function anlamCevabi(kelime, baglam) {
-  const k = String(kelime || "").trim().toLocaleLowerCase("tr").replace(/[’'].*$/, "");
-  const bul = DENEME_SOZLUK.find(([re]) => re.test(k));
+  const k = String(kelime || "").trim().toLocaleLowerCase(yerel).replace(/[’'].*$/, "");
+  const bul = (ingilizceMi ? DENEME_SOZLUK_EN : DENEME_SOZLUK).find(([re]) => re.test(k));
   if (bul) return bul[1];
-  return `«${String(kelime || "").trim()}» için deneme modunda hazır bir anlam yok.${baglam ? " Geçtiği cümleden tahmin et;" : ""} gerçek cevap için Ayarlar'dan bir sağlayıcı seç.`;
+  if (ingilizceMi) {
+    return `Demo mode has no ready meaning for “${String(kelime || "").trim()}”.${baglam ? " Guess it from the sentence it appears in, or choose" : " Choose"} a provider in Settings for a real answer.`;
+  }
+  return`«${String(kelime || "").trim()}» için deneme modunda hazır bir anlam yok.${baglam ? " Geçtiği cümleden tahmin et;" : ""} gerçek cevap için Ayarlar'dan bir sağlayıcı seç.`;
 }
 
 function denemeCevabi({ hazir, gorsel, kelime, soru = "", kaynak: k = {}, serbest = false }) {
   if (hazir === "anlam") return anlamCevabi(kelime, k.baglam);
   // Anlam kartının "Sor"u: «kelime» bu cümlede ne anlama geliyor?
-  const anlamSorusu = serbest && /ne anlama gel|anlamı ne|ne demek/i.test(soru) && String(soru).match(/["“«]([^"”»]{1,40})["”»]/);
-  if (anlamSorusu) return `«${anlamSorusu[1]}»: ${anlamCevabi(anlamSorusu[1], k.metin)}`;
+  const anlamSorusu = serbest && /ne anlama gel|anlamı ne|ne demek|what does .* mean|meaning of/i.test(soru) && String(soru).match(/["“«]([^"”»]{1,40})["”»]/);
+  if (anlamSorusu) return ingilizceMi ? `“${anlamSorusu[1]}”: ${anlamCevabi(anlamSorusu[1], k.metin)}` : `«${anlamSorusu[1]}»: ${anlamCevabi(anlamSorusu[1], k.metin)}`;
   const konu = konuBul(k);
+  if (ingilizceMi) {
+    const onEkEn = serbest ? "Demo mode can't read the question you typed. " : "";
+    if (konu === "edebi") return (onEkEn && `${onEkEn}Here is a ready explanation of the passage you selected:\n`) + edebiCevapEn(serbest ? "acikla" : hazir, k.metin);
+    if (konu === "genel") return genelCevap(serbest ? "acikla" : hazir, k);
+    const setEn = DENEME_KONU_EN[konu];
+    if (serbest) return `${onEkEn}Here is a ready explanation of ${KONU_AD_EN[konu] || konu}:\n${setEn.acikla}`;
+    const tusEn = gorsel && hazir === "ozetle" ? "ozetle-gorsel" : hazir;
+    return setEn[tusEn] || setEn[DENEME_YEDEK[tusEn]] || DENEME_KONU_EN[ANA_KONU[konu]]?.[tusEn] || setEn.acikla;
+  }
   const onEk = serbest ? "Deneme modu yazdığın soruyu okuyamaz; " : "";
   if (konu === "edebi") return (onEk && `${onEk}seçtiğin parça üzerine hazır açıklama:\n`) + edebiCevap(serbest ? "acikla" : hazir, k.metin);
   if (konu === "genel") return genelCevap(serbest ? "acikla" : hazir, k);
@@ -1076,37 +1694,43 @@ function denemeCevabi({ hazir, gorsel, kelime, soru = "", kaynak: k = {}, serbes
 }
 
 /* ================= İstem metinleri ================= */
+// İstemler de arayüz diliyle gider ve cevabı o dilde ister (İngilizce kipte "Always answer in English")
 function sistemMetni(k) {
   return [
-    "Sen Kenar Notu'nun çalışma asistanısın ve bir öğrenciye yardım ediyorsun.",
-    "Her zaman Türkçe cevap ver. Kısa ve net ol; giriş ve kapanış cümlesi kurma.",
-    "Matematikte adım adım git ve her matematiksel ifadeyi $...$ içine yaz. Liste gerekiyorsa satırı 1. ya da - ile başlat. Başlık ve tablo kullanma.",
-    "Ekte görsel varsa önce görseldeki ifadeyi ya da soruyu oku, cevabı ona göre kur.",
-    "Emin olmadığın yerde bunu açıkça söyle.",
-    k.belgeAd ? `Bağlam: öğrenci "${k.belgeAd}" belgesinde${k.sayfa ? `, ${k.sayfa}. sayfada` : ""} çalışıyor.` : "",
+    t("Sen Kenar Notu'nun çalışma asistanısın ve bir öğrenciye yardım ediyorsun."),
+    t("Her zaman Türkçe cevap ver. Kısa ve net ol; giriş ve kapanış cümlesi kurma."),
+    t("Matematikte adım adım git ve her matematiksel ifadeyi $...$ içine yaz. Liste gerekiyorsa satırı 1. ya da - ile başlat. Başlık ve tablo kullanma."),
+    t("Ekte görsel varsa önce görseldeki ifadeyi ya da soruyu oku, cevabı ona göre kur."),
+    t("Emin olmadığın yerde bunu açıkça söyle."),
+    k.belgeAd ? (k.sayfa
+      ? t('Bağlam: öğrenci "{belge}" belgesinde, {sayfa}. sayfada çalışıyor.', { belge: k.belgeAd, sayfa: k.sayfa })
+      : t('Bağlam: öğrenci "{belge}" belgesinde çalışıyor.', { belge: k.belgeAd })) : "",
   ].filter(Boolean).join("\n");
 }
 // İstem sırası her yolda aynı: kaynak + sayfa, alıntı, (görsel), soru. Talimatlar sistem metninde durur.
 // Kementle gelen gerçek PDF'te metin tüm sayfadır: "Sayfanın metni" diye etiketlenir, hesap yolunda kısaltılır.
-const kaynakBasi = (k) => (k.belgeAd ? `Kaynak: ${k.belgeAd}${k.sayfa ? `, s. ${k.sayfa}` : ""}` : "");
+const kaynakBasi = (k) => (k.belgeAd
+  ? (k.sayfa ? t("Kaynak: {belge}, s. {sayfa}", { belge: k.belgeAd, sayfa: k.sayfa }) : t("Kaynak: {belge}", { belge: k.belgeAd }))
+  : "");
 function istemGovdesi(k, soru, sinir = Infinity) {
   let metin = String(k.metin || "").trim();
   if (metin.length > sinir) metin = metin.slice(0, Math.max(metin.lastIndexOf(" ", sinir), sinir * 0.8)).trim() + " …";
   const p = [kaynakBasi(k)];
-  if (metin) p.push(`${k.gorsel ? "Sayfanın metni" : "Alıntı"}:\n"""\n${metin}\n"""`);
-  if (k.baglam && k.baglam !== k.metin) p.push(`Geçtiği cümle: "${k.baglam}"`);
-  if (k.gorsel) p.push("Ekteki görsele bak: sayfadan kırptığım bölge.");
-  p.push(`Soru: ${soru}`);
+  if (metin) p.push(`${k.gorsel ? t("Sayfanın metni") : t("Alıntı")}:\n"""\n${metin}\n"""`);
+  if (k.baglam && k.baglam !== k.metin) p.push(t('Geçtiği cümle: "{cumle}"', { cumle: k.baglam }));
+  if (k.gorsel) p.push(t("Ekteki görsele bak: sayfadan kırptığım bölge."));
+  p.push(t("Soru: {soru}", { soru }));
   return p.filter(Boolean).join("\n\n");
 }
 const ilkIstem = (k, soru) => istemGovdesi(k, soru);
 // Hesap yolu: sistem talimatının kısa hali başa eklenir; sohbet uygulamasına tek parça gider
 // Edebî alıntıda matematik satırı gürültüdür, düşer
-const hesapTalimat = (k) => "Türkçe, kısa ve net cevap ver." + (konuBul(k) === "edebi" ? "" : " Matematikte adım adım git, formülleri $...$ içinde yaz.");
+const hesapTalimat = (k) => t("Türkçe, kısa ve net cevap ver.") + (konuBul(k) === "edebi" ? "" : " " + t("Matematikte adım adım git, formülleri $...$ içinde yaz."));
 const hesapMetni = (soru) => `${hesapTalimat(S.kaynak)}\n\n${istemGovdesi(S.kaynak, soru, 1500)}`;
 // Anlamı: kelime + geçtiği cümle; iki yol da aynı metni kullanır
 function anlamIstemi({ kelime, baglam, belgeAd, sayfa }) {
-  return [kaynakBasi({ belgeAd, sayfa }), `Kelime: «${String(kelime || "").trim()}»`, baglam ? `Geçtiği cümle: "${baglam}"` : "", `Soru: ${HAZIR_ANLAM[2]}`]
+  return [kaynakBasi({ belgeAd, sayfa }), t("Kelime: «{kelime}»", { kelime: String(kelime || "").trim() }),
+    baglam ? t('Geçtiği cümle: "{cumle}"', { cumle: baglam }) : "", t("Soru: {soru}", { soru: HAZIR_ANLAM[2] })]
     .filter(Boolean).join("\n\n");
 }
 function hesapSorusu() {
@@ -1118,23 +1742,23 @@ function hesapSorusu() {
 /* ================= Panel ================= */
 function panelKur() {
   P = {};
-  P.baslik = h("h2", { class: "t-b2", id: "as-baslik" }, "Asistan");
+  P.baslik = h("h2", { class: "t-b2", id: "as-baslik" }, t("Asistan"));
   P.pulLamba = h("span", { class: "lamba" });
   P.pulAd = h("span", { class: "ad" });
   P.pulModel = h("span", { class: "model" });
   P.pul = h("span", { class: "cam cam-k as-pul" }, P.pulLamba, P.pulAd, P.pulModel);
-  P.kapat = h("button", { type: "button", class: "ikon-dugme", "aria-label": "Asistanı kapat", onclick: () => kapat() }, icon("kapat"));
-  P.tutamak = h("div", { class: "asistan-tutamak", role: "button", tabindex: "0", "aria-label": "Asistanı büyüt" });
+  P.kapat = h("button", { type: "button", class: "ikon-dugme", "aria-label": t("Asistanı kapat"), onclick: () => kapat() }, icon("kapat"));
+  P.tutamak = h("div", { class: "asistan-tutamak", role: "button", tabindex: "0", "aria-label": t("Asistanı büyüt") });
   P.iz = izOlustur();
   P.izNot = P.iz.querySelector(".iz-not");
-  P.kaynak = h("section", { class: "as-kaynak", "aria-label": "Kaynak" });
-  P.hazir = h("div", { class: "as-hazir", role: "group", "aria-label": "Hazır sorular" });
+  P.kaynak = h("section", { class: "as-kaynak", "aria-label": t("Kaynak") });
+  P.hazir = h("div", { class: "as-hazir", role: "group", "aria-label": t("Hazır sorular") });
   P.akis = h("div", { class: "as-akis" });
   P.govde = h("div", { class: "asistan-govde" }, P.kaynak, P.hazir, P.akis);
 
-  P.soru = h("textarea", { rows: "1", enterkeyhint: "send", "aria-label": "Soru" });
-  P.gonder = h("button", { type: "button", class: "ikon-dugme gonder", "aria-label": "Gönder", disabled: true }, icon("gonder"));
-  P.uygulamaSec = h("div", { class: "as-uygulamalar", role: "radiogroup", "aria-label": "Uygulama" });
+  P.soru = h("textarea", { rows: "1", enterkeyhint: "send", "aria-label": t("Soru") });
+  P.gonder = h("button", { type: "button", class: "ikon-dugme gonder", "aria-label": t("Gönder"), disabled: true }, icon("gonder"));
+  P.uygulamaSec = h("div", { class: "as-uygulamalar", role: "radiogroup", "aria-label": t("Uygulama") });
   P.hesapDugme = h("button", { type: "button", class: "birincil" });
   P.hesapSatir = h("div", { class: "hesap-sor" }, P.uygulamaSec, P.hesapDugme);
   P.alt = h("div", { class: "as-alt" }, P.soru, P.gonder, P.hesapSatir);
@@ -1199,7 +1823,7 @@ const ALT_MEDYA = matchMedia("(max-width: 699px), (max-width: 999px) and (orient
 // Çekmecenin durağı: telefonda "tam", dikey tablette "yarim" (sayfanın üst yarısı görünür kalır)
 function durakYaz(ad = matchMedia("(max-width: 599px)").matches ? "tam" : "yarim") {
   if (ALT_MEDYA.matches) P.el.dataset.durak = ad; else delete P.el.dataset.durak;
-  P.tutamak.setAttribute("aria-label", P.el.dataset.durak === "tam" ? "Asistanı küçült" : "Asistanı büyüt");
+  P.tutamak.setAttribute("aria-label", P.el.dataset.durak === "tam" ? t("Asistanı küçült") : t("Asistanı büyüt"));
 }
 // Panel açıkken yan panel olarak ne kadar yer kapladığı kökte --sag-panel'de durur (Masa araç çubuğu ona göre ortalanır).
 // Dikeyde panel alttan çekmecedir, yan yer kaplamaz: 0.
@@ -1213,8 +1837,8 @@ function sagPanelYaz() {
 // Hesap yolunda cevap beklenirken panel kapalıysa geri dönüş yolu: eylemli bildirim
 function beklemeHatirlat() {
   if (S.acik || S.durum !== "bekleme" || !S.bekleme) return;
-  toast(`Cevap ${S.bekleme.uygulama.ad}${EK[S.bekleme.uygulama.id] || "'de"} bekleniyor.`,
-    { etiket: "Cevabı getir", calistir: () => { ac(); cevabiGetir(); } });
+  toast(t("Cevap {yer} bekleniyor.", { yer: uygulamada(S.bekleme.uygulama) }),
+    { etiket: t("Cevabı getir"), calistir: () => { ac(); cevabiGetir(); } });
 }
 
 // Dikeyde alt çekmece (TASARIM-4 2.5 davranışı): tutamaktan sürüklenir, yarım ve tam durakta durur,
@@ -1260,17 +1884,17 @@ function pulYaz() {
   let lamba = "", ad = "", model = "", etiket = "";
   if (yol() === "hesap") {
     const u = uygulama();
-    ad = `${u.ad} · Hesap`;
-    etiket = `${u.ad}, hesabınla`;
+    ad = t("{ad} · Hesap", { ad: u.ad });
+    etiket = t("{ad}, hesabınla", { ad: u.ad });
   } else {
     const sg = saglayici();
-    if (sg.id === "deneme") { lamba = "deneme"; ad = "Deneme"; etiket = "Deneme, çevrimdışı hazır cevaplar"; }
-    else if (!sg.anahtar) { ad = `${sg.ad} · Anahtar yok`; etiket = `${sg.ad}, anahtar girilmemiş`; }
+    if (sg.id === "deneme") { lamba = "deneme"; ad = t("Deneme"); etiket = t("Deneme, çevrimdışı hazır cevaplar"); }
+    else if (!sg.anahtar) { ad = t("{ad} · Anahtar yok", { ad: sg.ad }); etiket = t("{ad}, anahtar girilmemiş", { ad: sg.ad }); }
     else {
       const bagli = S.dogrulandi.has(sg.id) || (!S.reddedildi.has(sg.id) && yz().denemeler?.[sg.id]?.tamam);
       lamba = bagli ? "bagli" : "denenmedi";
       ad = `${sg.ad} ·`; model = sg.model;
-      etiket = `${sg.ad}, ${sg.model}, ${lamba === "bagli" ? "bağlı" : "henüz denenmedi"}`;
+      etiket = lamba === "bagli" ? t("{ad}, {model}, bağlı", { ad: sg.ad, model: sg.model }) : t("{ad}, {model}, henüz denenmedi", { ad: sg.ad, model: sg.model });
     }
   }
   if (S.pulHata != null) lamba = S.pulHata;
@@ -1278,7 +1902,7 @@ function pulYaz() {
   P.pulAd.textContent = ad;
   P.pulModel.textContent = model;
   P.pulModel.hidden = !model;
-  P.pul.setAttribute("aria-label", `Sağlayıcı: ${etiket}`);
+  P.pul.setAttribute("aria-label", t("Sağlayıcı: {etiket}", { etiket }));
   P.pul.title = etiket;
 }
 
@@ -1289,13 +1913,13 @@ function kaynakYaz() {
   P.kaynak.hidden = !k.metin && !k.gorsel && !k.belgeAd;
   if (P.kaynak.hidden) return;
   const satir = kaynakSatiri(k);
-  const etiket = h("button", { type: "button", class: "as-etiket" }, h("span", { class: "etiket-sayfa" }, "Kaynak"), h("span", {}, satir || "Seçim"));
+  const etiket = h("button", { type: "button", class: "as-etiket" }, h("span", { class: "etiket-sayfa" }, t("Kaynak")), h("span", {}, satir || t("Seçim")));
   P.kaynak.append(etiket);
   if (k.metin) {
     // Formül parçası satır sonunda bölünmesin: türev işaretinden ya da harften sonra gelen parantez yapışık kalır (U+2060)
     const alinti = h("blockquote", { class: "as-alinti" }, `“${k.metin.trim().replace(/([′″\p{L}\d])(?=[(\[])/gu, "$1⁠")}”`);
     etiket.setAttribute("aria-expanded", "false");
-    etiket.setAttribute("aria-label", `Kaynak: ${satir}. Alıntının tamamını göster`);
+    etiket.setAttribute("aria-label", t("Kaynak: {satir}. Alıntının tamamını göster", { satir }));
     etiket.addEventListener("click", () => {
       const tam = alinti.classList.toggle("tamami");
       etiket.setAttribute("aria-expanded", String(tam));
@@ -1306,9 +1930,9 @@ function kaynakYaz() {
     etiket.disabled = true;
   }
   if (k.gorsel) {
-    const cap = h("figcaption", {}, "KIRPINTI");
-    const img = h("img", { src: k.gorsel, alt: `Kırpılan bölge${satir ? ", " + satir : ""}` });
-    img.addEventListener("load", () => { cap.textContent = `KIRPINTI · ${img.naturalWidth}×${img.naturalHeight}`; }, { once: true });
+    const cap = h("figcaption", {}, t("KIRPINTI"));
+    const img = h("img", { src: k.gorsel, alt: satir ? t("Kırpılan bölge, {satir}", { satir }) : t("Kırpılan bölge") });
+    img.addEventListener("load", () => { cap.textContent = t("KIRPINTI · {g}×{y}", { g: img.naturalWidth, y: img.naturalHeight }); }, { once: true });
     P.kaynak.append(h("figure", { class: "as-gorsel" }, img, cap));
   }
 }
@@ -1344,7 +1968,7 @@ function altYaz() {
   P.hazir.hidden = S.durum === "anahtarsiz";
   P.gonder.hidden = hesap;
   P.hesapSatir.hidden = !hesap;
-  P.soru.placeholder = hesap ? "Sorunu yaz ya da yukarıdan seç" : S.turlar.length ? "Takip sorusu yaz" : "Sorunu yaz ya da yukarıdan seç";
+  P.soru.placeholder = hesap ? t("Sorunu yaz ya da yukarıdan seç") : S.turlar.length ? t("Takip sorusu yaz") : t("Sorunu yaz ya da yukarıdan seç");
   if (hesap) {
     const u = uygulama();
     for (const b of P.uygulamaSec.children) {
@@ -1355,7 +1979,7 @@ function altYaz() {
     const paylasir = !!(S.dosya && navigator.canShare?.({ files: [S.dosya] }));
     const beklemede = S.durum === "bekleme";
     P.hesapDugme.className = beklemede ? "metin-dugme" : "birincil";
-    P.hesapDugme.replaceChildren(icon(paylasir ? "paylas" : "disa-aktar"), h("span", {}, beklemede ? "Yeniden gönder" : `${u.ad}${EK[u.id] || "'de"} sor`));
+    P.hesapDugme.replaceChildren(icon(paylasir ? "paylas" : "disa-aktar"), h("span", {}, beklemede ? t("Yeniden gönder") : t("{yer} sor", { yer: uygulamada(u), uyg: u.ad })));
   }
   altDurum();
 }
@@ -1363,7 +1987,7 @@ function altDurum() {
   const akiyor = !!S.iptal;
   if (yol() === "hesap") { P.hesapDugme.disabled = !hesapSorusu(); return; }
   P.gonder.disabled = !akiyor && !P.soru.value.trim();
-  P.gonder.setAttribute("aria-label", akiyor ? "Durdur" : "Gönder");
+  P.gonder.setAttribute("aria-label", akiyor ? t("Durdur") : t("Gönder"));
   P.gonder.classList.toggle("durdur", akiyor);
   P.gonder.replaceChildren(akiyor ? h("span", { class: "as-dur-kare", "aria-hidden": "true" }) : icon("gonder"));
 }
@@ -1436,7 +2060,7 @@ async function sor(soruMetni, { hazir = null } = {}) {
   } catch (e) {
     // Yeni soru eskisini kestiyse iz şeridi artık yeni isteğindir: eski tur şeridi "bitti"ye çekmesin
     if (e?.name === "AbortError") { tur.durum = "durdu"; turBitir(tur, { durdu: true, iz: S.iptal === denetci }); }
-    else hataGoster(e instanceof AsistanHatasi ? e : new AsistanHatasi("sunucu", "HATA"), tur);
+    else hataGoster(e instanceof AsistanHatasi ? e : new AsistanHatasi("sunucu", t("HATA")), tur);
   } finally {
     clearTimeout(sessiz);
     if (S.iptal === denetci) S.iptal = null;
@@ -1449,8 +2073,8 @@ function turEkle(tur) {
   tur.cevapEl = h("div", { class: "as-cevap", "aria-busy": "true" }, h("span", { class: "imlec", "aria-hidden": "true" }));
   tur.kayitEl = h("div", { class: "as-kayit" });
   tur.altEl = h("div", { class: "as-tur-alt" });
-  tur.el = h("article", { class: "as-tur", "aria-label": "Cevap" },
-    tur.soruGoster ? h("div", { class: "as-soru" }, h("span", { class: "t-daktilo" }, "Soru"), h("p", {}, tur.soru)) : null,
+  tur.el = h("article", { class: "as-tur", "aria-label": t("Cevap") },
+    tur.soruGoster ? h("div", { class: "as-soru" }, h("span", { class: "t-daktilo" }, t("Soru")), h("p", {}, tur.soru)) : null,
     tur.cevapEl, tur.kayitEl, tur.altEl);
   S.turlar.push(tur);
   P.akis.append(tur.el);
@@ -1504,15 +2128,23 @@ function turBitir(tur, { durdu = false, hesap = null, iz = true } = {}) {
   const sn = (performance.now() - tur.baslangic) / 1000;
   // Süre ve kelime sayısı izin üstünde değil, cevabın altında KAYIT damgasıyla aynı satırda
   if (iz) izAyarla("bitti", "");
-  const olcu = hesap ? null : h("span", { class: "cam cam-k soluk as-olcu" }, `${sayiTr(sn)} sn · ${kelimeSay(tur.cevap)} kelime`);
+  const olcu = hesap ? null : h("span", { class: "cam cam-k soluk as-olcu" }, t("{sn} sn · {n} kelime", { sn: sayiTr(sn), n: kelimeSay(tur.cevap) }));
   const z = new Date();
   if (!durdu) {
-    const damga = hesap ? `Kayıt · ${buyuk(hesap.ad)} · ${saatTr(z)}` : `Kayıt · ${tarihTr(z)} · ${saatTr(z)}`;
+    const damga = hesap ? t("Kayıt · {ad} · {saat}", { ad: buyuk(hesap.ad), saat: saatTr(z) }) : t("Kayıt · {tarih} · {saat}", { tarih: tarihTr(z), saat: saatTr(z) });
     tur.kayitEl.replaceChildren(h("span", { class: "damga" }, damga), olcu);
   } else if (olcu) tur.kayitEl.replaceChildren(olcu);
-  if (durdu) tur.altEl.append(h("p", { class: "as-not" }, "Durduruldu."));
-  else if (tur.saglayici === "deneme") tur.altEl.append(h("p", { class: "as-not" }, "Bu hazır bir örnek cevaptır."));
+  if (durdu) tur.altEl.append(h("p", { class: "as-not" }, t("Durduruldu.")));
+  else if (tur.saglayici === "deneme") tur.altEl.append(h("p", { class: "as-not" }, t("Bu hazır bir örnek cevaptır.")));
+  if (!durdu && tur.hazir === "anlam") tur.altEl.append(...anlamDisari());
   if (tur.cevap.trim()) tur.altEl.append(eylemlerKur(tur));
+}
+// "Anlamı" kartında Vikipedi ve web araması (TASARIM-5 11.6 Y5): yalnız dokununca, yeni sekmede; çevrimdışıyken kapalı
+function anlamDisari() {
+  const k = S.kaynak, kelime = String(k.metin || "").trim();
+  if (!kelime || kelime.length > 120) return [];
+  const dil = belgeBul(k.belgeId)?.dil || (ingilizceMi ? "en" : "tr");
+  return [webAraDugmeleri({ metin: kelime, dil, sinif: "as-disari" })];
 }
 
 /* ---------- cevap eylemleri ---------- */
@@ -1529,14 +2161,14 @@ function eylemlerKur(tur) {
     return b;
   };
   kutu.append(
-    dugme("Kenara not", "kenara-not", () => {
+    dugme(t("Kenara not"), "kenara-not", () => {
       bus.emit("asistan:not", {
         belgeId: k.belgeId, sayfa: k.sayfa, metin: tur.cevap, soru: tur.soru,
         kaynak: tur.saglayiciAd || "Asistan", zaman: Date.now(),
       });
-      damgala(k.sayfa ? `Kenara eklendi · s. ${k.sayfa}` : "Kenara eklendi");
-    }, { disabled: !k.belgeId, title: k.belgeId ? null : "Bu soru bir belgeye bağlı değil" }),
-    dugme("Karta çevir", "karta-cevir", (b) => {
+      damgala(k.sayfa ? t("Kenara eklendi · s. {sayfa}", { sayfa: k.sayfa }) : t("Kenara eklendi"));
+    }, { disabled: !k.belgeId, title: k.belgeId ? null : t("Bu soru bir belgeye bağlı değil") }),
+    dugme(t("Karta çevir"), "karta-cevir", (b) => {
       const alinti = k.metin ? k.metin.trim().slice(0, 220) + (k.metin.trim().length > 220 ? "…" : "") : "";
       kartEkle({
         tur: "soru",
@@ -1545,10 +2177,10 @@ function eylemlerKur(tur) {
         belgeId: k.belgeId, belgeAd: k.belgeAd, sayfa: k.sayfa,
       });
       b.disabled = true;
-      damgala("Tekrar'a eklendi · kutu I");
+      damgala(t("Tekrar'a eklendi · kutu I"));
     }),
-    dugme("Kopyala", "kopyala", async () => {
-      toast((await panoyaYaz(tur.cevap)) ? "Kopyalandı" : "Kopyalanamadı");
+    dugme(t("Kopyala"), "kopyala", async () => {
+      toast((await panoyaYaz(tur.cevap)) ? t("Kopyalandı") : t("Kopyalanamadı"));
     }),
   );
   return kutu;
@@ -1556,21 +2188,21 @@ function eylemlerKur(tur) {
 
 /* ---------- hata ve boş durum ---------- */
 function hataGoster(hata, tur) {
-  const t = HATALAR[hata.tur] || HATALAR.sunucu;
+  const ht = HATALAR[hata.tur] || HATALAR.sunucu;
   tur.durum = "hata";
   if (hata.tur === "anahtar" || hata.tur === "model") { S.dogrulandi.delete(tur.saglayici); S.reddedildi.add(tur.saglayici); }
   if (hata.tur === "ret") tur.cevap = ""; // reddedilen kısmi cevap gösterilmez
   tur.cevapEl.remove();
   tur.kayitEl.remove();
-  S.pulHata = t.lamba === null ? null : t.lamba;
+  S.pulHata = ht.lamba === null ? null : ht.lamba;
   izAyarla("hata", "");
   const eylem = h("button", { type: "button", class: "metin-dugme vurgulu" },
-    icon(t.eylem === "Yeniden dene" ? "yeniden" : t.eylem === "Ayarları aç" ? "ayarlar" : "metin"), h("span", {}, t.eylem));
+    icon(ht.eylem === "Yeniden dene" ? "yeniden" : ht.eylem === "Ayarları aç" ? "ayarlar" : "metin"), h("span", {}, t(ht.eylem)));
   eylem.addEventListener("click", () => {
-    if (t.eylem === "Ayarları aç") return ayarlarAc();
+    if (ht.eylem === "Ayarları aç") return ayarlarAc();
     tur.el.remove();
     S.turlar.splice(S.turlar.indexOf(tur), 1);
-    if (t.eylem === "Yeniden dene") return sor(tur.soru, { hazir: tur.hazir });
+    if (ht.eylem === "Yeniden dene") return sor(tur.soru, { hazir: tur.hazir });
     // Soruyu değiştir: soru alanına geri koy
     izAyarla("bekliyor", "");
     S.pulHata = null;
@@ -1580,9 +2212,9 @@ function hataGoster(hata, tur) {
     P.soru.focus();
   });
   const fis = h("div", { class: "as-hata", role: "alert", dataset: { tur: hata.tur } },
-    t.lamba === null ? h("span") : h("span", { class: "lamba", dataset: t.lamba ? { durum: t.lamba } : {} }),
+    ht.lamba === null ? h("span") : h("span", { class: "lamba", dataset: ht.lamba ? { durum: ht.lamba } : {} }),
     hata.kod ? h("span", { class: "kod" }, hata.kod) : h("span"),
-    h("p", {}, t.metin), eylem);
+    h("p", {}, ht.metin), eylem);
   tur.altEl.replaceChildren(fis);
 }
 
@@ -1591,15 +2223,15 @@ function anahtarsizGoster() {
   S.durum = "anahtarsiz";
   durumKutulariniTemizle();
   izAyarla("bekliyor", "");
-  const ayarDugme = h("button", { type: "button", class: "birincil" }, icon("ayarlar"), h("span", {}, "Ayarları aç"));
+  const ayarDugme = h("button", { type: "button", class: "birincil" }, icon("ayarlar"), h("span", {}, t("Ayarları aç")));
   ayarDugme.addEventListener("click", ayarlarAc);
-  const deneDugme = h("button", { type: "button", class: "metin-dugme" }, "Deneme ile dene");
+  const deneDugme = h("button", { type: "button", class: "metin-dugme" }, t("Deneme ile dene"));
   // "ayarlar" dinleyicisi bekleyen soruyu kendisi sorar
   deneDugme.addEventListener("click", () => ayarla({ yz: { ...yz(), yol: "anahtar", saglayici: "deneme" } }));
   P.akis.append(h("div", { class: "as-bos" },
     h("div", { class: "tahta tahta--cerceve" }, feynman()),
-    h("h3", { class: "t-b2" }, "Anahtar girilmemiş."),
-    h("p", {}, `${sg.ad} için anahtar yok. Hesabınla sormak için Ayarlar'a dön.`),
+    h("h3", { class: "t-b2" }, t("Anahtar girilmemiş.")),
+    h("p", {}, t("{ad} için anahtar yok. Hesabınla sormak için Ayarlar'a dön.", { ad: sg.ad })),
     h("div", { class: "as-bos-eylem" }, ayarDugme, deneDugme)));
   altYaz();
   pulYaz();
@@ -1623,8 +2255,8 @@ function ayarlarAc() {
   // Kabuk olayı dinlemiyorsa kenar çubuğundaki Ayarlar düğmesine düş
   setTimeout(() => {
     if (document.querySelector("dialog[open], .yz-pencere")) return;
-    const d = [...document.querySelectorAll('button[aria-haspopup="dialog"]')].find((b) => /Ayarlar/.test(b.textContent) && b.getClientRects().length);
-    if (d) d.click(); else toast("Ayarlar kitaplıkta, Yapay zekâ bölümünde.");
+    const d = [...document.querySelectorAll('button[aria-haspopup="dialog"]')].find((b) => /Ayarlar|Settings/.test(b.textContent) && b.getClientRects().length);
+    if (d) d.click(); else toast(t("Ayarlar kitaplıkta, Yapay zekâ bölümünde."));
   }, 60);
 }
 
@@ -1642,14 +2274,14 @@ async function hesapGonder() {
       await navigator.share({ text: metin, files: [dosya] });
       paylasildi = true;
     } catch (e) {
-      if (e?.name === "AbortError") { toast("Paylaşım iptal edildi."); return; }
+      if (e?.name === "AbortError") { toast(t("Paylaşım iptal edildi.")); return; }
     }
   }
   if (!paylasildi) {
     const q = metin.length > 1800 ? "" : metin; // uzun metin bağlantıya sığmaz, panodaki kopya yeter
     window.open(u.url(q), "_blank", "noopener");
-    const ipucu = kopyalandi ? "Metin kopyalandı, açılan sohbete yapıştır." : "Metin kopyalanamadı; açılan sohbete soruyu yaz.";
-    if (dosya) toast(ipucu, { etiket: "Görüntüyü indir", calistir: () => indir(dosya) });
+    const ipucu = kopyalandi ? t("Metin kopyalandı, açılan sohbete yapıştır.") : t("Metin kopyalanamadı; açılan sohbete soruyu yaz.");
+    if (dosya) toast(ipucu, { etiket: t("Görüntüyü indir"), calistir: () => indir(dosya) });
     else toast(ipucu);
   }
   beklemeGoster(u, metin, soru);
@@ -1660,16 +2292,16 @@ function beklemeGoster(u, metin, soru) {
   S.durum = "bekleme";
   S.bekleme = { metin, soru, uygulama: u, vurgulandi: false, baslangic: performance.now() };
   beklemeSakla();
-  izAyarla("bekliyor", buyuk(`${u.ad}${EK[u.id] || "'de"}`));
-  const getir = h("button", { type: "button", class: "birincil" }, icon("yapistir"), h("span", {}, "Cevabı getir"));
+  izAyarla("bekliyor", buyuk(ingilizceMi ? `In ${u.ad}` : uygulamada(u)));
+  const getir = h("button", { type: "button", class: "birincil" }, icon("yapistir"), h("span", {}, t("Cevabı getir")));
   getir.addEventListener("click", cevabiGetir);
-  const kopya = h("button", { type: "button", class: "metin-dugme" }, "Metni yeniden kopyala");
-  kopya.addEventListener("click", async () => toast((await panoyaYaz(metin)) ? "Metin kopyalandı." : "Kopyalanamadı"));
+  const kopya = h("button", { type: "button", class: "metin-dugme" }, t("Metni yeniden kopyala"));
+  kopya.addEventListener("click", async () => toast((await panoyaYaz(metin)) ? t("Metin kopyalandı.") : t("Kopyalanamadı")));
   P.getir = getir;
   P.yapistirKap = h("div", { class: "as-yapistir-kap", hidden: true });
   const kutu = h("div", { class: "as-bekleme kareli", role: "status" },
-    h("h3", {}, `Cevap ${u.ad}${EK[u.id] || "'de"}.`),
-    h("p", {}, "Bitince cevabı kopyala ve buraya dön."),
+    h("h3", {}, t("Cevap {yer}.", { yer: uygulamada(u) })),
+    h("p", {}, t("Bitince cevabı kopyala ve buraya dön.")),
     h("div", { class: "eylemler" }, getir, kopya),
     P.yapistirKap);
   P.akis.append(kutu);
@@ -1708,14 +2340,14 @@ async function cevabiGetir() {
   try { if (navigator.clipboard?.readText) metin = await navigator.clipboard.readText(); } catch { metin = null; }
   const temiz = metin?.trim();
   if (temiz && temiz !== b.metin.trim()) return hesapCevabi(temiz);
-  if (temiz) toast("Panoda hâlâ soru metni var. Cevabı kopyalayıp yeniden dene.");
+  if (temiz) toast(t("Panoda hâlâ soru metni var. Cevabı kopyalayıp yeniden dene."));
   yapistirAc();
 }
 function yapistirAc() {
   const kap = P.yapistirKap;
   if (!kap || !kap.hidden) { kap?.querySelector("textarea")?.focus(); return; }
-  const alan = h("textarea", { class: "as-yapistir", placeholder: "Cevabı buraya yapıştır", "aria-label": "Cevap" });
-  const ekle = h("button", { type: "button", class: "metin-dugme vurgulu", disabled: true }, icon("tik"), h("span", {}, "Ekle"));
+  const alan = h("textarea", { class: "as-yapistir", placeholder: t("Cevabı buraya yapıştır"), "aria-label": t("Cevap") });
+  const ekle = h("button", { type: "button", class: "metin-dugme vurgulu", disabled: true }, icon("tik"), h("span", {}, t("Ekle")));
   alan.addEventListener("input", () => { ekle.disabled = !alan.value.trim(); });
   ekle.addEventListener("click", () => alan.value.trim() && hesapCevabi(alan.value.trim()));
   kap.replaceChildren(alan, h("div", { class: "eylemler" }, ekle));
@@ -1748,7 +2380,7 @@ function sorAl(y = {}) {
   if (y.hazir === "anlam" && yol() === "hesap" && y.panel === false) { anlamHesapla(y); return; }
   iptalEt();
   // Bekleyen hesap cevabı yeni soruyla bırakılır: sessizce değil, haber vererek
-  if (S.durum === "bekleme" && S.bekleme) toast("Önceki sorunun bekleyen cevabı bırakıldı.");
+  if (S.durum === "bekleme" && S.bekleme) toast(t("Önceki sorunun bekleyen cevabı bırakıldı."));
   S.kaynak = { ...y };
   S.dosya = y.gorsel ? dataUrlDosya(y.gorsel) : null;
   S.turlar = [];
@@ -1767,7 +2399,11 @@ function sorAl(y = {}) {
   pulYaz();
   P.govde.scrollTop = 0;
   ac();
-  if (yol() === "hesap") { if (y.soru) { P.soru.value = y.soru; altDurum(); } return; }
+  if (yol() === "hesap") {
+    if (y.soru) { P.soru.value = y.soru; altDurum(); }
+    if (y.hazir === "anlam") P.akis.append(...anlamDisari());
+    return;
+  }
   const soru = y.soru || (y.hazir && hazirBul(y.hazir, !!y.gorsel)?.[2]);
   if (soru) sor(soru, { hazir: y.hazir || null });
   else {
@@ -1778,9 +2414,9 @@ function sorAl(y = {}) {
 
 function anlamHesapla(y) {
   const u = uygulama();
-  const metin = `Türkçe, kısa ve net cevap ver.\n\n${anlamIstemi({ kelime: y.metin, baglam: y.baglam, belgeAd: y.belgeAd, sayfa: y.sayfa })}`;
+  const metin = `${t("Türkçe, kısa ve net cevap ver.")}\n\n${anlamIstemi({ kelime: y.metin, baglam: y.baglam, belgeAd: y.belgeAd, sayfa: y.sayfa })}`;
   // Kullanıcı hareketi içinde: önce pano, sonra uygulama bağlantısı (açılır pencere engellenmesin)
-  panoyaYaz(metin).then((ok) => toast(ok ? "Soru kopyalandı. Cevabı kopyalayıp buraya dön." : "Açılan sohbete soruyu yaz."));
+  panoyaYaz(metin).then((ok) => toast(ok ? t("Soru kopyalandı. Cevabı kopyalayıp buraya dön.") : t("Açılan sohbete soruyu yaz.")));
   window.open(u.url(metin.length > 1800 ? "" : metin), "_blank", "noopener");
 }
 
@@ -1788,7 +2424,7 @@ function anlamHesapla(y) {
 // Dışa açık: koltuk.js doğrudan çağırabilir. parca(metin, toplam) her parçada çağrılır; dönen söz tam metni verir.
 export async function anlamGetir({ kelime, baglam = "", belgeAd, sayfa, signal } = {}, parca) {
   const sg = saglayici();
-  if (sg.id !== "deneme" && !sg.anahtar) throw new AsistanHatasi("anahtar", "ANAHTAR YOK");
+  if (sg.id !== "deneme" && !sg.anahtar) throw new AsistanHatasi("anahtar", t("ANAHTAR YOK"));
   const k = { belgeAd, sayfa };
   const istem = anlamIstemi({ kelime, baglam, belgeAd, sayfa });
   let toplam = "";
@@ -1811,7 +2447,7 @@ function anlamSessiz(y) {
     y.bitti?.(metin);
   }).catch((e) => {
     if (e?.name === "AbortError") return;
-    const hata = { tur: e?.tur || "sunucu", kod: e?.kod || "", mesaj: "Anlam getirilemedi." };
+    const hata = { tur: e?.tur || "sunucu", kod: e?.kod || "", mesaj: t("Anlam getirilemedi.") };
     yay("hata", { hata });
     y.hata?.(hata);
   });
@@ -1831,12 +2467,12 @@ const DOGRULA = {
 };
 export async function baglantiDene(saglayiciId) {
   const sg = saglayici(saglayiciId);
-  if (sg.id !== saglayiciId) return { tamam: false, mesaj: "BİLİNMEYEN", tur: "istek" };
+  if (sg.id !== saglayiciId) return { tamam: false, mesaj: t("BİLİNMEYEN"), tur: "istek" };
   if (sg.id === "deneme") {
     await bekle(260);
-    return { tamam: true, ok: true, mesaj: "DENEME · HAZIR", tur: "deneme", ms: 0 };
+    return { tamam: true, ok: true, mesaj: t("DENEME · HAZIR"), tur: "deneme", ms: 0 };
   }
-  if (!sg.anahtar) return { tamam: false, mesaj: "ANAHTAR YOK", tur: "anahtar-yok", durum: "anahtar-yok" };
+  if (!sg.anahtar) return { tamam: false, mesaj: t("ANAHTAR YOK"), tur: "anahtar-yok", durum: "anahtar-yok" };
   const denetci = new AbortController();
   const zaman = setTimeout(() => denetci.abort(), 15000);
   const t0 = performance.now();
@@ -1846,12 +2482,12 @@ export async function baglantiDene(saglayiciId) {
     const ms = Math.round(performance.now() - t0);
     S.dogrulandi.add(sg.id);
     S.reddedildi.delete(sg.id);
-    return { tamam: true, ok: true, mesaj: `BAĞLI · ${ms} ms`, tur: "bagli", ms };
+    return { tamam: true, ok: true, mesaj: t("BAĞLI · {ms} ms", { ms }), tur: "bagli", ms };
   } catch (e) {
     S.dogrulandi.delete(sg.id);
-    if (e?.name === "AbortError") return { tamam: false, mesaj: "ZAMAN AŞIMI", tur: "ag", durum: "ag" };
+    if (e?.name === "AbortError") return { tamam: false, mesaj: t("ZAMAN AŞIMI"), tur: "ag", durum: "ag" };
     // durum: kabuğun cam şeridi için sayısal kod ya da "ag"
-    const kod = e?.kod || "AĞ YOK";
+    const kod = e?.kod || t("AĞ YOK");
     const n = parseInt(kod, 10);
     if (e?.tur === "anahtar" || e?.tur === "model") S.reddedildi.add(sg.id);
     return { tamam: false, mesaj: kod, tur: e?.tur || "ag", durum: e?.tur === "ag" ? "ag" : Number.isFinite(n) ? n : kod };

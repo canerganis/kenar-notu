@@ -9,12 +9,17 @@
 // Türkçe karakterler standart PDF yazı tiplerinde olmadığı için yüksek çözünürlüklü görüntü olarak basılır;
 // kare, çerçeve ve bant çizgileri yine vektör.
 
-import { PDFDocument, PDFHexString } from "../lib/pdf-lib.esm.min.js";
+// 7.0 (TASARIM-5 11.4): sayfa eşlemesi (pdf-sayfa.js: sıra, silme, "don" döndürmesi, "kaynak" birleştirilmiş sayfa),
+// düzenlenebilir PDF notları (Ink, Highlight, Underline, StrikeOut, Text, FreeText; her birinin görünümü AP olarak yazılır),
+// parolalı belgede parolasız çıktı (sayfalar PDF.js ile çizilip görüntü olarak yazılır), sayfaları ayıklama,
+// sayfa aralığı ("1-5, 8"), PNG ve yazdırma.
+import { PDFDocument, PDFHexString, PDFString, degrees } from "../lib/pdf-lib.esm.min.js";
 import { genislik } from "./kalem.js";
 import { PW, PH, PDF_PAGES, drawTemplate } from "./sayfalar.js";
 import * as SAYFALAR from "./sayfalar.js";
 import { toast, store } from "./ortak.js";
 import * as ORTAK from "./ortak.js";   // exLibrisAci kabukla aynı anda geldi: yoksa sabit eğim
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 const KW = 272, TW = PW + KW;          // kenar alanı (duzenleyici.js ile aynı)
 const A4_W = 595.28;                   // örnek ve defter sayfaları A4 genişliğinde
@@ -407,20 +412,25 @@ async function notYaz(Y, n) {
   });
 }
 
+// Dönen: yazının kutusu (uygulama biriminde) ya da boş metinde null; düzenlenebilir notun Rect'i bundan çıkar
 async function metinYaz(Y, m, sinir) {
-  if (!m.metin || !m.metin.trim()) return;
+  if (!m.metin || !m.metin.trim()) return null;
   // El yazısı metin (m.el, örnek defter) Caveat ile ve 1,2 satır aralığıyla, ekrandaki gibi
   const fs = m.fs || 18, yazi = m.el ? YAZI.el(fs) : YAZI.okuma(fs), ctx = olcCtx(); ctx.font = yazi;
   const maxW = Math.max(m.el ? 1 : 120, sinir - m.x);
   const satirlar = satirla(ctx, m.metin, maxW);
   const w = Math.min(maxW, Math.max(...satirlar.map((s) => ctx.measureText(s).width), 1) + 2);
-  gorselKoy(Y, await yaziGorseli(Y, w, [{ font: yazi, renk: m.renk || "#1B1B1F", satirlar, satirH: fs * (m.el ? 1.2 : 1.4) }]), m.x, m.y);
+  const g = await yaziGorseli(Y, w, [{ font: yazi, renk: m.renk || "#1B1B1F", satirlar, satirH: fs * (m.el ? 1.2 : 1.4) }]);
+  gorselKoy(Y, g, m.x, m.y);
+  return g ? { x0: m.x, y0: m.y, x1: m.x + g.w, y1: m.y + g.h } : null;
 }
 
 async function asistanYaz(Y, m) {
   const w = m.w || ASISTAN_NOT_W, ic = w - 20, damga = renkCoz("#5B3F86");
-  const t = new Date(m.zaman || Date.now()), iki = (n) => String(n).padStart(2, "0");
-  const etiket = ["Asistan", m.kaynak, `${iki(t.getDate())}.${iki(t.getMonth() + 1)}`].filter(Boolean).join(" · ").toLocaleUpperCase("tr");
+  const z = new Date(m.zaman || Date.now()), iki = (n) => String(n).padStart(2, "0");
+  // Tarih: Türkçede gün.ay, İngilizcede ay/gün
+  const gunAy = ingilizceMi ? `${z.getMonth() + 1}/${z.getDate()}` : `${iki(z.getDate())}.${iki(z.getMonth() + 1)}`;
+  const etiket = [t("Asistan"), m.kaynak, gunAy].filter(Boolean).join(" · ").toLocaleUpperCase(yerel);
   const ctx = olcCtx(); ctx.font = YAZI.olcu(11);
   let et = etiket;
   while (et.length > 1 && ctx.measureText(et).width + et.length * 0.88 > ic) et = et.slice(0, -2) + "…";
@@ -603,8 +613,125 @@ const kenardaIcerik = (v) =>
   (v.metinler || []).some((m) => m.x > PW - 20) || (v.bantlar || []).some((b) => b.x + b.w > PW + 20) ||
   (v.gorseller || []).some((g) => g.x + g.w > PW + 20);
 
+// ---------- düzenlenebilir PDF notları (TASARIM-5 11.4 M7) ----------
+// Kalem çizgisi Ink (her çizgi bir InkList, renk, kalınlık; fosforlu CA ile yarı saydam), metne oturan vurgu
+// Highlight / Underline / StrikeOut (QuadPoints: satır dikdörtgenleri), yapışkan not Text, metin kutusu FreeText.
+// Her notun görünümü (AP /N) kendi form akışında yazılır: içerik uygulama biriminde, başta sayfanınkiyle aynı "cm"
+// dönüşümüyle PDF'e çevrilir. Form BBox'ı notun Rect'i, Matrix birim: Acrobat, Zotero ve pdf.js'te sayfadaki gibi görünür.
+const pdfTarih = (t = new Date()) => {
+  const iki = (n) => String(n).padStart(2, "0");
+  return `D:${t.getFullYear()}${iki(t.getMonth() + 1)}${iki(t.getDate())}${iki(t.getHours())}${iki(t.getMinutes())}${iki(t.getSeconds())}`;
+};
+let nmSayac = 0;
+function gorunumYazici(doc, M) {
+  const ops = [], gsler = {}, xler = {}, gsAd = new Map(), xAd = new Map();
+  const Y = {
+    M, doc, alfaYok: false,
+    push: (...a) => { for (const x of a) if (x) ops.push(x); },
+    gs(a = 1, bm = "Normal") {
+      if (Y.alfaYok) a = 1;   // saydamlık notun CA değerinde: görünümde ikinci kez uygulanmasın
+      a = Math.round(sinirla(a, 0, 1) * 1000) / 1000;
+      if (a === 1 && bm === "Normal") return "";
+      const an = a + "|" + bm;
+      if (!gsAd.has(an)) { const ad = "G" + gsAd.size; gsAd.set(an, ad); gsler[ad] = doc.context.obj({ Type: "ExtGState", ca: a, CA: a, BM: bm }); }
+      return `/${gsAd.get(an)} gs`;
+    },
+    async png(bayt) { return (await doc.embedPng(bayt)).ref; },
+    xobje(ref) { if (!xAd.has(ref)) { const ad = "X" + xAd.size; xAd.set(ref, ad); xler[ad] = ref; } return "/" + xAd.get(ref); },
+    form(rect) {
+      const res = {};
+      if (gsAd.size) res.ExtGState = gsler;
+      if (xAd.size) res.XObject = xler;
+      return doc.context.register(doc.context.flateStream(`q ${M.map(f3).join(" ")} cm\n${ops.join("\n")}\nQ`,
+        { Type: "XObject", Subtype: "Form", FormType: 1, BBox: rect, Matrix: [1, 0, 0, 1, 0, 0], Resources: res }));
+    },
+  };
+  return Y;
+}
+// Uygulama birimindeki kutunun PDF kullanıcı uzayındaki dikdörtgeni
+function pdfDortgen(M, x0, y0, x1, y1) {
+  const k = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([u, w]) => noktaPdf(M, u, w));
+  const xs = k.map((p) => p[0]), ys = k.map((p) => p[1]), r = (v) => Math.round(v * 100) / 100;
+  return [r(Math.min(...xs)), r(Math.min(...ys)), r(Math.max(...xs)), r(Math.max(...ys))];
+}
+function notEkle(doc, page, alanlar) {
+  const ref = doc.context.register(doc.context.obj({ Type: "Annot", F: 4, T: PDFHexString.fromText("Kenar Notu"),
+    M: PDFString.of(pdfTarih()), CreationDate: PDFString.of(pdfTarih()), NM: PDFString.of(`kenar-notu-${Date.now().toString(36)}-${(++nmSayac).toString(36)}`), P: page.ref, ...alanlar }));
+  page.node.addAnnot(ref);
+  return ref;
+}
+const renkDizi = (r) => [Math.round(r.r * 1000) / 1000, Math.round(r.g * 1000) / 1000, Math.round(r.b * 1000) / 1000];
+// Çizginin orta çizgisi (şekilde dış hattı) ve uygulama birimindeki kutusu
+function cizgiNoktalari(c) {
+  if (c.tur !== "sekil") { const D = seyrelt(noktalar(c)); return Array.from({ length: D.n }, (_, i) => [D.X[i], D.Y[i]]); }
+  const a = c.p[0], b = c.p[c.p.length - 1];
+  if (c.sekil === "dikdortgen") return [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]], [a[0], a[1]]];
+  if (c.sekil === "elips") {
+    const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2, rx = Math.abs(b[0] - a[0]) / 2, ry = Math.abs(b[1] - a[1]) / 2;
+    return Array.from({ length: 49 }, (_, i) => [cx + rx * Math.cos((i / 48) * TAM), cy + ry * Math.sin((i / 48) * TAM)]);
+  }
+  return [[a[0], a[1]], [b[0], b[1]]];
+}
+function inkNotu(doc, page, M, c) {
+  const P = cizgiNoktalari(c);
+  if (!P.length) return;
+  const w = kalinlik(c), pay = (c.tur === "fosforlu" ? w / 2 : w * 1.2) + (c.sekil === "ok" ? 8 + w * 3 : 0) + 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of P) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const rect = pdfDortgen(M, x0 - pay, y0 - pay, x1 + pay, y1 + pay), s = Math.hypot(M[0], M[1]);
+  const G = gorunumYazici(doc, M), fosfor = c.tur === "fosforlu";
+  G.alfaYok = fosfor;
+  cizgiYaz(G, c);
+  const r = renkCoz(c.renk);
+  const liste = P.flatMap(([x, y]) => noktaPdf(M, x, y).map((v) => Math.round(v * 100) / 100));
+  notEkle(doc, page, { Subtype: "Ink", Rect: rect, InkList: [liste], C: renkDizi(r), CA: fosfor ? 0.35 : r.a < 1 ? r.a : 1,
+    BS: { Type: "Border", W: Math.round(genislik(c.tur, w, 0.5) * s * 100) / 100, S: "S" }, ...(fosfor ? { IT: "InkHighlight" } : {}),
+    AP: { N: G.form(rect) } });
+}
+// Metne oturan işaret grubu: aynı "grup" kimlikli çizgiler tek nota, satır dikdörtgenleri QuadPoints olur
+const METIN_NOT_TURU = { vurgu: "Highlight", alti: "Underline", ustu: "StrikeOut" };
+function metinNotu(doc, page, M, grup, metin) {
+  const c0 = grup[0], tur = METIN_NOT_TURU[c0.metinIz] || "Highlight";
+  const quad = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of grup) {
+    const d = Array.isArray(c.dortgen) && c.dortgen.length === 4 ? c.dortgen : null;
+    if (!d) continue;
+    for (const [u, w] of [[d[0], d[1]], [d[2], d[1]], [d[0], d[3]], [d[2], d[3]]]) quad.push(...noktaPdf(M, u, w).map((v) => Math.round(v * 100) / 100));
+    x0 = Math.min(x0, d[0]); y0 = Math.min(y0, d[1]); x1 = Math.max(x1, d[2]); y1 = Math.max(y1, d[3]);
+  }
+  if (!quad.length) { for (const c of grup) inkNotu(doc, page, M, c); return; }
+  const rect = pdfDortgen(M, x0 - 2, y0 - 2, x1 + 2, y1 + 2);
+  const G = gorunumYazici(doc, M);
+  for (const c of grup) cizgiYaz(G, c);
+  notEkle(doc, page, { Subtype: tur, Rect: rect, QuadPoints: quad, C: renkDizi(renkCoz(c0.renk)), CA: 1,
+    ...(metin ? { Contents: PDFHexString.fromText(metin) } : {}), AP: { N: G.form(rect) } });
+}
+// Yapışkan not: Text notu (simge), görünümü notun renginde köşesi kıvrık küçük kâğıt; metni Contents'te
+function yapiskanNotu(doc, page, M, n) {
+  const s = Math.hypot(M[0], M[1]), k = 22 / s;   // 22 punto
+  const rect = pdfDortgen(M, n.x, n.y, n.x + k, n.y + k);
+  const G = gorunumYazici(doc, M), r = renkCoz(n.renk || "#F8E7A1"), kk = k * 0.32;
+  G.push(`${rgb(r)} rg ${f3(n.x)} ${f3(n.y)} ${f3(k)} ${f3(k)} re f`,
+    `0.16 0.15 0.13 RG ${f3(0.06 * k)} w ${f3(n.x + k * 0.22)} ${f3(n.y + k * 0.36)} m ${f3(n.x + k * 0.78)} ${f3(n.y + k * 0.36)} l ${f3(n.x + k * 0.22)} ${f3(n.y + k * 0.56)} m ${f3(n.x + k * 0.66)} ${f3(n.y + k * 0.56)} l S`,
+    `0.82 0.78 0.66 rg ${f3(n.x + k - kk)} ${f3(n.y + k)} m ${f3(n.x + k)} ${f3(n.y + k - kk)} l ${f3(n.x + k - kk)} ${f3(n.y + k - kk)} l f`);
+  notEkle(doc, page, { Subtype: "Text", Name: "Comment", Open: false, Rect: rect, C: renkDizi(r),
+    Contents: PDFHexString.fromText(String(n.metin || "").trim() || " "), AP: { N: G.form(rect) } });
+}
+// Metin kutusu (ve damga): FreeText; görünümü uygulamadaki yazının görüntüsü, metni Contents'te
+async function serbestMetinNotu(doc, page, M, m, sinir) {
+  const G = gorunumYazici(doc, M);
+  const k = await metinYaz(G, m, sinir);
+  if (!k) return;
+  const rect = pdfDortgen(M, k.x0, k.y0, k.x1, k.y1), r = renkCoz(m.renk || "#1B1B1F");
+  const s = Math.hypot(M[0], M[1]);
+  notEkle(doc, page, { Subtype: "FreeText", Rect: rect, Contents: PDFHexString.fromText(String(m.metin)),
+    DA: PDFString.of(`/Helv ${Math.round((m.fs || 18) * s * 10) / 10} Tf ${rgb(r)} rg`), BS: { Type: "Border", W: 0 }, AP: { N: G.form(rect) } });
+}
+
 // Sayfanın notlarını (ve gerekirse arka planını) yazar. arka: async (Y) => {} sayfa zemini.
-async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka, exLibris = null }) {
+// duzenlenebilir: kalem, vurgu, not ve metin kutuları standart PDF notu olur (gömülmez); izler: metinli izlerin metni (Contents)
+async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka, exLibris = null, duzenlenebilir = false, izMetni = null }) {
   const kutu = gorunurKutu(page), aci = page.getRotation().angle || 0;
   const M = matris(kutu, aci, s);
   const genis = !!(v.kenar || kenardaIcerik(v));
@@ -626,14 +753,37 @@ async function sayfaYaz(doc, page, v, { s, hBirim, ortak, arka, exLibris = null 
     Y.push(`0.86 0.84 0.8 RG 0.75 w ${f(PW)} 0 m ${f(PW)} ${f(hBirim)} l S`);
   }
   for (const g of v.gorseller || []) await gorselYaz(Y, g, ortak);   // uygulamadaki gibi mürekkebin altında
-  for (const c of v.cizgiler || []) cizgiYaz(Y, c);
   const sinir = v.kenar ? TW : PW;   // metin kutusunun en geniş hâli, uygulamadaki gibi
-  for (const m of v.metinler || []) await (m.tur === "asistan" ? asistanYaz(Y, m) : metinYaz(Y, m, sinir));
+  if (!duzenlenebilir) {
+    for (const c of v.cizgiler || []) cizgiYaz(Y, c);
+    for (const m of v.metinler || []) await (m.tur === "asistan" ? asistanYaz(Y, m) : metinYaz(Y, m, sinir));
+  } else for (const m of v.metinler || []) if (m.tur === "asistan") await asistanYaz(Y, m);   // asistan notu sayfaya gömülü kalır
   for (const b of v.bantlar || []) await bantYaz(Y, b);
-  for (const n of v.notlar || []) await notYaz(Y, n);
+  if (!duzenlenebilir) for (const n of v.notlar || []) await notYaz(Y, n);
   if (exLibris) await exLibrisYaz(Y, exLibris, s, hBirim, exLibris.aci);
   Y.push("Q");
   Y.bitir();
+  if (!duzenlenebilir) return;
+  // Notlar sayfa içeriğinin üstünde: çizim sırası korunur, aynı gruptaki metin işaretleri tek not olur
+  const gruplar = new Map();
+  for (const c of v.cizgiler || []) {
+    if (!c || !Array.isArray(c.p) || !c.p.length) continue;
+    if (c.metinIz && c.grup) {
+      const a = c.metinIz + "|" + c.grup;
+      if (!gruplar.has(a)) gruplar.set(a, []);
+      gruplar.get(a).push(c);
+      continue;
+    }
+    try { inkNotu(doc, page, Y.M, c); } catch (e) { console.warn("[disa-aktar] Ink notu:", e); }
+  }
+  for (const g of gruplar.values()) {
+    try { metinNotu(doc, page, Y.M, g, izMetni ? izMetni(g.map((c) => c.id)) : ""); } catch (e) { console.warn("[disa-aktar] metin notu:", e); }
+  }
+  for (const m of v.metinler || []) {
+    if (m.tur === "asistan") continue;
+    try { await serbestMetinNotu(doc, page, Y.M, m, sinir); } catch (e) { console.warn("[disa-aktar] FreeText:", e); }
+  }
+  for (const n of v.notlar || []) { try { yapiskanNotu(doc, page, Y.M, n); } catch (e) { console.warn("[disa-aktar] Text notu:", e); } }
 }
 
 // ---------- ex libris (TASARIM-4 4.1) ----------
@@ -732,16 +882,49 @@ function kaynakNo(s, j, sayfalar) {
   return j - sayfalar.slice(0, j).filter((x) => x.tur === "kagit").length;
 }
 
+// Sayfa eşlemesi (pdf-sayfa.js ile aynı kural): kullanıcının döndürmesi ve birleştirilmiş sayfanın kaynağı
+const donus = (v) => ((Math.round((+v?.don || 0) / 90) * 90) % 360 + 360) % 360;
+const kaynakAnahtari = (v) => (typeof v?.kaynak === "string" && v.kaynak.startsWith("ek:") ? v.kaynak : "");
+const PAROLASIZ_OLCEK = 2.5;   // parolalı belgenin sayfa görüntüsü: punto başına piksel (180 dpi)
+
+// Kaynak PDF: belgenin kendi dosyası ("") ya da birleştirilmiş sayfaların ek dosyası ("ek:<ad>").
+// Parolalı dosya pdf-lib ile çözülemez (akışlar şifreli kalır): PDF.js ile oturumdaki parolayla çizilir, sayfalar
+// görüntü olarak yeni, parolasız bir PDF'e yazılır. Dönen belgede parolasiz: true.
+async function kaynakYukle(belge, anahtar) {
+  const K = await import("./kayit.js");
+  const blob = anahtar ? await K.ekDosyaGetir(belge.id, anahtar.slice(3)) : await K.dosyaGetir(belge.id);
+  if (!blob) throw new Error(anahtar ? t("Birleştirilen PDF'in dosyası bulunamadı") : t("Belgenin dosyası bulunamadı"));
+  const doc = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false });
+  if (!doc.isEncrypted) return doc;
+  const { pdfAc, parolaAl } = await import("./pdf-belge.js");
+  const pdf = await pdfAc(blob, { parola: parolaAl(anahtar ? `${belge.id}|${anahtar.slice(3)}` : belge.id) });
+  try {
+    await pdf.boyutlarHazir;
+    const yeni = await PDFDocument.create();
+    for (let i = 0; i < pdf.sayfaSayisi; i++) {
+      const b = pdf.boyut(i), cv = tuval(1, 1);
+      if (!(await pdf.ciz(i, cv, PAROLASIZ_OLCEK, { arka: true }))) throw new Error(t("Parolalı sayfa çizilemedi"));
+      const resim = await yeni.embedJpg(await tuvalBaytlari(cv, "image/jpeg", 0.9));
+      cv.width = cv.height = 0;
+      yeni.addPage([b.w, b.h]).drawImage(resim, { x: 0, y: 0, width: b.w, height: b.h });
+    }
+    yeni.parolasiz = true;
+    return yeni;
+  } finally { pdf.kapat(); }
+}
+
+// Notlu PDF'te "Düzenlenebilir notlar" (varsayılan açık): store.ayarlar.masaDuzenlenebilirNot
+const duzenlenebilirVarsayilan = () => store?.ayarlar?.masaDuzenlenebilirNot !== false;
+
 // sayfalar: belge.veri.sayfalar sıra numaraları (0'dan), ör. "Bu sayfa" için [i]. Yoksa bütün sayfalar.
-export async function pdfDisaAktar(belge, { sayfalar } = {}) {
+// duzenlenebilir: notlar standart PDF notu olarak yazılır (Acrobat, Zotero, Samsung Notes'ta seçilir, silinir).
+export async function pdfDisaAktar(belge, { sayfalar, duzenlenebilir = duzenlenebilirVarsayilan() } = {}) {
   const veri = belge?.veri && Array.isArray(belge.veri.sayfalar) ? belge.veri : null;
-  let kaynak = null;
-  if (belge?.dosya) {
-    const { dosyaGetir } = await import("./kayit.js");
-    const blob = await dosyaGetir(belge.id);
-    if (!blob) throw new Error("Belgenin dosyası bulunamadı");
-    kaynak = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false });
-  }
+  const kaynaklar = new Map();
+  const kaynakAl = (an) => { if (!kaynaklar.has(an)) kaynaklar.set(an, kaynakYukle(belge, an)); return kaynaklar.get(an); };
+  const kaynak = belge?.dosya ? await kaynakAl("") : null;
+  // Metinli izlerin metni (vurgunun Contents'i): çizgi kimliğinden
+  const izMetni = (ids) => { const iz = (veri?.izler || []).find((x) => x?.metin && x.cizgiIdleri?.some((id) => ids.includes(id))); return iz ? String(iz.metin) : ""; };
 
   // Sayfa listesi: veri yoksa (belge hiç açılmamış) dosyanın ya da şablonun çıplak sayfaları
   const tum = veri ? veri.sayfalar
@@ -750,7 +933,7 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
     : ornekListe(belge?.id).map((_, i) => bosSayfa({ tur: "pdf", pdf: i }));
   const secim = (Array.isArray(sayfalar) ? sayfalar : Number.isInteger(sayfalar) ? [sayfalar] : tum.map((_, i) => i))
     .filter((i) => Number.isInteger(i) && i >= 0 && i < tum.length);
-  if (!secim.length) throw new Error("Dışa aktarılacak sayfa yok");
+  if (!secim.length) throw new Error(t("Dışa aktarılacak sayfa yok"));
   await yaziTipleriHazir(secim.map((i) => tum[i]));
 
   const ortak = { gs: new Map(), gorsel: new Map(), belgeId: belge?.id };
@@ -763,26 +946,51 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
   const muhur = (j) => (j === 0 ? exLibris : null);
   let doc;
   if (kaynak) {
-    const n = kaynak.getPageCount();
-    const nolar = secim.map((i) => (tum[i].tur === "kagit" ? -1 : sinirla(kaynakNo(tum[i], i, tum), 0, n - 1)));
-    // Bütün sayfalar sırasıyla ve araya defter sayfası yoksa orijinal belge yerinde işlenir
+    // Her seçili sayfanın kaynağı ve kaynaktaki sırası (defter sayfası: null)
+    const isler = [];
+    for (const i of secim) {
+      const v = tum[i];
+      if (v.tur === "kagit") { isler.push(null); continue; }
+      const an = kaynakAnahtari(v), src = await kaynakAl(an);
+      isler.push({ an, no: sinirla(kaynakNo(v, i, tum), 0, src.getPageCount() - 1), don: donus(v) });
+    }
+    // Bütün sayfalar sırasıyla, döndürmesiz ve araya defter ya da başka PDF sayfası yoksa orijinal belge yerinde işlenir
     // (yer imleri, bağlantılar, form alanları korunur); değilse sayfalar yeni belgeye kopyalanır.
-    const ayni = secim.length === n && nolar.every((k, i) => k === i);
+    const n = kaynak.getPageCount();
+    const ayni = secim.length === n && isler.every((x, i) => x && !x.an && x.no === i && !x.don);
     doc = ayni ? kaynak : await PDFDocument.create();
-    const kopyalar = ayni ? kaynak.getPages() : await doc.copyPages(kaynak, nolar.map((k) => (k < 0 ? 0 : k)));
+    // Kaynak başına bir kopyalama (yazı tipleri ve kaynak nesneleri bir kez); aynı sayfa ikinci kez geçerse ayrı kopya
+    const kopya = new Map();
+    if (!ayni) {
+      const gruplar = new Map();
+      for (const x of isler) if (x) (gruplar.get(x.an) || gruplar.set(x.an, []).get(x.an)).push(x.no);
+      for (const [an, nolar] of gruplar) {
+        const src = await kaynakAl(an), tek = [...new Set(nolar)];
+        const sayfalar = await doc.copyPages(src, tek);
+        tek.forEach((no, k) => kopya.set(an + "|" + no, [sayfalar[k]]));
+        const sayi = new Map();
+        for (const no of nolar) {
+          const l = kopya.get(an + "|" + no), kac = (sayi.get(no) || 0) + 1;
+          sayi.set(no, kac);
+          if (kac > l.length) l.push(...(await doc.copyPages(src, [no])));
+        }
+      }
+    }
+    const asil = ayni ? kaynak.getPages() : null;
     let sonW = A4_W;
     for (let j = 0; j < secim.length; j++) {
-      const v = tum[secim[j]];
-      if (nolar[j] < 0) {   // PDF'e eklenmiş defter sayfası: komşu sayfanın genişliğinde
+      const v = tum[secim[j]], x = isler[j];
+      if (!x) {   // PDF'e eklenmiş defter sayfası: komşu sayfanın genişliğinde
         const page = ayni ? null : doc.addPage([sonW, (sonW * PH) / PW]);
-        if (page) await sayfaYaz(doc, page, v, { s: sonW / PW, hBirim: PH, ortak, arka: (Y) => sablonYaz(Y, v.kagit), exLibris: muhur(j) });
+        if (page) await sayfaYaz(doc, page, v, { s: sonW / PW, hBirim: PH, ortak, arka: (Y) => sablonYaz(Y, v.kagit), exLibris: muhur(j), duzenlenebilir, izMetni });
         continue;
       }
-      const page = ayni ? kopyalar[j] : doc.addPage(kopyalar[j]);
+      const page = ayni ? asil[j] : doc.addPage(kopya.get(x.an + "|" + x.no).shift());
+      if (x.don) page.setRotation(degrees((((page.getRotation().angle || 0) + x.don) % 360 + 360) % 360));
       const k = gorunurKutu(page), a = ((page.getRotation().angle % 360) + 360) % 360;
       const gw = a === 90 || a === 270 ? k.height : k.width, gh = a === 90 || a === 270 ? k.width : k.height;
       sonW = gw;
-      await sayfaYaz(doc, page, v, { s: gw / PW, hBirim: (gh * PW) / gw, ortak, exLibris: muhur(j) });
+      await sayfaYaz(doc, page, v, { s: gw / PW, hBirim: (gh * PW) / gw, ortak, exLibris: muhur(j), duzenlenebilir, izMetni });
     }
   } else {
     doc = await PDFDocument.create();
@@ -791,12 +999,12 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
       const v = tum[i];
       const page = doc.addPage([A4_W, H]);
       const arka = v.tur === "pdf" ? (Y) => ornekSayfaYaz(Y, v.pdf || 0, belge?.id) : (Y) => sablonYaz(Y, v.kagit || "blank");
-      await sayfaYaz(doc, page, v, { s, hBirim: PH, ortak, arka, exLibris: muhur(j) });
+      await sayfaYaz(doc, page, v, { s, hBirim: PH, ortak, arka, exLibris: muhur(j), duzenlenebilir, izMetni });
     }
   }
   if (doc !== kaynak) {
     doc.setTitle(belge?.ad || "Kenar Notu");
-    doc.setLanguage("tr-TR");
+    doc.setLanguage(yerel);
   }
   doc.setCreator("Kenar Notu");
   doc.setModificationDate(new Date());
@@ -804,9 +1012,93 @@ export async function pdfDisaAktar(belge, { sayfalar } = {}) {
   return new Blob([bayt], { type: "application/pdf" });
 }
 
+// Sayfaları ayıkla (TASARIM-5 11.4 M5): seçili sayfalar (veri.sayfalar sıraları) yeni bir PDF dosyası ve onun sayfa verisi
+// olur. Döndürme dosyaya işlenir (yeni belgede "don" yok), birleştirilmiş sayfa kendi kaynağından gelir. Defter sayfası
+// dosyaya girmez, yeni belgede yine defter sayfasıdır. Çizgiler, notlar ve metinler yeni belgenin verisine kopyalanır.
+// -> { blob, sayfalar } (sayfalar yeni belgenin veri.sayfalar dizisi; kimlikleri çağıran yeniler)
+export async function sayfalariAyikla(belge, sira) {
+  const veri = belge?.veri;
+  if (!belge?.dosya || !Array.isArray(veri?.sayfalar)) throw new Error(t("Ayıklanacak PDF yok"));
+  const kaynaklar = new Map();
+  const al = (an) => { if (!kaynaklar.has(an)) kaynaklar.set(an, kaynakYukle(belge, an)); return kaynaklar.get(an); };
+  const doc = await PDFDocument.create(), sayfalar = [];
+  for (const i of sira) {
+    const v = veri.sayfalar[i];
+    if (!v) continue;
+    const k = structuredClone(v);
+    if (v.tur !== "kagit") {
+      const src = await al(kaynakAnahtari(v)), no = sinirla(kaynakNo(v, i, veri.sayfalar), 0, src.getPageCount() - 1);
+      const [p] = await doc.copyPages(src, [no]);
+      doc.addPage(p);
+      const don = donus(v);
+      if (don) p.setRotation(degrees((((p.getRotation().angle || 0) + don) % 360 + 360) % 360));
+      k.tur = "pdf"; k.pdf = doc.getPageCount() - 1;
+      delete k.don; delete k.kaynak;
+    }
+    sayfalar.push(k);
+  }
+  if (!doc.getPageCount()) throw new Error(t("Seçimde PDF sayfası yok"));
+  doc.setTitle(belge.ad || "Kenar Notu");
+  doc.setLanguage(yerel);
+  doc.setCreator("Kenar Notu");
+  const bayt = await doc.save({ useObjectStreams: true });
+  return { blob: new Blob([bayt], { type: "application/pdf" }), sayfalar };
+}
+
+// Sayfa aralığı: "1-5, 8" (ekrandaki numaralar, 1'den) -> sıra numaraları (0'dan, artan, tekrarsız). Bozuk parça null döner.
+export function aralikCoz(metin, toplam, ilkNo = 1) {
+  const sonuc = new Set();
+  const parcalar = String(metin || "").replace(/[–—]/g, "-").split(/[,;]+/).map((x) => x.trim()).filter(Boolean);
+  if (!parcalar.length) return null;
+  for (const p of parcalar) {
+    const m = /^(\d+)\s*(?:-\s*(\d*))?$/.exec(p);
+    if (!m) return null;
+    const a = +m[1], b = m[2] === undefined ? a : m[2] === "" ? ilkNo + toplam - 1 : +m[2];
+    for (let n = Math.min(a, b); n <= Math.max(a, b); n++) { const i = n - ilkNo; if (i >= 0 && i < toplam) sonuc.add(i); }
+  }
+  return sonuc.size ? [...sonuc].sort((x, y) => x - y) : null;
+}
+
+// PNG (TASARIM-5 11.4 M8): notlu PDF'in sayfaları PDF.js ile çizilir (notların görünümü dahil). Tek sayfa tek PNG,
+// birden çok sayfa zip içinde sayfa başına PNG. olcek: punto başına piksel (2 = 144 dpi). -> { blob, ad }
+export async function pngDisaAktar(pdfBlob, adKoku, { olcek = 2, ilkNo = 1 } = {}) {
+  const [{ pdfAc }, { jszip }] = await Promise.all([import("./pdf-belge.js"), import("./epub-belge.js")]);
+  const pdf = await pdfAc(pdfBlob);
+  try {
+    await pdf.boyutlarHazir;
+    const koku = guvenliAd(adKoku), n = pdf.sayfaSayisi, hane = String(ilkNo + n - 1).length;
+    const dosyalar = [];
+    for (let i = 0; i < n; i++) {
+      const cv = tuval(1, 1);
+      if (!(await pdf.ciz(i, cv, olcek, { arka: true }))) throw new Error(t("Sayfa çizilemedi"));
+      dosyalar.push({ ad: t("{ad} s{no}.png", { ad: koku, no: String(ilkNo + i).padStart(hane, "0") }), bayt: await pngBaytlari(cv) });
+      cv.width = cv.height = 0;
+    }
+    if (dosyalar.length === 1) return { blob: new Blob([dosyalar[0].bayt], { type: "image/png" }), ad: dosyalar[0].ad };
+    const JSZip = await jszip(), zip = new JSZip();
+    for (const d of dosyalar) zip.file(d.ad, d.bayt);
+    return { blob: await zip.generateAsync({ type: "blob", mimeType: "application/zip" }), ad: `${koku} (PNG).zip` };
+  } finally { pdf.kapat(); }
+}
+
+// Yazdır (M8): notlu PDF gizli bir çerçevede açılır, tarayıcının yazdırma penceresi gelir. Çerçeve bir dakika sonra kalkar.
+export async function yazdir(pdfBlob) {
+  const url = URL.createObjectURL(pdfBlob);
+  const fr = Object.assign(document.createElement("iframe"), { src: url, title: t("Yazdırılacak belge"), tabIndex: -1 });
+  fr.setAttribute("aria-hidden", "true");
+  fr.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+  document.body.append(fr);
+  await new Promise((r) => { fr.onload = r; setTimeout(r, 4000); });
+  let oldu = false;
+  try { fr.contentWindow.focus(); fr.contentWindow.print(); oldu = true; } catch { /* PDF görüntüleyicisi çerçevede açılmadı */ }
+  if (!oldu) window.open(url, "_blank", "noopener");
+  setTimeout(() => { fr.remove(); URL.revokeObjectURL(url); }, 60_000);
+  return oldu;
+}
+
 // Samsung Notes'a giden yolun dosya adı: belge adı + " (notlu).pdf"
-export const notluPdfAdi = (belge) => `${belge?.ad || "Belge"} (notlu).pdf`;
-export const notlarMdAdi = (belge) => `${belge?.ad || "Kitap"} (notlar).md`;
+export const notluPdfAdi = (belge) => t("{ad} (notlu).pdf", { ad: belge?.ad || t("Belge") });
+export const notlarMdAdi = (belge) => t("{ad} (notlar).md", { ad: belge?.ad || t("Kitap") });
 
 // ---------- paylaş ya da indir ----------
 
@@ -829,7 +1121,7 @@ async function kaydetVeyaIndir(dosya, ad) {
   if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function" || window.top !== window) return indir(dosya, ad);
   const uzanti = (/\.[^.]+$/.exec(ad) || [".pdf"])[0];
   try {
-    const tutamac = await window.showSaveFilePicker({ suggestedName: ad, types: [{ description: uzanti === ".pdf" ? "PDF" : "Dosya", accept: { [dosya.type || "application/octet-stream"]: [uzanti] } }] });
+    const tutamac = await window.showSaveFilePicker({ suggestedName: ad, types: [{ description: uzanti === ".pdf" ? "PDF" : t("Dosya"), accept: { [dosya.type || "application/octet-stream"]: [uzanti] } }] });
     const yaz = await tutamac.createWritable();
     await yaz.write(dosya);
     await yaz.close();
@@ -856,7 +1148,7 @@ export async function paylas(blob, dosyaAdi) {
     if (e?.name === "AbortError") return "iptal";
     // Uzun hazırlıktan sonra tarayıcı paylaşımı dokunuşsuz saymaz: bildirimdeki düğme yeni dokunuş sağlar
     if (e?.name === "NotAllowedError") {
-      toast("Dosya hazır", { etiket: "Paylaş", calistir: () => navigator.share(veri).catch((h) => { if (h?.name !== "AbortError") indir(dosya, ad); }) });
+      toast(t("Dosya hazır"), { etiket: t("Paylaş"), calistir: () => navigator.share(veri).catch((h) => { if (h?.name !== "AbortError") indir(dosya, ad); }) });
       return "bekliyor";
     }
     return indir(dosya, ad);
@@ -865,12 +1157,13 @@ export async function paylas(blob, dosyaAdi) {
 
 // ---------- EPUB vurguları ve notları: Markdown ----------
 
-const VURGU_ADI = { limon: "Limon", pembe: "Pembe", nane: "Nane", gok: "Gök" };
+const VURGU_ADI = { limon: t("Limon"), pembe: t("Pembe"), nane: t("Nane"), gok: t("Gök") };
 const SIRA = ["Birinci", "İkinci", "Üçüncü", "Dördüncü", "Beşinci", "Altıncı", "Yedinci", "Sekizinci", "Dokuzuncu", "Onuncu"];
 const SAYFADA = 250;   // okuma.js sanal sayfası
 const kelimeSay = (s) => (String(s).match(/\S+/g) || []).length;
 const alinti = (s) => String(s).trim().split("\n").map((x) => "> " + x.trim()).join("\n");
-const tarihYaz = (t) => new Date(t).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+const tarihYaz = (z) => new Date(z).toLocaleDateString(yerel, { day: "numeric", month: "long", year: "numeric" });
+const sayfaEtiketi = (n) => t("s. {n}", { n });
 
 // Paragraf modeli okuma.js ile aynı: sahne ayraçları ("***") sayılmaz, p = paragraf sırası
 // Gerçek EPUB'da paragraf okuyucudaki gibi bicimCoz ile düz metne çözülür: vurgu ofsetleri ona göredir.
@@ -880,12 +1173,12 @@ async function kitapModeli(belge) {
   if (belge?.dosya) {
     const [{ dosyaGetir }, { epubAc, bicimCoz, epubSurumu }] = await Promise.all([import("./kayit.js"), import("./epub-belge.js")]);
     const blob = await dosyaGetir(belge.id);
-    if (!blob) throw new Error("Kitabın dosyası bulunamadı");
+    if (!blob) throw new Error(t("Kitabın dosyası bulunamadı"));
     // Vurgu ofsetleri kitabın ilk açıldığı çözümleyici sürümüne göredir
     kitap = await epubAc(blob, { surum: epubSurumu(belge), kapak: false });
     coz = (ham) => bicimCoz(ham).metin;
     kapat = () => kitap.gorseller?.forEach?.((u) => URL.revokeObjectURL(u));
-  } else kitap = (await import("./okuma-metni.js")).default;
+  } else kitap = (await import("./okuma-metni.js")).ornekKitap(belge);
   const P = [], bolumler = [];
   let toplam = 0;
   for (const b of kitap.bolumler || []) {
@@ -897,11 +1190,12 @@ async function kitapModeli(belge) {
       P.push({ b: bi, metin, onceki: toplam });
       toplam += kelimeSay(metin);
     }
-    if (P.length > ilk) bolumler.push({ ad: `${SIRA[bi] || bi + 1 + "."} Bölüm`, baslik: b.baslik || "" });
+    // Türkçede sıra sayısı yazıyla ("Birinci Bölüm"), İngilizcede "Chapter 1"
+    if (P.length > ilk) bolumler.push({ ad: ingilizceMi ? t("Bölüm {n}", { n: bi + 1 }) : `${SIRA[bi] || bi + 1 + "."} Bölüm`, baslik: b.baslik || "" });
   }
   kapat();
   // Kitaplıktaki ad önce gelir (prototipte örnek EPUB'ların hepsi aynı metni gösterir)
-  return { baslik: belge?.ad || kitap.baslik || "Kitap", yazar: belge?.yazar || kitap.yazar || "", P, bolumler };
+  return { baslik: belge?.ad || kitap.baslik || t("Kitap"), yazar: belge?.yazar || kitap.yazar || "", P, bolumler };
 }
 
 // Vurgulanan metin: paragraf sınırlarını geçebilir (P düz metindir, işaretleme yok)
@@ -928,9 +1222,9 @@ export async function epubNotlariDisaAktar(belge) {
     if (P[p]) ogeler.push({ p, o: Infinity, tur: "asistan", n });
   }
   // Active Canvas: el yazısı boşluğu görüntü olarak aktarılmaz, yerinde bir satırla anılır
-  for (const t of veri.tuvaller || []) {
-    if (!t?.cizgiler?.length || !P[t.p]) continue;
-    ogeler.push({ p: t.p, o: (Number(t.oran) || 0) * P[t.p].metin.length, tur: "tuval" });
+  for (const tv of veri.tuvaller || []) {
+    if (!tv?.cizgiler?.length || !P[tv.p]) continue;
+    ogeler.push({ p: tv.p, o: (Number(tv.oran) || 0) * P[tv.p].metin.length, tur: "tuval" });
   }
   ogeler.sort((a, b) => a.p - b.p || a.o - b.o);
 
@@ -939,8 +1233,9 @@ export async function epubNotlariDisaAktar(belge) {
   const elSay = ogeler.filter((x) => x.tur === "tuval").length;
   const satir = [`# ${baslik}`];
   if (yazar) satir.push("", yazar);
-  satir.push("", `Kenar Notu, ${tarihYaz(Date.now())}. ${vurguSay} vurgu, ${notSay} not${elSay ? `, ${elSay} el yazısı` : ""}.`);
-  if (!ogeler.length) satir.push("", "Bu kitapta henüz vurgu ya da not yok.");
+  const ozet = { tarih: tarihYaz(Date.now()), v: vurguSay, n: notSay, e: elSay };
+  satir.push("", elSay ? t("Kenar Notu, {tarih}. {v} vurgu, {n} not, {e} el yazısı.", ozet) : t("Kenar Notu, {tarih}. {v} vurgu, {n} not.", ozet));
+  if (!ogeler.length) satir.push("", t("Bu kitapta henüz vurgu ya da not yok."));
 
   let bolum = -1;
   for (const x of ogeler) {
@@ -954,16 +1249,16 @@ export async function epubNotlariDisaAktar(belge) {
       const metin = String(x.v.metin || "").trim() || vurguMetni(P, x.v);   // okuma.js dışa aktarmadan önce v.metin yazar
       if (!metin) continue;
       satir.push("", alinti(metin));
-      if (x.v.not?.trim()) satir.push("", `Not: ${x.v.not.trim()}`);
-      satir.push("", `*${VURGU_ADI[x.v.renk] || "Vurgu"} · s. ${sayfa}*`);
+      if (x.v.not?.trim()) satir.push("", `${t("Not")}: ${x.v.not.trim()}`);
+      satir.push("", `*${VURGU_ADI[x.v.renk] || t("Vurgu")} · ${sayfaEtiketi(sayfa)}*`);
     } else if (x.tur === "tuval") {
-      satir.push("", "(el yazısı not)", "", `*s. ${sayfa}*`);
+      satir.push("", t("(el yazısı not)"), "", `*${sayfaEtiketi(sayfa)}*`);
     } else {
       const bas = p.metin.length > 140 ? p.metin.slice(0, 140).replace(/\s+\S*$/, "") + "…" : p.metin;
-      satir.push("", alinti(bas), "", `Asistan${x.n.kaynak ? " (" + x.n.kaynak + ")" : ""}: ${String(x.n.metin || "").trim()}`, "", `*s. ${sayfa}*`);
+      satir.push("", alinti(bas), "", `${t("Asistan")}${x.n.kaynak ? " (" + x.n.kaynak + ")" : ""}: ${String(x.n.metin || "").trim()}`, "", `*${sayfaEtiketi(sayfa)}*`);
     }
   }
   const kalem = (veri.cizgiler || []).length;
-  if (kalem) satir.push("", "---", "", `Kalemle yapılan ${kalem} çizim bu metne aktarılmadı.`);
+  if (kalem) satir.push("", "---", "", t("Kalemle yapılan {n} çizim bu metne aktarılmadı.", { n: kalem }));
   return new Blob([satir.join("\n") + "\n"], { type: "text/markdown;charset=utf-8" });
 }

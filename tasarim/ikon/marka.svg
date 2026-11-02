@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="88 82 344 344" fill="currentColor">
+<!-- Kenar Notu, "Yazan K" (TASARIM-5 7.2). Gövde: sayfa kenarı. Üst kol: kalem. Alt kol: ışıklı mürekkep izi. 512 ızgara. -->
+<!-- Uygulama içi işaret: renk currentColor'dan gelir (satır içi SVG ya da mask-image ile kullanılır) -->
+<title>Kenar Notu</title>
+<defs>
+  <!-- Kalem kendi ekseninde: (0,0) üst uç, +x uca doğru; gövde 40 kalın, uç 52 birimde daralır -->
+  <g id="kn-kalem-sekil"><path d="M0 -20H164.25V20H0A20 20 0 0 1 0 -20Z"/><path d="M170.25 -17C194.17 -17 208.25 -7.82 222.25 0C208.25 7.82 194.17 17 170.25 17Z"/></g>
+  <!-- Mürekkep izi: 38 birimden 14 birime incelen kaligrafik vuruş -->
+  <path id="kn-iz-yol" d="M196.57 284.5C200.47 286.72 211.96 292.73 219.97 297.87C227.99 303.01 236.33 309.07 244.69 315.34C253.04 321.6 261.58 328.55 270.1 335.46C278.62 342.36 287.24 349.71 295.82 356.78C304.39 363.85 313.01 371.13 321.55 377.89C330.09 384.66 338.62 391.39 347.05 397.37C355.48 403.36 367.94 411.08 372.12 413.82A7 7 0 0 0 379.88 402.18C376.23 399.11 365.4 390.45 357.99 383.8C350.57 377.16 343.03 369.79 335.41 362.31C327.79 354.83 320.07 346.83 312.29 338.94C304.51 331.04 296.65 322.84 288.74 314.95C280.82 307.05 272.85 299.06 264.81 291.57C256.76 284.08 248.69 276.69 240.46 270.02C232.23 263.34 219.6 254.59 215.43 251.5A19 19 0 0 0 196.57 284.5Z"/>
+  <!-- Dolma kalem ucu: 6 birimlik yarık ve 7 yarıçaplı nefes deliği zemini gösterir -->
+  <mask id="kn-yarik" maskUnits="userSpaceOnUse" x="-40" y="-40" width="320" height="80"><rect x="-40" y="-40" width="320" height="80" fill="#fff"/><g fill="#000"><path d="M188.25 -3H224.25V3H188.25Z"/><circle cx="188.25" cy="0" r="7"/></g></mask>
+  <!-- İz kalemin çevresinde 5 birim açılır: kalem kâğıda değmeden önceki an -->
+  <mask id="kn-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(364 112) rotate(137.55)" fill="#000" stroke="#000" stroke-width="10" stroke-linejoin="round"><use href="#kn-kalem-sekil"/></g></mask>
+</defs>
+<g>
+  <rect x="136" y="104" width="40" height="304" rx="20" fill="currentColor"/>
+  <g transform="translate(364 112) rotate(137.55)" fill="currentColor" mask="url(#kn-yarik)"><use href="#kn-kalem-sekil"/></g>
+  <use href="#kn-iz-yol" fill="currentColor" mask="url(#kn-iz-maske)"/>
+</g>
+</svg>

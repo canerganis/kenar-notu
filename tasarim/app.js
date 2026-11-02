@@ -10,12 +10,15 @@ import {
   kartGuncelle, ORNEK_SURUM, ORNEK_DEGISIM, ORNEK_SAYFALAR, cizgiMi, basincUygula,
   bosta, platform, iosMu, ipadMi, samsungMu, safariMi, kuruluMu, kalemTuru, kalemAdi, odakla, telefonMu,
   oduncOzet, sureMetni, exLibrisSvg, exLibrisVar, EXLIBRIS_RENKLERI, komutEkle, acikEkran,
+  ATMOSFERLER, VURGULAR, atmosferBul, etkinAtmosfer, simgeEkle, kisayolEkle, kisayollar,
 } from "./ortak.js";
 import { altCekmece, cekmeceMi, gecmisYut, cekmeceleriKapat, cekmeceAcik } from "./cekmece.js";
 import { rehberDavet, rehberBaslat, rehberKapat } from "./rehber.js";
 import { PW, PH, PDF_PAGES, TEMPLATES } from "./sayfalar.js";
 import * as SAYFALAR from "./sayfalar.js";
 import * as kayit from "./kayit.js";
+import { ornekKitapKartlari, ornekKunyeDile } from "./okuma-metni.js";
+import { t, yerel, ingilizceMi } from "./dil.js";
 
 const kok = document.documentElement;
 const sahne = document.getElementById("sahne");
@@ -30,6 +33,23 @@ const gren = (matris) =>
 // Kâğıt greni: açıkta kahve benek, koyuda açık benek
 doku("--doku-kagit-acik", gren("0 0 0 0 .24  0 0 0 0 .16  0 0 0 0 .07  0 0 0 .7 -.26"));
 doku("--doku-kagit-koyu", gren("0 0 0 0 .95  0 0 0 0 .9  0 0 0 0 .8  0 0 0 .4 -.17"));
+
+// 7.0 atmosfer greni (TASARIM-5 3.3): nötr, renksiz; yoğunluğu --atmosfer-gren-opak verir. Büyük yumuşak gradyanlardaki
+// bantlaşmayı da kırar. Yalnız #atmosfer::after katmanında, karıştırma kipi olmadan (yalnız alfa)
+// Alfa satırı TASARIM-5 3.3'tekinin üçte biri kadar: tam yoğunlukta koyu zeminde kum gibi görünüyordu
+doku("--doku-gren", gren("0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .52  0 0 0 .4 -.17"));
+// Okyanus dalgaları: 640x320 karoda üç yumuşak sinüs konturu, 1 px. Her dalga karoda tam dönem sayısı kadar kıvrılır,
+// böylece karo yan yana dikişsiz birleşir. Renk %4 ile %6 arası: süs, göze batmaz
+const dalga = (renk) => {
+  const yollar = [[64, 14, 1, 0, .05], [168, 20, 1, 2.1, .06], [262, 12, 2, .7, .04]].map(([y, genlik, donem, faz, opak]) => {
+    let d = "";
+    for (let x = 0; x <= 640; x += 8) d += `${x ? "L" : "M"}${x} ${(y + genlik * Math.sin((x / 640) * donem * 2 * Math.PI + faz)).toFixed(1)}`;
+    return `<path d='${d}' stroke-opacity='${opak}'/>`;
+  }).join("");
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='640' height='320'><g fill='none' stroke='${renk}' stroke-width='1' stroke-linejoin='round'>${yollar}</g></svg>`;
+};
+doku("--doku-dalga", dalga("#0A1518"));
+doku("--doku-dalga-gece", dalga("#E6F2F4"));
 
 // Seyrek, yatay kâğıt lifleri: kitaplık zemini (yalnız açık tema), kenar alanı, yapışkan not. Opaklık yarıda: süs, göze batmaz
 doku("--doku-lif", "<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.012 .32' numOctaves='2' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .26  0 0 0 0 .14  0 0 0 .3 -.18'/></filter><rect width='100%' height='100%' filter='url(#f)'/></svg>");
@@ -48,6 +68,11 @@ doku("--yirtik-sag", `<svg xmlns='http://www.w3.org/2000/svg' width='7' height='
 
 // Anahtarın içindeki onay işareti (maske olarak kullanılır, rengi CSS verir)
 doku("--ikon-tik", "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 12.5 10 17.5 19 7' fill='none' stroke='#000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+
+// 7.0 seçim kipindeki kapak işareti (K6): vurgu dolgusunun üstünde açık ve koyu tik (kip başına tasarim.css seçer)
+for (const [ad, renk] of [["--ikon-tik-acik", "#fff"], ["--ikon-tik-koyu", "#0B0C11"]]) {
+  doku(ad, `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 12.5 10 17.5 19 7' fill='none' stroke='${renk}' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>`);
+}
 
 // 2. tur dokuları (TASARIM-2 §2.4)
 // Benek maskesi: alfa gürültüsü. esik büyüdükçe daha az delik açılır.
@@ -207,7 +232,7 @@ function baslangicIstegi() {
 }
 // hepsi: "Her şeyi temizle". Yerel ayarlar (tema, görünüm, ipuçları) ve API anahtarları da silinir.
 function durumuSifirla({ hepsi = false } = {}) {
-  if (kayit.baskaPencere()) { toast("Kitaplık başka bir pencerede açık. Sıfırlamak için o pencereyi kapatıp burayı yenile."); return; }
+  if (kayit.baskaPencere()) { toast(t("Kitaplık başka bir pencerede açık. Sıfırlamak için o pencereyi kapatıp burayı yenile.")); return; }
   try { sessionStorage.setItem(BASLANGIC, hepsi ? "bos" : "ornek"); } catch { /* gizli pencere: karşılama sorar */ }
   // Asistanın bekleyen sorusu oturum deposunda: kaynağı silinen belgeye bağlı kalmasın, yenilenince panel açılmasın
   try { sessionStorage.removeItem("kn-tasarim:asistan-bekleme"); } catch { /* gizli pencere */ }
@@ -228,26 +253,53 @@ const metaTema = document.querySelector('meta[name="theme-color"]');
 const koyuMu = () => (kok.dataset.theme ? kok.dataset.theme === "dark" : koyuMedya.matches);
 let temaZaman = 0;
 
+// Yalnız arayüz renkleri 240ms'de geçer, canvas'lar hariç (tasarim.css .tema-gecisi)
+function temaGecisi() {
+  kok.classList.add("tema-gecisi");
+  clearTimeout(temaZaman);
+  temaZaman = setTimeout(() => kok.classList.remove("tema-gecisi"), 300);
+}
+// 7.0 görünüm (TASARIM-5 4.1): çözülmüş kip, etkin atmosfer, vurgu ve canlı zemin html niteliklerine yazılır.
+// Dönen imza değişince ("kip|atmosfer|vurgu|canlı") çağıran geçişi oynatır ve bus "atmosfer" yayınlar.
+function gorunumYaz() {
+  const kip = koyuMu() ? "gece" : "gunduz";
+  const secim = atmosferBul(store.ayarlar.atmosfer) ? store.ayarlar.atmosfer : "aurora";
+  const atmosfer = etkinAtmosfer(secim, kip);
+  const vurgu = VURGULAR.some((v) => v.id === store.ayarlar.vurgu) ? store.ayarlar.vurgu : null;
+  kok.dataset.kip = kip;
+  kok.dataset.atmosfer = atmosfer;
+  if (vurgu) kok.dataset.vurgu = vurgu; else delete kok.dataset.vurgu;
+  // Sade hareket ya da sistemde azaltılmış hareket varken canlı zemin hiç açılmaz (CSS de ayrıca durdurur)
+  if (store.ayarlar.canliZemin && !hareketAz()) kok.dataset.canliZemin = ""; else delete kok.dataset.canliZemin;
+  return { secim, atmosfer, vurgu, kip, imza: [kip, atmosfer, vurgu, "canliZemin" in kok.dataset].join("|") };
+}
+let gorunumImza = "";
+
 function ayarlariUygula(ilk = false) {
   const { tema, sadeHareket } = store.ayarlar;
   const oncekiKoyu = koyuMu();
   const yeni = tema === "acik" ? "light" : tema === "koyu" ? "dark" : "";
-  if (!ilk && (kok.dataset.theme || "") !== yeni) {
-    // Yalnız arayüz renkleri 240ms'de geçer, canvas'lar hariç
-    kok.classList.add("tema-gecisi");
-    clearTimeout(temaZaman);
-    temaZaman = setTimeout(() => kok.classList.remove("tema-gecisi"), 300);
-  }
+  const temaDegisti = (kok.dataset.theme || "") !== yeni;
   if (yeni) kok.dataset.theme = yeni; else delete kok.dataset.theme;
   if (sadeHareket) kok.dataset.hareket = "sade"; else delete kok.dataset.hareket;
+  const g = gorunumYaz();
+  const gorunumDegisti = g.imza !== gorunumImza;
+  gorunumImza = g.imza;
+  if (!ilk && (temaDegisti || gorunumDegisti)) temaGecisi();
   // Notlarda el yazısı kapalıysa notlar Caveat yerine düz yazıyla (3.2); bütün ekranlar CSS'ten okur
   if (store.ayarlar.elYazisi === false) kok.dataset.notYazi = "duz"; else delete kok.dataset.notYazi;
   yaziBoyutuUygula();
   temaRengi();
   if (!ilk && oncekiKoyu !== koyuMu()) bus.emit("tema", { koyu: koyuMu() });
+  if (!ilk && gorunumDegisti) bus.emit("atmosfer", { secim: g.secim, atmosfer: g.atmosfer, vurgu: g.vurgu, kip: g.kip });
   if (!ilk && !oncekiKoyu && koyuMu()) koyuOneri();
 }
-function temaRengi() { metaTema?.setAttribute("content", koyuMu() ? "#141413" : "#F7F5F0"); }
+// Tarayıcı çubuğunun rengi etkin atmosferin zemininden (--tema-rengi). Okuyucu Gece sayfasında kendisi değiştirir,
+// kitaplığa dönünce burası geri yazar.
+function temaRengi() {
+  const renk = getComputedStyle(kok).getPropertyValue("--tema-rengi").trim();
+  metaTema?.setAttribute("content", renk || (koyuMu() ? "#141413" : "#F7F5F0"));
+}
 
 // Koyu temaya ilk geçişte bir kez: sayfa rengini de koyu yapmayı öner (3.25).
 // Sayfa rengi "oto" ise Koltuk sayfası temayla zaten kararır, öneri gereksiz.
@@ -255,14 +307,22 @@ function koyuOneri() {
   const r = store.ayarlar.sayfaRengi || "oto";
   if (r === "koyu" || r === "oto" || depo.oku(ANAHTAR.koyuOneri)) return;
   depo.yaz(ANAHTAR.koyuOneri, true);
-  toast("Gece için sayfa rengini Koyu yapabilirsin", { etiket: "Koyu yap", calistir: () => ayarla({ sayfaRengi: "koyu" }) });
+  toast(t("Gece için sayfa rengini Koyu yapabilirsin"), { etiket: t("Koyu yap"), calistir: () => ayarla({ sayfaRengi: "koyu" }) });
 }
 
 // Sistem teması değişince: tema ayarı "oto" ise etkin tema da değişmiştir, sayfalar yeniden boyansın
+// Kip değişince etkin atmosfer de değişebilir (OLED gündüzde Grafit olur): data-kip ve data-atmosfer yeniden yazılır.
 koyuMedya.addEventListener("change", () => {
+  if (!kok.dataset.theme) {
+    const g = gorunumYaz();
+    if (g.imza !== gorunumImza) { gorunumImza = g.imza; temaGecisi(); bus.emit("atmosfer", { secim: g.secim, atmosfer: g.atmosfer, vurgu: g.vurgu, kip: g.kip }); }
+  }
   temaRengi();
   if (!kok.dataset.theme) bus.emit("tema", { koyu: koyuMu() });
+  for (const d of ayarDenetimleri) d.guncelle();
 });
+// Sistemde azaltılmış hareket açılıp kapanınca canlı zemin niteliği de güncellenir
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => { gorunumImza = gorunumYaz().imza; for (const d of ayarDenetimleri) d.guncelle(); });
 bus.on("ayarlar", () => {
   ayarlariUygula();
   ayarlariYaz();
@@ -272,17 +332,21 @@ bus.on("ayarlar", () => {
 /* ================= Bildirim (3.25) ================= */
 const bildirimKabi = document.getElementById("bildirimler") || document.body.appendChild(h("div", { id: "bildirimler", "aria-live": "polite" }));
 let bildirimKapat = null;
+const LISTE_EKRANLARI = /^(kitaplik|izler|tekrar|arama)$/;
 
 function bildirimGoster(metin, eylem) {
   bildirimKapat?.(true);
   const el = h("div", { class: "bildirim" }, h("span", {}, metin));
   let zaman = 0, bitti = false, eylemle = false, elle = false;
+  const kaydirinca = () => { if (LISTE_EKRANLARI.test(kok.dataset.ekran || "")) kapat(); };
   // eylem.kalici: kendiliğinden kapanmaz. eylem.kapatilir: yanında kapatma düğmesi olur.
   // eylem.kapaninca(eylemle, elle): bildirim nasıl kapanırsa kapansın bir kez çağrılır (elle: kapatma düğmesiyle)
   const kapat = (hemen = false) => {
     if (bitti) return;
     bitti = true;
     clearTimeout(zaman);
+    removeEventListener("wheel", kaydirinca);
+    removeEventListener("touchmove", kaydirinca);
     if (bildirimKapat === kapat) bildirimKapat = null;
     try { eylem?.kapaninca?.(eylemle, elle); } catch (hata) { console.warn(hata); }
     if (hemen || hareketAz()) return el.remove();
@@ -292,15 +356,23 @@ function bildirimGoster(metin, eylem) {
   if (eylem?.etiket) {
     el.append(h("button", { type: "button", onclick: () => { eylemle = true; kapat(true); eylem.calistir?.(); } }, eylem.etiket));
   }
-  if (eylem?.kapatilir) {
-    el.append(h("button", { class: "bildirim-kapat", type: "button", "aria-label": "Kapat", onclick: () => { elle = true; kapat(true); } }, icon("kapat", "i-20")));
+  // Kendiliğinden kapanmayan bildirim alttaki kartları örtüp durmasın: her zaman kapatılabilir
+  if (eylem?.kapatilir ?? eylem?.kalici) {
+    el.append(h("button", { class: "bildirim-kapat", type: "button", "aria-label": t("Kapat"), onclick: () => { elle = true; kapat(true); } }, icon("kapat", "i-20")));
   }
   // Araç çubuğu alttaysa bildirim onun üstünde çıkar
   const altCubuk = $('[data-arac-konum="alt"]');
   if (altCubuk && altCubuk.getClientRects().length) el.classList.add("yukarida");
   const kur = () => { clearTimeout(zaman); if (!eylem?.kalici) zaman = setTimeout(kapat, eylem ? 6000 : 4000); };
-  el.addEventListener("pointerenter", () => clearTimeout(zaman));
-  el.addEventListener("pointerleave", kur);
+  // Süre yalnız fare üstündeyken durur; parmak ya da kalem dokunuşu bildirimi ekranda tutmaz
+  el.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") clearTimeout(zaman); });
+  el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") kur(); });
+  // Liste ekranlarında eylemsiz bildirim, okur kaydırmaya başlayınca çekilir: alttaki kartlar örtülü kalmaz.
+  // Eylemli olan (örn. Geri al) kalır; düğmeleri dışında dokunuşu alttaki karta geçirir (tasarim.css)
+  if (!eylem) {
+    addEventListener("wheel", kaydirinca, { passive: true });
+    addEventListener("touchmove", kaydirinca, { passive: true });
+  }
   el.addEventListener("focusin", () => clearTimeout(zaman));
   el.addEventListener("focusout", kur);
   bildirimKabi.append(el);
@@ -312,11 +384,11 @@ setBildirimGosterici(bildirimGoster);
 // Kayıt uyarıları kendiliğinden kapanmaz: yazılamayan değişiklik sessizce kaybolmasın.
 // Aynı uyarı bir dakika içinde yeniden çıkmaz (her kayıt denemesi yeniden haber verir).
 const KAYIT_UYARILARI = {
-  yazma: ["Kayıt yazılamadı; depo dolu olabilir. Kaybetmemek için yedek al.", "Yedek al", () => yedekPenceresi()],
-  baska: ["Kenar Notu başka bir pencerede de açık. Burada yapılanlar kaydedilmez; o pencereyi kapatıp burayı yenile.", "Tamam", null],
-  serbest: ["Öbür pencere kapandı. Kaydetmek için burayı yenile.", "Yenile", () => location.reload()],
-  degisti: ["Kitaplık başka bir pencerede değişti; burada yapılanlar artık kaydedilmiyor. Yenile.", "Yenile", () => location.reload()],
-  okuma: ["Kayıt okunamadı; bu oturumda yapılanlar saklanmaz. Sayfayı yenile.", "Yenile", () => location.reload()],
+  yazma: [t("Kayıt yazılamadı; depo dolu olabilir. Kaybetmemek için yedek al."), t("Yedek al"), () => yedekPenceresi()],
+  baska: [t("Kenar Notu başka bir pencerede de açık. Burada yapılanlar kaydedilmez; o pencereyi kapatıp burayı yenile."), t("Tamam"), null],
+  serbest: [t("Öbür pencere kapandı. Kaydetmek için burayı yenile."), t("Yenile"), () => location.reload()],
+  degisti: [t("Kitaplık başka bir pencerede değişti; burada yapılanlar artık kaydedilmiyor. Yenile."), t("Yenile"), () => location.reload()],
+  okuma: [t("Kayıt okunamadı; bu oturumda yapılanlar saklanmaz. Sayfayı yenile."), t("Yenile"), () => location.reload()],
 };
 const kayitUyariZamani = {};
 function kayitUyarisi(kod) {
@@ -336,43 +408,57 @@ const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
 const bitince = (anim, ms) => Promise.race([anim.finished.catch(() => {}), bekle(ms + 250)]);
 const yaziAlani = (el) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-// TASARIM-3 11: bordo karo, köşesi kıvrık yaprak, ölçü çentikli kenar çizgisi ve basınçlı mürekkeple ∫ (kimlikler kn- önekli)
-const LOGO_SVG = `<svg viewBox="0 0 512 512" aria-hidden="true"><defs>
-<linearGradient id="kn-z" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8E2A38"/><stop offset="1" stop-color="#5A1520"/></linearGradient>
-<linearGradient id="kn-k" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBF7EF"/><stop offset="1" stop-color="#F1E9DA"/></linearGradient>
-<linearGradient id="kn-c" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#E4D8C2"/><stop offset="1" stop-color="#CDBD9F"/></linearGradient>
-<filter id="kn-g" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2A0A10" flood-opacity=".25"/><feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#2A0A10" flood-opacity=".35"/></filter>
-</defs><rect width="512" height="512" rx="112" fill="url(#kn-z)"/><g filter="url(#kn-g)">
-<path d="M116 90Q116 80 126 80H326L396 150V422Q396 432 386 432H126Q116 432 116 422Z" fill="url(#kn-k)"/>
-<path d="M326 80V138Q326 150 338 150H396Z" fill="url(#kn-c)"/>
-<path d="M164 80V432" stroke="#A3313F" stroke-width="10"/>
-<path d="M151 102h8M151 124h8M151 146h8M151 168h8M151 190h8M151 212h8M151 234h8M151 256h8M151 278h8M151 300h8M151 322h8M151 344h8M151 366h8M151 388h8M151 410h8" stroke="#A3313F" stroke-opacity=".6" stroke-width="3"/>
-<g fill="#1B2A4A"><path d="M341.4 150.7L342.4 146.3L343 141.9L343.7 137.7L344.1 133.6L344.2 129.5L343.8 125.6L343.2 121.7L342.1 118.1L340.8 114.5L339.1 111.2L337 108L334.7 105.1L332 102.4L329.1 100L325.9 97.8L322.5 96L318.9 94.5L315.1 93.3L311.1 92.4L307 91.9L302.8 91.7L298.5 91.9L293.8 92.4L289.3 93.5L284.9 94.9L280.7 96.8L276.8 99.1L273.2 101.8L269.9 104.7L266.8 108L264 111.5L261.5 115.1L259.2 119L257.1 123L255.2 127.2L253.5 131.4L252 135.8L250.6 140.3L249.4 144.9L248.3 149.5L247.4 154.2L246.5 159L245.7 163.8L245 168.7L243.9 178.4L242.8 188.1L241.8 197.8L240.8 207.6L239.8 217.4L238.9 227.1L238 236.8L237.2 246.5L236.4 256L235.7 265.4L235 274.7L234.4 283.7L233.7 292.6L233.1 301.2L232.6 309.5L232 317.5L231.5 325.2L230.9 332.5L230.4 339.5L229.8 345.9L229.3 352L228.7 357.4L228.1 362L227.4 366.4L226.6 370.5L225.7 374.3L224.6 377.9L223.5 381.2L222.3 384.3L221 387.1L219.7 389.7L218.3 392L216.8 394.1L215.3 395.9L213.7 397.5L212.1 398.9L210.4 400.2L208.7 401.3L206.8 402.2L204.8 402.9L202.7 403.5L200.4 403.9L198 404L195.4 404L193 403.8L190.8 403.4L188.7 403L186.8 402.3L185.1 401.6L183.5 400.8L182.1 399.9L180.8 398.9L179.6 397.8L178.5 396.6L177.6 395.3L176.8 393.9L176 392.4L175.5 390.8L175 389.1L174.7 387.3L174.5 385.4L174.5 383.4L174.9 381.5L175.5 379.5L176.2 377.5L177.2 375.5A3.5 3.5 0 0 1 170.8 372.5L170.8 372.5L169.8 374.8L168.8 377.3L168.1 379.8L167.6 382.2L167 384.7L166.5 387.2L166.3 389.7L166.4 392.2L166.6 394.7L167.2 397.3L167.9 399.7L168.9 402.2L170.2 404.6L171.7 406.8L173.5 409L175.5 411.1L177.8 413L180.3 414.7L183.1 416.3L186 417.7L189.2 418.9L192.6 420L196.5 420.8L200.4 421.2L204.3 421.4L208.1 421.1L212 420.5L215.7 419.5L219.4 418.2L223 416.5L226.5 414.5L229.8 412.1L232.9 409.4L235.9 406.5L238.8 403.2L241.4 399.7L244 396L246.3 391.9L248.5 387.7L250.6 383.1L252.5 378.4L254.2 373.4L255.8 368.1L257.3 362.6L258.6 356.6L259.9 350.3L261.2 343.6L262.5 336.5L263.8 329L265 321.2L266.2 313.1L267.3 304.6L268.4 295.9L269.5 287L270.5 277.8L271.4 268.5L272.3 259L273.1 249.4L273.8 239.7L274.5 229.9L275.1 220L275.6 210.2L276 200.3L276.4 190.5L276.7 180.8L277 171.3L277.2 167L277.4 162.7L277.7 158.5L278.1 154.5L278.6 150.5L279.1 146.8L279.7 143.1L280.4 139.7L281.2 136.4L282.1 133.3L283.1 130.5L284.2 127.9L285.3 125.5L286.6 123.3L287.9 121.3L289.3 119.5L290.8 117.9L292.5 116.4L294.3 115.1L296.4 114L298.8 113L301.5 112.1L304.2 111.5L306.8 111.1L309.3 110.9L311.8 111L314.2 111.2L316.4 111.7L318.6 112.3L320.7 113.2L322.7 114.3L324.7 115.5L326.5 117L328.2 118.7L329.8 120.6L331.2 122.8L332.5 125.2L333.6 127.9L334.6 130.8L335.3 134L335.8 137.5L336 141.2L335.5 145.1L334.6 149.3A3.5 3.5 0 0 1 341.4 150.7Z"/><circle cx="333" cy="146" r="13"/><circle cx="179" cy="378" r="13"/></g>
-</g></svg>`;
+// 7.0 "Yazan K" (TASARIM-5 7.2): gövde sayfa kenarı, üst kol kalem, alt kol ışıklı mürekkep izi. ikon/ikon.svg ile aynı
+// çizim; kimlikler knl- önekli (sayfada aynı anda tek satır içi logo durur: karşılama ya da Hakkında).
+// .logo-iz maskesindeki çizgi karşılamada bir kez soldan sağa çizilir (TASARIM-5 7.4; tasarim.css .ilk-acilis)
+const LOGO_SVG = `<svg class="logo-svg" viewBox="0 0 512 512" aria-hidden="true"><defs>
+<path id="knl-sq" d="M326.4 0c64.97 0 97.45 0 122.26 12.64a116 116 0 0 1 50.69 50.69c12.64 24.81 12.64 57.3 12.64 122.26V326.4c0 64.97 0 97.45 -12.64 122.26a116 116 0 0 1 -50.69 50.69c-24.81 12.64 -57.3 12.64 -122.26 12.64H185.6c-64.97 0 -97.45 0 -122.26 -12.64a116 116 0 0 1 -50.69 -50.69c-12.64 -24.81 -12.64 -57.3 -12.64 -122.26V185.6c0 -64.97 0 -97.45 12.64 -122.26a116 116 0 0 1 50.69 -50.69c24.81 -12.64 57.3 -12.64 122.26 -12.64Z"/>
+<clipPath id="knl-kirp"><use href="#knl-sq"/></clipPath>
+<linearGradient id="knl-zemin" x1=".32" y1="0" x2=".68" y2="1"><stop offset="0" stop-color="#17153A"/><stop offset="1" stop-color="#0B0C11"/></linearGradient>
+<radialGradient id="knl-tepe" cx=".18" cy="-.04" r=".62"><stop offset="0" stop-color="#8B7CFF" stop-opacity=".16"/><stop offset="1" stop-color="#8B7CFF" stop-opacity="0"/></radialGradient>
+<radialGradient id="knl-isik" cx=".7" cy=".72" r=".5"><stop offset="0" stop-color="#5B4CF0" stop-opacity=".22"/><stop offset="1" stop-color="#5B4CF0" stop-opacity="0"/></radialGradient>
+<linearGradient id="knl-kenar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity=".04"/><stop offset="1" stop-color="#FFFFFF" stop-opacity=".07"/></linearGradient>
+<g id="knl-kalem-sekil"><path d="M0 -20H164.25V20H0A20 20 0 0 1 0 -20Z"/><path d="M170.25 -17C194.17 -17 208.25 -7.82 222.25 0C208.25 7.82 194.17 17 170.25 17Z"/></g>
+<path id="knl-iz-yol" d="M196.57 284.5C200.47 286.72 211.96 292.73 219.97 297.87C227.99 303.01 236.33 309.07 244.69 315.34C253.04 321.6 261.58 328.55 270.1 335.46C278.62 342.36 287.24 349.71 295.82 356.78C304.39 363.85 313.01 371.13 321.55 377.89C330.09 384.66 338.62 391.39 347.05 397.37C355.48 403.36 367.94 411.08 372.12 413.82A7 7 0 0 0 379.88 402.18C376.23 399.11 365.4 390.45 357.99 383.8C350.57 377.16 343.03 369.79 335.41 362.31C327.79 354.83 320.07 346.83 312.29 338.94C304.51 331.04 296.65 322.84 288.74 314.95C280.82 307.05 272.85 299.06 264.81 291.57C256.76 284.08 248.69 276.69 240.46 270.02C232.23 263.34 219.6 254.59 215.43 251.5A19 19 0 0 0 196.57 284.5Z"/>
+<linearGradient id="knl-govde" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD8FF"/></linearGradient>
+<linearGradient id="knl-kalem" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="-20"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F4F3FF"/><stop offset="1" stop-color="#CFCAF7"/></linearGradient>
+<linearGradient id="knl-iz" gradientUnits="userSpaceOnUse" x1="206" y1="268" x2="376" y2="408"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#38C6F0"/></linearGradient>
+<filter id="knl-isima" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+<mask id="knl-yarik" maskUnits="userSpaceOnUse" x="-40" y="-40" width="320" height="80"><rect x="-40" y="-40" width="320" height="80" fill="#fff"/><g fill="#000"><path d="M188.25 -3H224.25V3H188.25Z"/><circle cx="188.25" cy="0" r="7"/></g></mask>
+<mask id="knl-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(364 112) rotate(137.55)" fill="#000" stroke="#000" stroke-width="10" stroke-linejoin="round"><use href="#knl-kalem-sekil"/></g></mask>
+<mask id="knl-ciz" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><path class="logo-iz" d="M200 262L382 412" pathLength="1" fill="none" stroke="#fff" stroke-width="72" stroke-linecap="round"/></mask>
+</defs>
+<use href="#knl-sq" fill="url(#knl-zemin)"/><use href="#knl-sq" fill="url(#knl-tepe)"/><use href="#knl-sq" fill="url(#knl-isik)"/>
+<use href="#knl-sq" fill="none" stroke="url(#knl-kenar)" stroke-width="3" clip-path="url(#knl-kirp)"/>
+<g mask="url(#knl-ciz)"><use href="#knl-iz-yol" fill="url(#knl-iz)" opacity=".45" filter="url(#knl-isima)"/></g>
+<rect x="136" y="104" width="40" height="304" rx="20" fill="url(#knl-govde)"/>
+<g transform="translate(364 112) rotate(137.55)" fill="url(#knl-kalem)" mask="url(#knl-yarik)"><use href="#knl-kalem-sekil"/></g>
+<g mask="url(#knl-ciz)"><use href="#knl-iz-yol" fill="url(#knl-iz)" mask="url(#knl-iz-maske)"/></g>
+</svg>`;
 // ∫'nin doğum günü (TASARIM-3 nüans 5): 29 Ekim'de logonun altında tek satır kenar notu; kapatılınca o yıl çıkmaz
 function ozelGunSatiri() {
-  const t = new Date(), yil = t.getFullYear();
-  if (t.getMonth() !== 9 || t.getDate() !== 29 || Number(store.ayarlar.ozelGun) === yil) return null;
+  const bugun = new Date(), yil = bugun.getFullYear();
+  if (bugun.getMonth() !== 9 || bugun.getDate() !== 29 || Number(store.ayarlar.ozelGun) === yil) return null;
   const el = h("p", { class: "ozel-gun t-aside" },
-    h("span", {}, `Bugün ∫ ${yil - 1675} yaşında. Leibniz onu ilk kez 29 Ekim 1675’te bir notunda yazdı.`),
-    h("button", { type: "button", "aria-label": "Kenar notunu kapat", onclick: () => { el.remove(); ayarla({ ozelGun: yil }); } }, icon("kapat", "i-16")));
+    h("span", {}, t("Bugün ∫ {yas} yaşında. Leibniz onu ilk kez 29 Ekim 1675’te bir notunda yazdı.", { yas: yil - 1675 })),
+    h("button", { type: "button", "aria-label": t("Kenar notunu kapat"), onclick: () => { el.remove(); ayarla({ ozelGun: yil }); } }, icon("kapat", "i-16")));
   return el;
 }
 const ATAS_SVG = '<svg class="atas" viewBox="0 0 16 46" aria-hidden="true"><path d="M11 15v20a4.5 4.5 0 0 1-9 0V8a6 6 0 0 1 12 0v25" fill="none" stroke="url(#celik)" stroke-width="1.9" stroke-linecap="round"/></svg>';
 
 // Göreli zaman: "az önce", "2 saat önce", "dün", "3 gün önce"
-function neZaman(t) {
-  const simdi = new Date(), fark = simdi - t;
-  if (fark < 6e4) return "az önce";
-  if (fark < 36e5) return `${Math.round(fark / 6e4)} dakika önce`;
+function neZaman(an) {
+  const simdi = new Date(), fark = simdi - an;
+  if (fark < 6e4) return t("az önce");
+  if (fark < 36e5) return t("{n} dakika önce", { n: Math.round(fark / 6e4) });
   const bugun = new Date(simdi.getFullYear(), simdi.getMonth(), simdi.getDate()).getTime();
-  const gun = Math.ceil((bugun - t) / 864e5);
-  if (gun <= 0) return `${Math.round(fark / 36e5)} saat önce`;
-  if (gun === 1) return "dün";
-  if (gun < 7) return `${gun} gün önce`;
-  if (gun < 30) return `${Math.round(gun / 7)} hafta önce`;
-  if (gun < 365) return `${Math.round(gun / 30)} ay önce`;
-  return "bir yıldan uzun süre önce";
+  const gun = Math.ceil((bugun - an) / 864e5);
+  if (gun <= 0) return t("{n} saat önce", { n: Math.round(fark / 36e5) });
+  if (gun === 1) return t("dün");
+  if (gun < 7) return t("{n} gün önce", { n: gun });
+  if (gun < 30) return t("{n} hafta önce", { n: Math.round(gun / 7) });
+  if (gun < 365) return t("{n} ay önce", { n: Math.round(gun / 30) });
+  return t("bir yıldan uzun süre önce");
 }
 
 // Türkçe ve aksan duyarsız arama: her harf tek harfe katlanır, böylece eşleşme konumları korunur
@@ -401,26 +487,33 @@ function vurgula(metin, sorgu) {
 
 // Belge bilgileri
 const KAGIT_SINIF = { blank: "k-bos", lined: "k-cizgili", grid: "k-kareli", dotted: "k-noktali", cornell: "k-cornell" };
-const kagitAdi = (id) => TEMPLATES.find((t) => t.id === id)?.label || "Boş";
+const kagitAdi = (id) => t(TEMPLATES.find((x) => x.id === id)?.label || "Boş");
+// Çok anlamlı kısa adlar sözlükte başka kolla çakışabilir (tekrar.js "Tekrar" = Again, okuma.js "Bitti" = Done),
+// bu yüzden alan ve raf adı burada dil ile dallanır
+const TEKRAR_ADI = ingilizceMi ? "Review" : "Tekrar";
+const BITTI_RAF = ingilizceMi ? "Finished" : "Bitti";
 const soyad = (yazar = "") => yazar.trim().split(/\s+/).pop() || "";
 const klasorBul = (id) => KLASORLER.find((k) => k.id === id);
-const turAdi = (b) => (cizgiMi(b) ? "Çizgi roman" : b.tur === "pdf" ? "PDF" : b.tur === "epub" ? "EPUB" : "Defter");
+const turAdi = (b) => (cizgiMi(b) ? t("Çizgi roman") : b.tur === "pdf" ? "PDF" : b.tur === "epub" ? "EPUB" : t("Defter"));
 function ilerlemeOrani(b) {
   if (b.tur === "epub") return Math.min(1, b.ilerleme || 0);
   return b.sayfaSayisi ? Math.min(1, (b.sayfa || 1) / b.sayfaSayisi) : 0;
 }
 // Çizgi romanın künyesi: "Sayı 3" ya da "#3"; yoksa sayfa sayısı
-const cizgiKunye = (b) => (b.sayi ? `Sayı ${b.sayi}` : `${b.sayfaSayisi || 1} sayfa`);
+const cizgiKunye = (b) => (b.sayi ? t("Sayı {n}", { n: b.sayi }) : t("{n} sayfa", { n: b.sayfaSayisi || 1 }));
 function etiketMetni(b) {
-  if (cizgiMi(b)) return b.seri ? `${b.seri} · ${cizgiKunye(b)}` : `Çizgi roman · ${cizgiKunye(b)}`;
-  if (b.tur === "pdf") return `PDF · ${b.sayfaSayisi} sayfa`;
+  if (cizgiMi(b)) return b.seri ? `${b.seri} · ${cizgiKunye(b)}` : `${t("Çizgi roman")} · ${cizgiKunye(b)}`;
+  // Serideki kitap (K8): seri adı ve cilt numarası
+  if (b.seri && b.tur !== "defter") return `${b.seri}${b.cilt ? ` · ${b.cilt}` : ""}`;
+  if (b.tur === "pdf") return `PDF · ${t("{n} sayfa", { n: b.parolali ? "?" : String(b.sayfaSayisi) })}`;
   // EPUB'da türü bez cilt anlatır; dar hücrede yazarın adı kesilmesin diye yalnız soyadı
   if (b.tur === "epub") return soyad(b.yazar) || "EPUB";
-  return `Defter · ${kagitAdi(b.kagit)}`;
+  return `${t("Defter")} · ${kagitAdi(b.kagit)}`;
 }
 function konumMetni(b) {
-  if (b.tur === "epub") return `EPUB · %${Math.round(ilerlemeOrani(b) * 100)}`;
-  return `${turAdi(b)} · s. ${b.sayfa || 1} / ${b.sayfaSayisi || 1}`;
+  if (b.tur === "epub") return `EPUB · ${t("%{n}", { n: Math.round(ilerlemeOrani(b) * 100) })}`;
+  if (b.parolali) return t("PDF · parolalı · ? sayfa");
+  return t("{tur} · s. {sayfa} / {toplam}", { tur: turAdi(b), sayfa: b.sayfa || 1, toplam: b.sayfaSayisi || 1 });
 }
 // Tembel yüklenen ekran modülü açılamadı. SyntaxError: eksik dışa aktarım, yani sayfa eski sürümde kaldı
 function modulHatasi(hata, metin) {
@@ -430,8 +523,8 @@ function modulHatasi(hata, metin) {
 function guncellemeVar() {
   if (guncellemeVar.soylendi) return;
   guncellemeVar.soylendi = true;
-  toast("Kenar Notu güncellendi. Yeni sürümü açmak için yenile.", {
-    kalici: true, etiket: "Yenile",
+  toast(t("Kenar Notu güncellendi. Yeni sürümü açmak için yenile."), {
+    kalici: true, etiket: t("Yenile"),
     calistir: async () => { await kayit.hemenKaydet({ tam: true }); location.reload(); },
   });
 }
@@ -505,7 +598,7 @@ function fisAc(capa, icerik, { hiza = "alt-sag", sinif = "", rol = "menu", etike
     else { el.classList.add("kapaniyor"); setTimeout(() => el.remove(), 140); }
     if (odakIcerde && capaEl?.isConnected) capaEl.focus({ preventScroll: true });
   };
-  const kayit = { el, kapat, konumla, capa: capaEl };
+  const kayit = { el, kapat, konumla, capa: capaEl, kaydirma: K.icerik?.scrollTop };
   aktifFis = kayit;
   konumla();
   document.addEventListener("pointerdown", disari, true);
@@ -547,16 +640,18 @@ function onayla(dugme, etiket, onayMetni, fn) {
 function silSatiri(ad, fn) {
   const etiket = h("span", {}, ad);
   const d = h("button", { class: "fis-satir onayli", type: "button", role: "menuitem" }, icon("sil", "i-20"), etiket);
-  onayla(d, etiket, "Emin misin? Tekrar dokun", fn);
+  onayla(d, etiket, t("Emin misin? Tekrar dokun"), fn);
   return d;
 }
 
 // Uzun basma (500ms) ve sağ tık aynı bağlam fişini açar; uzun basıştan sonraki tıklama yutulur
-function uzunBasma(el, ac) {
-  let zaman = 0, x0 = 0, y0 = 0, tetik = false;
+// sagTik: sağ tık başka iş yapacaksa (kapaklarda uzun basma seçim kipini açar, sağ tık bağlam fişini)
+function uzunBasma(el, ac, sagTik = ac) {
+  let zaman = 0, x0 = 0, y0 = 0, tetik = false, sonTur = "";
   const iptal = () => clearTimeout(zaman);
   el.addEventListener("pointerdown", (e) => {
     tetik = false;
+    sonTur = e.pointerType;
     if (e.button !== 0) return;
     x0 = e.clientX; y0 = e.clientY;
     iptal();
@@ -578,7 +673,8 @@ function uzunBasma(el, ac) {
   el.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     iptal();
-    if (!tetik) { tetik = true; ac(); }
+    // Dokunmatikte tarayıcının kendi uzun basma olayı da contextmenu'dur: o zaman uzun basma sayılır
+    if (!tetik) { tetik = true; (sonTur && sonTur !== "mouse" ? ac : sagTik)(); }
   });
   el.addEventListener("dragstart", (e) => e.preventDefault());
 }
@@ -658,9 +754,23 @@ function kapakPlanla() {
   kapakPlan = bosta(isle, { timeout: 120 });
 }
 
+// Kapak başlığı büyük harf ve geniş aralıkla dizilir: tek uzun sözcük (İngilizce "METAMORPHOSIS") kapaktan taşmasın diye küçülür
+function kapakAdi(ad) {
+  const enUzun = Math.max(0, ...String(ad || "").split(/\s+/).map((s) => s.length));
+  return h("p", { class: "ad", "data-uzun": enUzun >= 12 ? "2" : enUzun >= 9 ? "1" : null }, ad);
+}
 function kapakOlustur(b, { mini = false } = {}) {
   let el;
-  if (cizgiMi(b)) {
+  if (b.kapakElle && b.kapakGorsel && !cizgiMi(b)) {
+    // Künyede seçilen kapak (K8): her türde bez cildin yerinde
+    el = h("div", { class: "kapak-kitap gorselli", style: `--c:${b.kapak || ciltRengi(b.ad)}` },
+      h("img", { class: "kapak-gorsel", src: b.kapakGorsel, alt: "", decoding: "async", draggable: "false" }));
+  } else if (b.parolali && !b.kapakGorsel) {
+    // Parolalı PDF (K11): kilitli, adla basılmış cilt; parola girilince Masa sayfaları açar
+    el = h("div", { class: "kapak-kitap kilitli", style: `--c:${b.kapak || ciltRengi(b.ad)}` });
+    if (!mini) el.append(h("div", { class: "cerceve" }), h("div", { class: "yazi" }, kapakAdi(b.ad), fleuron(), h("span", { class: "yazar" }, "PDF")));
+    el.append(h("span", { class: "kapak-kilit" }, icon("kilit", mini ? "i-16" : "i-20")));
+  } else if (cizgiMi(b)) {
     // Çizgi roman: kapak görseli mylar poşette; görsel yoksa adla basılmış renkli kapak
     el = h("div", { class: "kapak-cizgi" + (b.kapakGorsel ? " gorselli" : ""), style: `--c:${b.kapak || ciltRengi(b.ad)}` },
       b.kapakGorsel ? h("img", { class: "kapak-gorsel", src: b.kapakGorsel, alt: "", decoding: "async", draggable: "false" })
@@ -677,7 +787,7 @@ function kapakOlustur(b, { mini = false } = {}) {
     el = h("div", { class: "kapak-kitap", style: `--c:${b.kapak || ciltRengi(b.ad)}` });
     if (!mini) {
       el.append(h("div", { class: "cerceve" }),
-        h("div", { class: "yazi" }, h("p", { class: "ad" }, b.ad), fleuron(), h("span", { class: "yazar" }, b.tur === "pdf" ? "PDF" : soyad(b.yazar))));
+        h("div", { class: "yazi" }, kapakAdi(b.ad), fleuron(), h("span", { class: "yazar" }, b.tur === "pdf" ? "PDF" : soyad(b.yazar))));
     }
   } else if (b.tur === "pdf") {
     el = h("div", { class: "kapak-pdf" }, h("div", { class: "yaprak" }, pdfKanvas(b.id, mini ? 72 : 200)));
@@ -686,12 +796,12 @@ function kapakOlustur(b, { mini = false } = {}) {
     el = h("div", { class: "kapak-kitap", style: `--c:${b.kapak || ciltRengi(b.ad)}` });
     if (!mini) {
       el.append(h("div", { class: "cerceve" }),
-        h("div", { class: "yazi" }, h("p", { class: "ad" }, b.ad), fleuron(), h("span", { class: "yazar" }, soyad(b.yazar))));
+        h("div", { class: "yazi" }, kapakAdi(b.ad), fleuron(), h("span", { class: "yazar" }, soyad(b.yazar))));
     }
   } else {
     const renk = KAPAK_RENKLERI.find(([, c]) => c.toLowerCase() === String(b.kapak).toLowerCase());
     el = h("div", { class: "kapak-defter" + (renk?.[2] ? " acik-renk" : ""), style: `--c:${b.kapak || KAPAK_RENKLERI[0][1]}` },
-      h("div", { class: "etiket" }, h("b", {}, b.ad), h("small", {}, kagitAdi(b.kagit).toLocaleUpperCase("tr"))));
+      h("div", { class: "etiket" }, h("b", {}, b.ad), h("small", {}, kagitAdi(b.kagit).toLocaleUpperCase(yerel))));
   }
   el.setAttribute("aria-hidden", "true");
   if (b.favori && !mini) el.append(h("i", { class: "fav" }));
@@ -703,17 +813,58 @@ function kapakOlustur(b, { mini = false } = {}) {
 
 /* ================= Kitaplık ================= */
 const GORUNUMLER = [
-  { id: "tumu", ad: "Tümü", baslik: "Kitaplık", ikon: "tumu" },
-  { id: "kitaplar", ad: "Kitaplar", ikon: "kitap" },
-  { id: "defterler", ad: "Defterler", ikon: "defter" },
-  { id: "cizgiler", ad: "Çizgi romanlar", ikon: "cizgi-roman" },
-  { id: "favoriler", ad: "Favoriler", ikon: "yildiz" },
-  { id: "kirpilanlar", ad: "Kırpılanlar", ikon: "kirp" },
+  { id: "tumu", ad: t("Tümü"), baslik: t("Kitaplık"), ikon: "tumu" },
+  { id: "kitaplar", ad: t("Kitaplar"), ikon: "kitap" },
+  { id: "defterler", ad: t("Defterler"), ikon: "defter" },
+  { id: "cizgiler", ad: t("Çizgi romanlar"), ikon: "cizgi-roman" },
+  { id: "favoriler", ad: t("Favoriler"), ikon: "yildiz" },
+  { id: "kirpilanlar", ad: t("Kırpılanlar"), ikon: "kirp" },
+  // 7.0 okuma rafları (K7) ve çöp kutusu (K5): kenar çubuğunda ayrı bölümlerde
+  { id: "okunacak", ad: t("Okunacak"), ikon: "raf-okunacak", raf: true },
+  { id: "okunuyor", ad: t("Okunuyor"), ikon: "raf-okunuyor", raf: true },
+  { id: "bitti", ad: BITTI_RAF, ikon: "raf-bitti", raf: true },
+  { id: "cop", ad: t("Son silinenler"), ikon: "sil" },
 ];
+const ANA_GORUNUMLER = GORUNUMLER.filter((g) => !g.raf && g.id !== "cop");
+const COP_GUN_METNI = t("{n} gün sonra kalıcı silinir", { n: kayit.COP_GUN });
+const YENILIK_SURUMU = "7.1";
+const RAF_GORUNUMLER = GORUNUMLER.filter((g) => g.raf);
+// 7.0 kabuk simgeleri (TASARIM-5 6.12): raflar, seçim, künye; kapalı şekiller ikili ton (class="d")
+simgeEkle("raf-okunacak", '<path class="d" d="M7 3.5h10v17l-5-3.9-5 3.9Z"/><path d="M10 9h4"/>');
+simgeEkle("raf-okunuyor", '<path class="d" d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5V6.5Z"/><path d="M12 6.5c2-1.5 5-2 8.5-1.5v13c-3.5-.5-6.5 0-8.5 1.5M15 10.5h3"/>');
+simgeEkle("raf-bitti", '<circle class="d" cx="12" cy="12" r="8.5"/><path d="M8 12.3l2.8 2.8L16.2 9"/>');
+simgeEkle("sec", '<rect class="d" x="4" y="4" width="16" height="16" rx="4"/><path d="M8.2 12.2l2.6 2.6 5-5.4"/>');
+simgeEkle("kunye", '<path class="d" d="M6 3.5h9l3.5 3.5v13.5H6Z"/><path d="M15 3.5V7h3.5M9 11h6M9 14h6M9 17h3.5"/>');
+simgeEkle("sirala", '<path d="M7 5v14M4 16l3 3 3-3M13 7h7M13 12h5M13 17h3"/>');
+simgeEkle("klavye", '<rect class="d" x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 9.5h.01M9 9.5h.01M12 9.5h.01M15 9.5h.01M18 9.5h.01M6 12.5h.01M18 12.5h.01M8.5 15h7"/>');
+simgeEkle("yildizlar", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle class="d" cx="12" cy="12" r="2.6"/>');
 const KLASOR_RENKLERI = ["#1F6B52", "#5F6B2A", "#1C6E7D", "#B8507A", "#7D1D2C", "#B5652B", "#2F4FA2"];
 
 const tercih = Object.assign({ secim: "tumu", siralama: "son", duzen: "izgara" }, depo.oku(ANAHTAR.kitaplik) || {});
 const tercihKaydet = () => depo.yaz(ANAHTAR.kitaplik, tercih);
+// 7.0 sıralama (K7): store.ayarlar.kitaplikSiralama. Eski kayıtta kitaplık tercihindeki "son" ya da "ad" taşınır
+const SIRALAMALAR = [["son", t("Son açılan")], ["ad", t("Ad")], ["yazar", t("Yazar")], ["ilerleme", t("İlerleme")], ["eklenme", t("Eklenme")]];
+const siralamaAl = () => {
+  const s = store.ayarlar.kitaplikSiralama ?? tercih.siralama;
+  return SIRALAMALAR.some(([id]) => id === s) ? s : "son";
+};
+// Okuma rafı (K7): elle seçilen (b.raf) ya da ilerlemeden türetilen. Defter rafta durmaz.
+// Ders notu (bir derse bağlı ya da elle Masa'ya geçirilmiş PDF) okunmak için eklenmemiştir: başlanmamışsa
+// Okunacak'ta sayılmaz. Yalnız açık işarete bakılır; b.mod'suz PDF kitap eskisi gibi raflarda kalır
+const RAFLAR = ["okunacak", "okunuyor", "bitti"];
+const calismaBelgesi = (b) => b.tur === "pdf" && !cizgiMi(b) && (!!klasorBul(b.klasor) || b.mod === "masa");
+function rafIlerleme(b) {
+  if (b.tur === "epub") return Math.min(1, b.ilerleme || 0);
+  return (b.sayfa || 1) <= 1 || !b.sayfaSayisi ? 0 : Math.min(1, b.sayfa / b.sayfaSayisi);
+}
+function rafAl(b) {
+  if (b.tur === "defter") return null;
+  if (RAFLAR.includes(b.raf)) return b.raf;
+  const p = rafIlerleme(b);
+  if (b.odunc?.bitti || p > 0.98) return "bitti";
+  if (p > 0) return "okunuyor";
+  return calismaBelgesi(b) ? null : "okunacak";
+}
 let arama = "";
 let kitaplikKirli = false;
 let sessiz = false;   // kendi yaptığımız yerinde güncellemelerde yeniden çizimi atla
@@ -726,32 +877,60 @@ function secimFiltresi(secim) {
   if (secim === "defterler") return (b) => b.tur === "defter";
   if (secim === "cizgiler") return cizgiMi;
   if (secim === "favoriler") return (b) => b.favori;
+  if (RAFLAR.includes(secim)) return (b) => !b.dizgi && rafAl(b) === secim;
   if (secim.startsWith("klasor:")) { const id = secim.slice(7); return (b) => b.klasor === id; }
   return () => true;
 }
 function sayilar() {
-  const s = { tumu: store.belgeler.length, kitaplar: 0, defterler: 0, cizgiler: 0, favoriler: 0, kirpilanlar: store.kirpintilar.length };
+  const s = { tumu: store.belgeler.length, kitaplar: 0, defterler: 0, cizgiler: 0, favoriler: 0, kirpilanlar: store.kirpintilar.length,
+    okunacak: 0, okunuyor: 0, bitti: 0, cop: store.cop.length };
   for (const b of store.belgeler) {
     if (b.tur === "defter") s.defterler++; else if (cizgiMi(b)) s.cizgiler++; else s.kitaplar++;
     if (b.favori) s.favoriler++;
     if (b.klasor) s["klasor:" + b.klasor] = (s["klasor:" + b.klasor] || 0) + 1;
+    const r = rafAl(b);
+    if (r) s[r]++;
   }
   return s;
 }
-function sirala(liste) {
+// Sıralama kararlıdır: aynı değerde ikincil ölçüt ad (K7 kabul 5). Aynı serideki kitaplar ilk üyenin yerinde,
+// cilt sırasıyla yan yana durur (K8)
+const adSirasi = (a, b) => String(a.ad || "").localeCompare(String(b.ad || ""), yerel, { sensitivity: "base", numeric: true }) || String(a.id).localeCompare(String(b.id));
+const ekZamani = (b) => b.eklenme ?? b.acilis ?? 0;
+function sirala(liste, siralama = siralamaAl()) {
   const l = [...liste];
-  if (tercih.siralama === "ad") l.sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
-  else l.sort((a, b) => (b.acilis || 0) - (a.acilis || 0));
-  return l;
+  const olcut = {
+    son: (a, b) => (b.acilis || 0) - (a.acilis || 0),
+    ad: () => 0,
+    yazar: (a, b) => { const x = soyad(a.yazar), y = soyad(b.yazar); return (!x - !y) || x.localeCompare(y, yerel, { sensitivity: "base" }); },
+    ilerleme: (a, b) => ilerlemeOrani(b) - ilerlemeOrani(a),
+    eklenme: (a, b) => ekZamani(b) - ekZamani(a),
+  }[siralama] || (() => 0);
+  l.sort((a, b) => olcut(a, b) || adSirasi(a, b));
+  return seriyeDiz(l);
+}
+// Seri: ilk görülen üyenin yerine bütün seri cilt sırasıyla gelir (dizgi kartları serisiz)
+function seriyeDiz(l) {
+  const seriler = new Map();
+  for (const b of l) if (b.seri && !b.dizgi && !cizgiMi(b)) { const k = katla(b.seri); seriler.set(k, [...(seriler.get(k) || []), b]); }
+  if (![...seriler.values()].some((x) => x.length > 1)) return l;
+  const sonuc = [], konan = new Set();
+  for (const b of l) {
+    if (konan.has(b)) continue;
+    const uyeler = b.seri && !b.dizgi && !cizgiMi(b) ? seriler.get(katla(b.seri)) : null;
+    if (!uyeler || uyeler.length < 2) { sonuc.push(b); konan.add(b); continue; }
+    for (const u of [...uyeler].sort((x, y) => (Number(x.cilt) || 1e9) - (Number(y.cilt) || 1e9) || adSirasi(x, y))) { sonuc.push(u); konan.add(u); }
+  }
+  return sonuc;
 }
 const eslesir = (metin, q) => katla(metin).includes(katla(q));
 
 // gizli: açılış ekranı başka (adreste belge, Tekrar ya da arama). Kartlar ve kapaklar dönüşte çizilir (kitapligaDon)
 function kitaplikKur({ gizli = false } = {}) {
-  K.ekran = h("section", { class: "ekran ekran-kitaplik", "aria-label": "Kitaplık" });
+  K.ekran = h("section", { class: "ekran ekran-kitaplik", "aria-label": t("Kitaplık") });
 
   // Kenar çubuğu
-  K.kenar = h("nav", { class: "kenar-cubugu", id: "kenar-cubugu", "aria-label": "Kitaplık bölümleri" });
+  K.kenar = h("nav", { class: "kenar-cubugu", id: "kenar-cubugu", "aria-label": t("Kitaplık bölümleri") });
   K.navOgeler = new Map();
   const navOgesi = (secim, onEk, ad) => {
     const sayi = h("span", { class: "sayi" });
@@ -762,35 +941,42 @@ function kitaplikKur({ gizli = false } = {}) {
   };
   K.klasorListe = h("div", { class: "gezinme" });
   K.navOgesi = navOgesi;
-  K.ayarlarDugme = h("button", { type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("ayarlar"), h("span", { class: "ad" }, "Ayarlar"));
+  K.ayarlarDugme = h("button", { type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("ayarlar"), h("span", { class: "ad" }, t("Ayarlar")));
   K.ayarlarDugme.addEventListener("click", () => ayarlarAc({ acan: K.ayarlarDugme }));
   // Tekrar girişi (TASARIM-2 3.3): logonun altında, bugün bekleyen kart sayısı yuvarlanan camda
   K.tekrarAlt = h("small");
   K.tekrarHaneler = [0, 1].map(() => h("i", { style: "--n:0" }, "0123456789"));
   K.tekrarCam = h("span", { class: "cam sayac soluk", "aria-hidden": "true" }, K.tekrarHaneler.map((i) => h("span", { class: "hane" }, i)));
   K.tekrar = h("a", { class: "tekrar-giris", href: "#tekrar" },
-    icon("tekrar", "i-20"), h("span", {}, h("b", {}, "Tekrar"), K.tekrarAlt), K.tekrarCam);
+    icon("tekrar", "i-20"), h("span", {}, h("b", {}, TEKRAR_ADI), K.tekrarAlt), K.tekrarCam);
   K.tekrar.addEventListener("click", (e) => { e.preventDefault(); bus.emit("git", { ekran: "tekrar" }); });
   // Her yerde ara (OZELLIKLER-4 §1.3): bütün belgelerin metni ve notları
-  K.araGiris = h("a", { class: "ara-giris", href: "#arama", title: "Her yerde ara (Ctrl+K)" },
-    icon("ara"), h("span", { class: "ad" }, "Ara"), h("kbd", { class: "kisayol", "aria-hidden": "true" }, "Ctrl K"));
+  K.araGiris = h("a", { class: "ara-giris", href: "#arama", title: t("Her yerde ara (Ctrl+K)") },
+    icon("ara"), h("span", { class: "ad" }, t("Ara")), h("kbd", { class: "kisayol", "aria-hidden": "true" }, "Ctrl K"));
   K.araGiris.addEventListener("click", (e) => { e.preventDefault(); bus.emit("git", { ekran: "arama", terim: arama.trim() || undefined }); });
   // İzlerim (OZELLIKLER-5): bütün kitaplarda kalemin değdiği yerler, cep defterleri ve derlemeler
-  K.izlerGiris = h("a", { class: "izler-giris", href: "#izler" }, icon("izler"), h("span", { class: "ad" }, "İzlerim"));
+  K.izlerGiris = h("a", { class: "izler-giris", href: "#izler" }, icon("izler"), h("span", { class: "ad" }, t("İzlerim")));
   K.izlerGiris.addEventListener("click", (e) => { e.preventDefault(); bus.emit("git", { ekran: "izler" }); });
+  // 7.0 (TASARIM-5 7.3, 8.1): üstte 28 px simge ve kelime işareti; etkin öğenin solunda kayan ışık çizgisi
+  K.isik = h("i", { class: "gezinme-isik", "aria-hidden": "true", hidden: true });
+  K.kenarIc = h("div", { class: "kenar-cubugu__ic" },
+    K.isik,
+    markaOgesi(),
+    ozelGunSatiri(),
+    K.tekrar,
+    h("div", { class: "gezinme gezinme-ara" }, K.araGiris, K.izlerGiris),
+    h("div", { class: "gezinme" }, ANA_GORUNUMLER.map((g) => navOgesi(g.id, icon(g.ikon), g.ad))),
+    h("div", { class: "bolum-basi" }, h("span", { class: "t-etiket" }, t("Okuma rafları"))),
+    h("div", { class: "gezinme gezinme-raf" }, RAF_GORUNUMLER.map((g) => navOgesi(g.id, icon(g.ikon), g.ad))),
+    h("div", { class: "bolum-basi" },
+      h("span", { class: "t-etiket" }, t("Klasörler")),
+      h("button", { type: "button", "aria-label": t("Yeni klasör"), onclick: yeniKlasor }, icon("arti", "i-20"))),
+    K.klasorListe,
+    h("div", { class: "gezinme gezinme-cop" }, navOgesi("cop", icon("sil"), t("Son silinenler"))));
   K.kenar.append(
-    h("div", { class: "kenar-cubugu__ic" },
-      h("div", { class: "logo" }, parca(LOGO_SVG), h("b", {}, "Kenar Notu")),
-      ozelGunSatiri(),
-      K.tekrar,
-      h("div", { class: "gezinme gezinme-ara" }, K.araGiris, K.izlerGiris),
-      h("div", { class: "gezinme" }, GORUNUMLER.map((g) => navOgesi(g.id, icon(g.ikon), g.ad))),
-      h("div", { class: "bolum-basi" },
-        h("span", { class: "t-etiket" }, "Klasörler"),
-        h("button", { type: "button", "aria-label": "Yeni klasör", onclick: yeniKlasor }, icon("arti", "i-20"))),
-      K.klasorListe),
+    K.kenarIc,
     h("div", { class: "kenar-cubugu__alt gezinme" },
-      h("button", { type: "button", onclick: () => yedekPenceresi() }, icon("yedekle"), h("span", { class: "ad" }, "Yedekle")),
+      h("button", { type: "button", onclick: () => yedekPenceresi() }, icon("yedekle"), h("span", { class: "ad" }, t("Yedekle"))),
       K.ayarlarDugme));
   klasorlerCiz();
 
@@ -805,12 +991,13 @@ function kitaplikKur({ gizli = false } = {}) {
   K.kenar.addEventListener("pointercancel", () => { x0 = null; });
 
   // Başlık satırı
-  K.menuDugme = h("button", { class: "ikon-dugme menu-dugme", type: "button", "aria-label": "Menü", "aria-controls": "kenar-cubugu", "aria-expanded": "false", onclick: cekmeceAc }, icon("menu"));
+  K.menuDugme = h("button", { class: "ikon-dugme menu-dugme", type: "button", "aria-label": t("Menü"), "aria-controls": "kenar-cubugu", "aria-expanded": "false", onclick: cekmeceAc }, icon("menu"));
   K.baslik = h("h1", { class: "t-b1" });
   K.altBaslik = h("p");
-  K.aramaGirdi = h("input", { type: "search", placeholder: "Kitaplıkta ara", "aria-label": "Kitaplıkta ara", enterkeyhint: "search", autocomplete: "off", spellcheck: "false" });
-  K.aramaTemizle = h("button", { class: "arama-temizle", type: "button", "aria-label": "Aramayı temizle", hidden: true }, icon("kapat"));
-  K.arama = h("label", { class: "arama" }, icon("ara"), K.aramaGirdi, K.aramaTemizle);
+  K.aramaGirdi = h("input", { type: "search", placeholder: t("Kitaplıkta ara"), "aria-label": t("Kitaplıkta ara"), enterkeyhint: "search", autocomplete: "off", spellcheck: "false" });
+  K.aramaTemizle = h("button", { class: "arama-temizle", type: "button", "aria-label": t("Aramayı temizle"), hidden: true }, icon("kapat"));
+  // Sağda kısayol ipucu (6.7; yalnız fare ve klavyede): "/" kitaplıkta arar
+  K.arama = h("label", { class: "arama" }, icon("ara"), K.aramaGirdi, K.aramaTemizle, h("kbd", { class: "kisayol arama-ipucu", "aria-hidden": "true" }, "/"));
   // Hızlı yazarken her harfte bütün kitaplık yeniden kurulmaz: yazma durunca (büyük kitaplıkta harf başına 350 ms)
   let aramaZaman = 0;
   K.aramaGirdi.addEventListener("input", () => {
@@ -829,31 +1016,35 @@ function kitaplikKur({ gizli = false } = {}) {
   });
   K.aramaTemizle.addEventListener("click", (e) => { e.preventDefault(); aramaYap(""); K.aramaGirdi.focus(); });
 
-  const sirBtn = (deger) => {
-    const d = h("button", { type: "button", "aria-pressed": "false" });
-    d.addEventListener("click", () => { tercih.siralama = deger; tercihKaydet(); araclarGuncelle(); sonucCiz(true); });
-    return d;
-  };
-  K.sirSon = sirBtn("son");
-  K.sirAd = sirBtn("ad");
-  K.siralama = h("div", { class: "siralama", role: "group", "aria-label": "Sıralama" }, K.sirSon, h("span", { "aria-hidden": "true" }, "·"), K.sirAd);
+  // 7.0 sıralama (K7): beş ölçüt; araç satırında yer kaplamasın diye seçili ölçütü gösteren düğme ve menü.
+  // Kırpılanlar panosunda iki ölçüt: En yeni, Belge
+  K.sirAd = h("span", { class: "siralama__ad" });
+  K.siralama = h("button", { class: "siralama-dugme", type: "button", "aria-haspopup": "menu", "aria-expanded": "false" },
+    icon("sirala", "i-20"), K.sirAd, icon("asagi", "i-16"));
+  K.siralama.addEventListener("click", (e) => siralamaMenusu(e.detail === 0));
 
   const duzBtn = (deger, ad, ik) => {
     const d = h("button", { class: "ikon-dugme", type: "button", "aria-pressed": "false", "aria-label": ad }, icon(ik, "i-22"));
     d.addEventListener("click", () => { tercih.duzen = deger; tercihKaydet(); araclarGuncelle(); sonucCiz(true); });
     return d;
   };
-  K.duzIzgara = duzBtn("izgara", "Izgara", "izgara");
-  K.duzListe = duzBtn("liste", "Liste", "liste");
-  K.duzen = h("div", { class: "gorunum-sec", role: "group", "aria-label": "Görünüm" }, K.duzIzgara, K.duzListe);
+  K.duzIzgara = duzBtn("izgara", t("Izgara"), "izgara");
+  K.duzListe = duzBtn("liste", t("Liste"), "liste");
+  // Kayan topuz (6.5): seçili parçanın altında tek kâğıt parça, transform ile kayar
+  K.duzTopuz = h("i", { class: "parcali-topuz", "aria-hidden": "true" });
+  K.duzen = h("div", { class: "gorunum-sec", role: "group", "aria-label": t("Görünüm") }, K.duzTopuz, K.duzIzgara, K.duzListe);
+  new ResizeObserver(() => topuzYerlestir(K.duzen, K.duzTopuz)).observe(K.duzen);
+  // Çoklu seçim (K6)
+  K.secDugme = h("button", { class: "ikincil sec-dugme", type: "button", "aria-pressed": "false" }, icon("sec", "i-20"), h("span", {}, t("Seç")));
+  K.secDugme.addEventListener("click", () => secimKipi(!secim.acik));
 
-  K.yeni = h("button", { class: "birincil", type: "button", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("arti", "i-20"), "Yeni");
+  K.yeni = h("button", { class: "birincil", type: "button", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("arti", "i-20"), t("Yeni"));
   K.yeni.addEventListener("click", (e) => yeniMenusu(e.detail === 0));
   // Telefonda ve rayda kenar çubuğu yok: Ayarlar başlığın sağında (TASARIM-4 2.4)
-  K.basAyarlar = h("button", { class: "ikon-dugme baslik-ayarlar", type: "button", "aria-label": "Ayarlar", "aria-haspopup": "dialog" }, icon("ayarlar"));
+  K.basAyarlar = h("button", { class: "ikon-dugme baslik-ayarlar", type: "button", "aria-label": t("Ayarlar"), "aria-haspopup": "dialog" }, icon("ayarlar"));
   K.basAyarlar.addEventListener("click", () => ayarlarAc({ acan: K.basAyarlar }));
   // Kenar çubuğundaki süzgeçler ve klasörler dar ekranda başlığın altında çip satırı
-  K.suzgec = h("div", { class: "suzgec-cipler", role: "group", "aria-label": "Kitaplık bölümleri" });
+  K.suzgec = h("div", { class: "suzgec-cipler", role: "group", "aria-label": t("Kitaplık bölümleri") });
 
   K.sonuclar = h("div", { class: "sonuclar" });
   K.icerik = h("div", { class: "icerik" },
@@ -862,18 +1053,25 @@ function kitaplikKur({ gizli = false } = {}) {
         K.menuDugme,
         h("div", { class: "baslik-metin" }, K.baslik, K.altBaslik),
         K.basAyarlar,
-        h("div", { class: "araclar" }, K.arama, K.siralama, K.duzen, K.yeni)),
+        h("div", { class: "araclar" }, K.arama, K.siralama, K.duzen, K.secDugme, K.yeni)),
       K.suzgec,
+      // İlk kullanım daveti "Üç kısa ipucu" (rehber.js doldurur): kartların akışında şerit, onları örtmez
+      h("div", { class: "rehber-yeri", hidden: true }),
       // Kitap klasöründe yeni kitap fişi (kitap-klasoru.js doldurur)
       K.klasorFisi = h("div", { class: "klasor-fisi-yeri", hidden: true }),
       h("div", { class: "oxford", "aria-hidden": "true" }),
       K.sonuclar));
-  K.icerik.addEventListener("scroll", () => { if (aktifFis && !aktifFis.el.classList.contains("ayarlar-fis")) fisKapat(); }, { passive: true });
+  // Kaydırınca açık fiş kapanır; tıklanan kapağı görünür yapan küçük kaydırma (odak, yarım görünen kapak) kapatmaz
+  K.icerik.addEventListener("scroll", () => {
+    if (!aktifFis || aktifFis.el.classList.contains("ayarlar-fis")) return;
+    if (Math.abs(K.icerik.scrollTop - (aktifFis.kaydirma ?? K.icerik.scrollTop)) > 32) fisKapat();
+  }, { passive: true });
 
   // Masaüstünde dosya bırakma
-  K.birak = h("div", { class: "birak", hidden: true, "aria-hidden": "true" }, "Bırak, kitaplığa ekleyelim.", fleuron());
+  K.birak = h("div", { class: "birak", hidden: true, "aria-hidden": "true" }, t("Bırak, kitaplığa ekleyelim."), fleuron());
 
-  K.kok = h("div", { class: "kitaplik" }, K.kenar, K.perde, K.icerik, K.birak);
+  K.secimCubugu = secimCubuguKur();
+  K.kok = h("div", { class: "kitaplik" }, K.kenar, K.perde, K.icerik, K.birak, K.secimCubugu);
   K.ekran.append(K.kok);
   sahne.append(K.ekran);
   gezinmeKur();
@@ -903,10 +1101,34 @@ function kenarGuncelle() {
   if (acik.ekran === "izler") K.izlerGiris?.setAttribute("aria-current", "page"); else K.izlerGiris?.removeAttribute("aria-current");
   suzgecCiz(s);
   tekrarGuncelle();
+  isikYerlestir();
+}
+// Kayan etkin göstergesi (TASARIM-5 6.19, 8.1): etkin öğenin solunda 2x20 ışık çizgisi, öğeden öğeye translateY ile kayar.
+// İlk yerleşimde ve sade harekette kaymadan yerine konur
+let isikIlk = true;
+function isikYerlestir() {
+  if (!K.isik) return;
+  requestAnimationFrame(() => {
+    const etkin = $('[aria-current="page"]', K.kenarIc);
+    if (!etkin || !etkin.getClientRects().length) { K.isik.hidden = true; return; }
+    const r = etkin.getBoundingClientRect(), k = K.kenarIc.getBoundingClientRect();
+    const y = Math.round(r.top - k.top + K.kenarIc.scrollTop + r.height / 2 - 10);
+    if (isikIlk || K.isik.hidden) K.isik.classList.add("aninda");
+    K.isik.hidden = false;
+    K.isik.style.transform = `translateY(${y}px)`;
+    if (K.isik.classList.contains("aninda")) requestAnimationFrame(() => K.isik.classList.remove("aninda"));
+    isikIlk = false;
+  });
+}
+// 7.0 kelime işareti (TASARIM-5 7.3): 28 px simge, "Kenar" Inter 640 ve "Notu" Literata italik
+function markaOgesi(etiket = true) {
+  return h("div", { class: "logo marka" },
+    h("img", { class: "marka__simge", src: "ikon/ikon-kucuk.svg", alt: "", width: "28", height: "28", decoding: "async", draggable: "false" }),
+    etiket ? h("span", { class: "marka__yazi" }, h("b", {}, "Kenar"), h("i", {}, "Notu")) : null);
 }
 
 /* ---------- 11. tur: sekme çubuğu (telefon), ray (600 ile 999, yatay telefon), süzgeç çipleri ---------- */
-const KABUK_SEKMELERI = [["kitaplik", "Kitaplık", "tumu", "#"], ["izler", "İzlerim", "izler", "#izler"], ["tekrar", "Tekrar", "tekrar", "#tekrar"], ["arama", "Ara", "ara", "#arama"]];
+const KABUK_SEKMELERI = [["kitaplik", t("Kitaplık"), "tumu", "#"], ["izler", t("İzlerim"), "izler", "#izler"], ["tekrar", TEKRAR_ADI, "tekrar", "#tekrar"], ["arama", t("Ara"), "ara", "#arama"]];
 function gezinmeKur() {
   const oge = (yer) => KABUK_SEKMELERI.map(([id, ad, ik, href]) => {
     const rozet = id === "tekrar" ? h("b", { class: "sekme-rozet" }) : null;
@@ -914,10 +1136,10 @@ function gezinmeKur() {
     a.addEventListener("click", (e) => { e.preventDefault(); sekmeDokun(id); });
     return a;
   });
-  K.sekmeCubugu = h("nav", { class: "sekme-cubugu", "aria-label": "Ana bölümler" }, oge("sekme"));
-  const rayAyarlar = h("button", { class: "sekme ayarlar", type: "button", "aria-haspopup": "dialog", title: "Ayarlar" }, icon("ayarlar"), h("span", {}, "Ayarlar"));
+  K.sekmeCubugu = h("nav", { class: "sekme-cubugu", "aria-label": t("Ana bölümler") }, oge("sekme"));
+  const rayAyarlar = h("button", { class: "sekme ayarlar", type: "button", "aria-haspopup": "dialog", title: t("Ayarlar") }, icon("ayarlar"), h("span", {}, t("Ayarlar")));
   rayAyarlar.addEventListener("click", () => ayarlarAc({ acan: rayAyarlar }));
-  K.ray = h("nav", { class: "ray", "aria-label": "Ana bölümler" }, h("div", { class: "logo", "aria-hidden": "true" }, parca(LOGO_SVG)), oge("ray"), rayAyarlar);
+  K.ray = h("nav", { class: "ray", "aria-label": t("Ana bölümler") }, h("div", { class: "logo", "aria-hidden": "true" }, markaOgesi(false)), oge("ray"), rayAyarlar);
   document.body.append(K.sekmeCubugu, K.ray);
   sekmeleriIsaretle(kok.dataset.ekran || "kitaplik");
 }
@@ -954,14 +1176,14 @@ const ekranBildirPlanla = () => { if (!ekranPlan) { ekranPlan = true; queueMicro
 function rozetGuncelle(bekleyen) {
   for (const r of document.querySelectorAll(".sekme-rozet")) {
     r.textContent = bekleyen ? String(Math.min(99, bekleyen)) : "";
-    if (bekleyen) r.setAttribute("aria-label", `${bekleyen} kart bekliyor`); else r.removeAttribute("aria-label");
+    if (bekleyen) r.setAttribute("aria-label", t("{n} kart bekliyor", { n: bekleyen })); else r.removeAttribute("aria-label");
   }
 }
 function suzgecCiz(s = sayilar()) {
   if (!K.suzgec) return;
   const ogeler = [...GORUNUMLER.map((g) => [g.id, g.ad, icon(g.ikon, "i-20")]),
     ...KLASORLER.map((k) => ["klasor:" + k.id, k.ad, h("i", { class: "kumas-sekme", style: `--c:${k.renk}` })])]
-    .filter(([id]) => id !== "cizgiler" || s.cizgiler || tercih.secim === "cizgiler");
+    .filter(([id]) => (id !== "cizgiler" || s.cizgiler || tercih.secim === "cizgiler") && (id !== "cop" || s.cop || tercih.secim === "cop"));
   const imza = ogeler.map(([id, ad]) => id + ":" + ad + ":" + (s[id] || 0)).join("|") + "#" + tercih.secim;
   if (K.suzgec.dataset.imza === imza) return;
   K.suzgec.dataset.imza = imza;
@@ -979,9 +1201,9 @@ function tekrarGuncelle() {
   if (!K.tekrar) return;
   const bekleyen = bugunTekrar().length, n = Math.min(99, bekleyen);
   rozetGuncelle(bekleyen);
-  const alt = n ? `${bekleyen} kart bekliyor` : store.kartlar.length ? "Bugünlük bitti" : "Henüz kart yok";
+  const alt = n ? t("{n} kart bekliyor", { n: bekleyen }) : store.kartlar.length ? t("Bugünlük bitti") : t("Henüz kart yok");
   K.tekrarAlt.textContent = alt;
-  K.tekrar.setAttribute("aria-label", `Tekrar, ${alt.toLocaleLowerCase("tr")}`);
+  K.tekrar.setAttribute("aria-label", t("Tekrar, {durum}", { durum: alt.toLocaleLowerCase(yerel) }));
   K.tekrarCam.classList.toggle("soluk", !n);
   const haneler = String(n).padStart(2, "0");
   K.tekrarHaneler.forEach((i, k) => i.style.setProperty("--n", haneler[k]));
@@ -994,32 +1216,38 @@ function gorunumBilgisi() {
   const g = GORUNUMLER.find((x) => x.id === tercih.secim);
   if (tercih.secim === "tumu") {
     const enSon = store.belgeler.reduce((m, b) => Math.max(m, b.acilis || 0), 0);
-    if (!s.tumu) return { baslik: "Kitaplık", alt: "Masa henüz boş" };
-    const cizgi = s.cizgiler ? `, ${s.cizgiler} çizgi roman` : "";
-    return { baslik: "Kitaplık", alt: `${s.kitaplar} belge, ${s.defterler} defter${cizgi} · son açılan ${neZaman(enSon)}` };
+    if (!s.tumu) return { baslik: t("Kitaplık"), alt: t("Masa henüz boş") };
+    const p = { belge: s.kitaplar, defter: s.defterler, cizgi: s.cizgiler, zaman: neZaman(enSon) };
+    return { baslik: t("Kitaplık"), alt: s.cizgiler ? t("{belge} belge, {defter} defter, {cizgi} çizgi roman · son açılan {zaman}", p) : t("{belge} belge, {defter} defter · son açılan {zaman}", p) };
   }
   if (tercih.secim === "kitaplar") {
     const pdf = store.belgeler.filter((b) => b.tur === "pdf" && !cizgiMi(b)).length, epub = s.kitaplar - pdf;
     const son = sirala(store.belgeler.filter(secimFiltresi("kitaplar")))[0];
-    return { baslik: g.ad, alt: `${pdf} PDF, ${epub} EPUB` + (son ? ` · en son ${son.ad}` : "") };
+    return { baslik: g.ad, alt: son ? t("{pdf} PDF, {epub} EPUB · en son {ad}", { pdf, epub, ad: son.ad }) : `${pdf} PDF, ${epub} EPUB` };
   }
   if (tercih.secim === "cizgiler") {
     const seri = new Set(store.belgeler.filter(cizgiMi).map((b) => b.seri).filter(Boolean)).size;
-    return { baslik: g.ad, alt: s.cizgiler ? `${s.cizgiler} sayı` + (seri ? `, ${seri} seri` : "") : "Raf boş" };
+    return { baslik: g.ad, alt: !s.cizgiler ? t("Raf boş") : seri ? t("{n} sayı, {seri} seri", { n: s.cizgiler, seri }) : t("{n} sayı", { n: s.cizgiler }) };
   }
   if (tercih.secim === "defterler") {
     const sayfa = store.belgeler.filter((b) => b.tur === "defter").reduce((t, b) => t + (b.sayfaSayisi || 0), 0);
-    return { baslik: g.ad, alt: s.defterler ? `${s.defterler} defter, toplam ${sayfa} sayfa` : "Henüz defter yok" };
+    return { baslik: g.ad, alt: s.defterler ? t("{n} defter, toplam {sayfa} sayfa", { n: s.defterler, sayfa }) : t("Henüz defter yok") };
   }
-  if (tercih.secim === "favoriler") return { baslik: g.ad, alt: s.favoriler ? `${s.favoriler} belge kurdeleli` : "Kurdeleli belge yok" };
+  if (tercih.secim === "favoriler") return { baslik: g.ad, alt: s.favoriler ? t("{n} belge kurdeleli", { n: s.favoriler }) : t("Kurdeleli belge yok") };
+  if (RAFLAR.includes(tercih.secim)) {
+    const alt = { okunacak: t("Henüz başlanmamış"), okunuyor: t("Yarıda kalanlar"), bitti: t("Sonuna gelinenler") }[tercih.secim];
+    const yok = { okunacak: t("Henüz başlanmamış yok"), okunuyor: t("Yarıda kalanlar yok"), bitti: t("Sonuna gelinenler yok") }[tercih.secim];
+    return { baslik: g.ad, alt: s[tercih.secim] ? t("{n} belge · {durum}", { n: s[tercih.secim], durum: alt.toLocaleLowerCase(yerel) }) : yok };
+  }
+  if (tercih.secim === "cop") return { baslik: g.ad, alt: s.cop ? t("{n} belge · {durum}", { n: s.cop, durum: COP_GUN_METNI }) : t("Çöp kutusu boş") };
   if (tercih.secim === "kirpilanlar") {
     const kaynak = new Set(store.kirpintilar.map((k) => k.belgeId)).size;
-    return { baslik: g.ad, alt: s.kirpilanlar ? `${s.kirpilanlar} kırpıntı, ${kaynak} belgeden` : "Pano boş" };
+    return { baslik: g.ad, alt: s.kirpilanlar ? t("{n} kırpıntı, {kaynak} belgeden", { n: s.kirpilanlar, kaynak }) : t("Pano boş") };
   }
   const klasor = klasorBul(tercih.secim.slice(7));
   const icinde = store.belgeler.filter(secimFiltresi(tercih.secim));
   const defter = icinde.filter((b) => b.tur === "defter").length;
-  return { baslik: klasor?.ad || "Klasör", alt: icinde.length ? `${icinde.length - defter} belge, ${defter} defter` : "Klasör boş" };
+  return { baslik: klasor?.ad || t("Klasör"), alt: icinde.length ? t("{belge} belge, {defter} defter", { belge: icinde.length - defter, defter }) : t("Klasör boş") };
 }
 
 function baslikGuncelle() {
@@ -1030,15 +1258,46 @@ function baslikGuncelle() {
 }
 
 function araclarGuncelle() {
-  const pano = tercih.secim === "kirpilanlar";
-  K.sirSon.textContent = pano ? "En yeni" : "Son açılan";
-  K.sirAd.textContent = pano ? "Belge" : "Ad";
-  K.sirSon.setAttribute("aria-pressed", String(tercih.siralama !== "ad"));
-  K.sirAd.setAttribute("aria-pressed", String(tercih.siralama === "ad"));
-  K.duzen.hidden = pano;
+  const pano = tercih.secim === "kirpilanlar", cop = tercih.secim === "cop";
+  K.icerik.dataset.gorunum = tercih.secim.startsWith("klasor:") ? "klasor" : tercih.secim;
+  const s = siralamaAl();
+  K.sirAd.textContent = pano ? (s === "ad" ? t("Belge") : t("En yeni")) : (SIRALAMALAR.find(([id]) => id === s)?.[1] || t("Son açılan"));
+  K.siralama.setAttribute("aria-label", t("Sıralama: {ad}", { ad: K.sirAd.textContent }));
+  K.siralama.hidden = cop;
+  K.duzen.hidden = pano || cop;
+  K.secDugme.hidden = pano || cop || !store.belgeler.length;
   K.duzIzgara.setAttribute("aria-pressed", String(tercih.duzen !== "liste"));
   K.duzListe.setAttribute("aria-pressed", String(tercih.duzen === "liste"));
-  K.aramaGirdi.placeholder = pano ? "Kırpıntılarda ara" : "Kitaplıkta ara";
+  topuzYerlestir(K.duzen, K.duzTopuz);
+  K.aramaGirdi.placeholder = pano ? t("Kırpıntılarda ara") : cop ? t("Silinenlerde ara") : t("Kitaplıkta ara");
+}
+// Parçalı düğmenin kayan topuzu: seçili parçanın yerine ve genişliğine transform ile oturur (TASARIM-5 6.5).
+// Grup görünmüyorsa (gizli ekran) ölçü sonra alınır
+function topuzYerlestir(grup, topuz) {
+  if (!grup || !topuz) return;
+  const yerlestir = () => {
+    const sec = $('button[aria-pressed="true"], button[aria-checked="true"]', grup);
+    if (!sec || !sec.offsetWidth) { topuz.hidden = !sec; return; }
+    topuz.hidden = false;
+    const ilk = !topuz.style.width;
+    if (ilk) topuz.classList.add("aninda");
+    topuz.style.width = `${sec.offsetWidth}px`;
+    topuz.style.transform = `translateX(${sec.offsetLeft - grup.clientLeft}px)`;
+    if (ilk) requestAnimationFrame(() => topuz.classList.remove("aninda"));
+  };
+  if (grup.isConnected && grup.offsetWidth) yerlestir(); else requestAnimationFrame(yerlestir);
+}
+// Sıralama menüsü: seçenek satırları (menuitemradio), seçilen kitaplikSiralama ayarına yazılır
+function siralamaMenusu(klavye) {
+  if (aktifFis?.capa === K.siralama) { fisKapat(); return; }
+  const pano = tercih.secim === "kirpilanlar";
+  const secenekler = pano ? [["son", t("En yeni")], ["ad", t("Belge")]] : SIRALAMALAR;
+  const simdi = siralamaAl(), seciliPano = simdi === "ad" ? "ad" : "son";
+  K.siralama.setAttribute("aria-expanded", "true");
+  fisAc(K.siralama, [h("div", { class: "fis-baslik" }, t("Sırala")),
+    ...secenekler.map(([id, ad]) => secenekSatir(icon(id === "ad" ? "metin" : id === "yazar" ? "kitap" : id === "ilerleme" ? "okuma" : id === "eklenme" ? "arti" : "kronometre", "i-20"), ad,
+      (pano ? seciliPano : simdi) === id, () => { fisKapat(); ayarla({ kitaplikSiralama: id }); tercih.siralama = id; tercihKaydet(); araclarGuncelle(); sonucCiz(true); }))],
+  { hiza: "alt-sag", etiket: t("Sırala"), klavye, kapaninca: () => K.siralama.setAttribute("aria-expanded", "false") });
 }
 
 function kitaplikCiz() {
@@ -1055,9 +1314,10 @@ function kitaplikYenile() {
   K.icerik.scrollTop = y;
 }
 
-function gorunumSec(secim) {
+function gorunumSec(secimId) {
   fisKapat(true);
-  if (tercih.secim !== secim) { tercih.secim = secim; tercihKaydet(); }
+  if (secim.acik) secimKipi(false);
+  if (tercih.secim !== secimId) { tercih.secim = secimId; tercihKaydet(); }
   kenarGuncelle();
   baslikGuncelle();
   araclarGuncelle();
@@ -1082,7 +1342,7 @@ function herYerdeAra(q) {
 function herYerdeSatiri(q) {
   const d = h("button", { class: "her-yerde", type: "button" },
     icon("ara", "i-20"),
-    h("span", {}, "Her yerde ara: ", h("b", {}, `“${q}”`), h("small", {}, "Sayfa metinleri, notlar, kartlar")),
+    h("span", {}, `${t("Her yerde ara")}: `, h("b", {}, `“${q}”`), h("small", {}, t("Sayfa metinleri, notlar, kartlar"))),
     h("kbd", { class: "kisayol", "aria-hidden": "true" }, "Enter"));
   d.addEventListener("click", () => herYerdeAra(q));
   return d;
@@ -1090,7 +1350,9 @@ function herYerdeSatiri(q) {
 
 function sonucCiz(gel = false) {
   const q = arama.trim();
-  K.sonuclar.replaceChildren(...(q ? [herYerdeSatiri(q)] : []), tercih.secim === "kirpilanlar" ? panoCiz() : belgelerCiz());
+  K.sonuclar.replaceChildren(...(q && tercih.secim !== "cop" ? [herYerdeSatiri(q)] : []),
+    tercih.secim === "kirpilanlar" ? panoCiz() : tercih.secim === "cop" ? copCiz() : belgelerCiz());
+  if (secim.acik) secimIsaretle();
   if (gel && !hareketAz()) {
     K.sonuclar.classList.remove("gel");
     void K.sonuclar.offsetWidth;
@@ -1105,8 +1367,8 @@ function bos(ikon, baslik, aciklama, eylem = null, ikinci = null) {
     ikinci ? h("button", { class: "metin-dugme", type: "button", onclick: ikinci.calistir }, ikinci.etiket) : null) : null;
   return h("div", { class: "bos" }, icon(ikon), h("h3", {}, baslik), h("p", {}, aciklama), dugmeler, eylem ? null : fleuron());
 }
-const DOSYA_AC = { etiket: "Dosya aç", ikon: "pdf", calistir: () => dosyaSec() };
-const YENI_DEFTER = { etiket: "Yeni defter", calistir: () => yeniDefterPenceresi() };
+const DOSYA_AC = { etiket: t("Dosya aç"), ikon: "pdf", calistir: () => dosyaSec() };
+const YENI_DEFTER = { etiket: t("Yeni defter"), calistir: () => yeniDefterPenceresi() };
 function bolumBaslik(ad, sayi, ek = "") {
   return h("h2", { class: `bolum-baslik t-b2 ${ek}`.trim() }, ad, sayi != null ? h("span", { class: "t-eski" }, String(sayi)) : null);
 }
@@ -1118,19 +1380,22 @@ function belgelerCiz() {
   const kume = [...(q ? [] : dizgiler), ...store.belgeler].filter(secimFiltresi(tercih.secim));
   const liste = sirala(q ? kume.filter((b) => eslesir(`${b.ad} ${b.yazar || ""}`, q)) : kume);
 
-  if (!store.belgeler.length && !dizgiler.length) return bos("tumu", "Masan boş.", `Bir PDF, EPUB ya da çizgi roman aç, ya da boş bir defterle başla. ${dosyaIpucu()}`, DOSYA_AC, YENI_DEFTER);
-  if (q && !liste.length) return bos("ara", `“${q}” bu kitaplıkta yok.`, "Kitapların içinde de aranabilir.", { etiket: "Her yerde ara", ikon: "ara", calistir: () => herYerdeAra(q) });
+  if (!store.belgeler.length && !dizgiler.length) return bos("tumu", t("Masan boş."), t("Bir PDF, EPUB ya da çizgi roman aç, ya da boş bir defterle başla. {ipucu}", { ipucu: dosyaIpucu() }), DOSYA_AC, YENI_DEFTER);
+  if (q && !liste.length) return bos("ara", t("“{q}” bu kitaplıkta yok.", { q }), t("Kitapların içinde de aranabilir."), { etiket: t("Her yerde ara"), ikon: "ara", calistir: () => herYerdeAra(q) });
   if (!liste.length) {
-    if (tercih.secim === "favoriler") return bos("yildiz", "Favori yok.", "Bir kapağın altındaki yıldıza dokun.", { etiket: "Tümünü göster", calistir: () => gorunumSec("tumu") });
-    if (tercih.secim === "defterler") return bos("defter", "Henüz defter yok.", "Çizgili, kareli, noktalı ya da Cornell kâğıdı seç.", YENI_DEFTER);
-    if (tercih.secim === "kitaplar") return bos("kitap", "Rafta kitap yok.", "EPUB ya da PDF kitaplarını buraya ekleyebilirsin.", DOSYA_AC);
-    if (tercih.secim === "cizgiler") return bos("cizgi-roman", "Çizgi roman rafı boş.", "CBZ dosyası aç; telefonda kare kare okunur. Bir PDF de menüsünden çizgi roman olarak okunur.", DOSYA_AC);
-    return bos("klasor", "Bu klasör boş.", "Bir kapağı uzun basıp Klasöre taşı’yı seçebilirsin.", { etiket: "Tümünü göster", calistir: () => gorunumSec("tumu") });
+    if (tercih.secim === "favoriler") return bos("yildiz", t("Favori yok."), t("Bir kapağın altındaki yıldıza dokun."), { etiket: t("Tümünü göster"), calistir: () => gorunumSec("tumu") });
+    if (tercih.secim === "defterler") return bos("defter", t("Henüz defter yok."), t("Çizgili, kareli, noktalı ya da Cornell kâğıdı seç."), YENI_DEFTER);
+    if (tercih.secim === "kitaplar") return bos("kitap", t("Rafta kitap yok."), t("EPUB ya da PDF kitaplarını buraya ekleyebilirsin."), DOSYA_AC);
+    if (tercih.secim === "cizgiler") return bos("cizgi-roman", t("Çizgi roman rafı boş."), t("CBZ dosyası aç; telefonda kare kare okunur. Bir PDF de menüsünden çizgi roman olarak okunur."), DOSYA_AC);
+    if (tercih.secim === "okunacak") return bos("raf-okunacak", t("Okunacak rafı boş."), t("Başlamadığın kitaplar burada durur. Bir kapağı seçip Rafa koy ile de ekleyebilirsin."), { etiket: t("Tümünü göster"), calistir: () => gorunumSec("tumu") });
+    if (tercih.secim === "okunuyor") return bos("raf-okunuyor", t("Yarıda kalan kitap yok."), t("Okumaya başladığın kitaplar kendiliğinden buraya gelir."), { etiket: t("Tümünü göster"), calistir: () => gorunumSec("tumu") });
+    if (tercih.secim === "bitti") return bos("raf-bitti", t("Henüz biten kitap yok."), t("Son sayfaya gelince kitap bu rafa geçer."), { etiket: t("Tümünü göster"), calistir: () => gorunumSec("tumu") });
+    return bos("klasor", t("Bu klasör boş."), t("Seç ile kapakları işaretleyip Klasöre taşı’yı seçebilirsin."), { etiket: t("Tümünü göster"), calistir: () => gorunumSec("tumu") });
   }
 
   if (q) {
-    f.append(bolumBaslik(`“${q}” için sonuçlar`, liste.length), belgeKumesi(liste));
-  } else if (tercih.secim === "favoriler") {
+    f.append(bolumBaslik(t("“{q}” için sonuçlar", { q }), liste.length), belgeKumesi(liste));
+  } else if (tercih.secim === "favoriler" || RAFLAR.includes(tercih.secim)) {
     f.append(belgeKumesi(liste));
   } else if (tercih.secim === "cizgiler") {
     f.append(cizgiRafCiz(liste));
@@ -1162,24 +1427,23 @@ function belgelerCiz() {
 function cizgiRafCiz(liste) {
   if (tercih.duzen === "liste") {
     return h("section", { class: "cizgi-bolum", "aria-labelledby": "cizgi-b" },
-      bolumUst("cizgi-b", "Çizgi roman rafı", "", `${liste.length} sayı`), belgeKumesi(liste));
+      bolumUst("cizgi-b", t("Çizgi roman rafı"), "", t("{n} sayı", { n: liste.length })), belgeKumesi(liste));
   }
-  const raf = h("div", { class: "cizgi-raf", role: "list", "aria-label": "Çizgi roman rafı" }, liste.map(cizgiOge), h("div", { class: "cizgi-raf-bos", "aria-hidden": "true" }));
+  const raf = h("div", { class: "cizgi-raf", role: "list", "aria-label": t("Çizgi roman rafı") }, liste.map(cizgiOge), h("div", { class: "cizgi-raf-bos", "aria-hidden": "true" }));
   return h("section", { class: "cizgi-bolum", "aria-labelledby": "cizgi-b" },
-    bolumUst("cizgi-b", "Çizgi roman rafı", "", `${liste.length} sayı`), raf);
+    bolumUst("cizgi-b", t("Çizgi roman rafı"), "", t("{n} sayı", { n: liste.length })), raf);
 }
 function cizgiOge(b) {
   if (b.dizgi) return h("div", { class: "cizgi-oge dizgi", role: "listitem", "aria-busy": "true", dataset: { id: b.id } },
-    h("div", { class: "kapak" }, dizgiKapak(b)), h("span", { class: "etiket" }, "Dizgide"), h("div", { class: "ad" }, b.ad));
+    h("div", { class: "kapak" }, dizgiKapak(b)), h("span", { class: "etiket" }, t("Dizgide")), h("div", { class: "ad" }, b.ad));
   const kapak = kapakOlustur(b);
   // Okunmakta olan sayı: poşetin sağ üst köşesinde bordo kurdele ucu
   const okunuyor = (b.sayfa || 1) > 1 && (b.sayfa || 1) < (b.sayfaSayisi || 1);
-  const bag = h("a", { class: "kapak" + (okunuyor ? " okunuyor" : ""), href: `#belge/${b.id}`, draggable: "false", "aria-label": `${b.ad}, ${konumMetni(b)}, aç` }, kapak);
-  bag.addEventListener("click", (e) => { e.preventDefault(); belgeAcIstegi(b, kapak); });
-  uzunBasma(bag, () => belgeFisi(b, kapak));
+  const bag = h("a", { class: "kapak" + (okunuyor ? " okunuyor" : ""), href: `#belge/${b.id}`, draggable: "false", "aria-label": t("{ad}, {konum}, aç", { ad: b.ad, konum: konumMetni(b) }) }, kapak);
+  kapakBagla(bag, b, kapak);
   return h("div", { class: "cizgi-oge belge", role: "listitem", dataset: { id: b.id } },
     bag,
-    h("span", { class: "etiket" }, b.sayi ? `#${b.sayi}` : `${b.sayfaSayisi || 1} s.`),
+    h("span", { class: "etiket" }, b.sayi ? `#${b.sayi}` : t("{n} s.", { n: b.sayfaSayisi || 1 })),
     h("div", { class: "ad" }, vurgula(b.ad, arama)),
     b.seri || b.yazar ? h("div", { class: "seri" }, b.seri || b.yazar) : null);
 }
@@ -1194,9 +1458,9 @@ function rafCiz(liste) {
   const kitap = liste.every((b) => b.tur === "epub");
   const govde = tercih.duzen === "liste"
     ? belgeKumesi(liste)
-    : h("div", { class: "raf-kap" }, h("div", { class: "raf", role: "list", "aria-label": "Okuma rafı" }, liste.map((b) => belgeHucre(b, "raf-oge"))));
+    : h("div", { class: "raf-kap" }, h("div", { class: "raf", role: "list", "aria-label": t("Okuma rafı") }, liste.map((b) => belgeHucre(b, "raf-oge"))));
   return h("section", { class: "raf-bolum", "aria-labelledby": "raf-b" },
-    bolumUst("raf-b", "Okuma rafı", "Raf I · Koltuk", `${liste.length} ${kitap ? "kitap" : "belge"}`), govde);
+    bolumUst("raf-b", t("Okuma rafı"), t("Raf I · Koltuk"), kitap ? t("{n} kitap", { n: liste.length }) : t("{n} belge", { n: liste.length })), govde);
 }
 
 // Çalışma masası: ders (klasör) başına kareli şerit, altında ızgara; klasörsüzler en sonda
@@ -1205,7 +1469,7 @@ function masaCiz(liste) {
   const klasorsuz = liste.filter((b) => !klasorBul(b.klasor));
   if (klasorsuz.length) gruplar.push([null, klasorsuz]);
   return h("section", { class: "masa-bolum", "aria-labelledby": "masa-b" },
-    bolumUst("masa-b", "Çalışma masası", "Raf II · Masa", `${liste.length} belge`),
+    bolumUst("masa-b", t("Çalışma masası"), t("Raf II · Masa"), t("{n} belge", { n: liste.length })),
     gruplar.map(([k, l]) => dersCiz(k, l)));
 }
 
@@ -1214,8 +1478,8 @@ function dersCiz(klasor, liste) {
   const kart = store.kartlar.filter((c) => idler.has(c.belgeId)).length;
   const serit = h("div", { class: "ders-serit kareli" + (klasor ? "" : " klasorsuz") },
     klasor ? h("i", { class: "kumas-sekme", style: `--c:${klasor.renk}`, "aria-hidden": "true" }) : null,
-    h("h3", {}, klasor ? klasor.ad : "Klasörsüz"),
-    h("span", { class: "t-deger-k" }, `${liste.length} belge · ${kart} kart`));
+    h("h3", {}, klasor ? klasor.ad : t("Klasörsüz")),
+    h("span", { class: "t-deger-k" }, t("{n} belge · {kart} kart", { n: liste.length, kart })));
   return h("div", { class: "ders", style: klasor ? `--c:${klasor.renk}` : null }, serit, belgeKumesi(liste));
 }
 
@@ -1230,7 +1494,7 @@ function kaldiginCiz() {
   const kap = h("div", { class: "kaldigin" });
   for (const b of son) {
     const kapak = kapakOlustur(b, { mini: true });
-    const a = h("a", { href: `#belge/${b.id}`, draggable: "false", "aria-label": `${b.ad}, ${konumMetni(b)}, kaldığın yerden aç` },
+    const a = h("a", { href: `#belge/${b.id}`, draggable: "false", "aria-label": t("{ad}, {konum}, kaldığın yerden aç", { ad: b.ad, konum: konumMetni(b) }) },
       h("div", { class: "mini kapak-sahne" }, kapak),
       h("div", {}, h("div", { class: "ad" }, b.ad), h("div", { class: "meta" }, konumMetni(b))),
       h("div", { class: "ilerleme", "aria-hidden": "true" }, h("i", { style: `--p:${(ilerlemeOrani(b) * 100).toFixed(1)}%` })));
@@ -1238,15 +1502,14 @@ function kaldiginCiz() {
     uzunBasma(a, () => belgeFisi(b, kapak));
     kap.append(a);
   }
-  return h("section", { class: "kaldigin-bolum", "aria-labelledby": "kaldiginBaslik" }, h("h2", { class: "bolum-baslik t-b2", id: "kaldiginBaslik" }, "Kaldığın yerden"), kap);
+  return h("section", { class: "kaldigin-bolum", "aria-labelledby": "kaldiginBaslik" }, h("h2", { class: "bolum-baslik t-b2", id: "kaldiginBaslik" }, t("Kaldığın yerden")), kap);
 }
 
 function belgeHucre(b, ekSinif = "") {
   if (b.dizgi) return dizgiHucre(b, ekSinif);
   const kapak = kapakOlustur(b);
-  const sahneEl = h("a", { class: "kapak-sahne", href: `#belge/${b.id}`, draggable: "false", "aria-label": `${b.ad}, aç` }, kapak);
-  sahneEl.addEventListener("click", (e) => { e.preventDefault(); belgeAcIstegi(b, kapak); });
-  uzunBasma(sahneEl, () => belgeFisi(b, kapak));
+  const sahneEl = h("a", { class: "kapak-sahne", href: `#belge/${b.id}`, draggable: "false", "aria-label": t("{ad}, aç", { ad: b.ad }) }, kapak);
+  kapakBagla(sahneEl, b, kapak);
   const klasor = klasorBul(b.klasor);
   // Arama yalnız alt başlıkta eşleştiyse meta satırı onu fosforlu gösterir: sonucun nedeni görünür
   const q = arama.trim();
@@ -1266,17 +1529,16 @@ function oduncSayaci(b) {
   const o = oduncOzet(b);
   if (!o.gun && !o.bitti) return null;
   const metin = o.bitti
-    ? `Bitti · ${new Date(o.bitti).toLocaleDateString("tr", { day: "2-digit", month: "2-digit" })}`
-    : `${o.gun} gün · ${sureMetni(o.saniye)}`;
-  return h("p", { class: "odunc-sayac", title: o.gun ? `${o.gun} gün okundu, toplam ${sureMetni(o.saniye)}` : null }, metin);
+    ? `${BITTI_RAF} · ${new Date(o.bitti).toLocaleDateString(yerel, { day: "2-digit", month: "2-digit" })}`
+    : t("{gun} gün · {sure}", { gun: o.gun, sure: sureMetni(o.saniye) });
+  return h("p", { class: "odunc-sayac", title: o.gun ? t("{gun} gün okundu, toplam {sure}", { gun: o.gun, sure: sureMetni(o.saniye) }) : null }, metin);
 }
 
 function belgeSatir(b) {
   if (b.dizgi) return dizgiSatir(b);
   const kapak = kapakOlustur(b, { mini: true });
-  const bag = h("a", { class: "satir-bag", href: `#belge/${b.id}`, draggable: "false", "aria-label": `${b.ad}, aç` });
-  bag.addEventListener("click", (e) => { e.preventDefault(); belgeAcIstegi(b, kapak); });
-  uzunBasma(bag, () => belgeFisi(b, kapak));
+  const bag = h("a", { class: "satir-bag", href: `#belge/${b.id}`, draggable: "false", "aria-label": t("{ad}, aç", { ad: b.ad }) });
+  kapakBagla(bag, b, kapak);
   const klasor = klasorBul(b.klasor);
   const q = arama.trim();
   const altEslesme = q && b.yazar && !eslesir(b.ad, q) && eslesir(b.yazar, q);
@@ -1285,13 +1547,13 @@ function belgeSatir(b) {
     h("div", { style: "min-width:0" },
       h("div", { class: "ad" }, vurgula(b.ad, arama)),
       h("div", { class: "t-kucuk" }, konumMetni(b) + (klasor ? ` · ${klasor.ad}` : ""), altEslesme ? [" · ", vurgula(b.yazar, arama)] : null)),
-    h("span", { class: "ne-zaman" }, b.acilis ? `${neZaman(b.acilis)} açıldı` : "henüz açılmadı"),
+    h("span", { class: "ne-zaman" }, b.acilis ? t("{zaman} açıldı", { zaman: neZaman(b.acilis) }) : t("henüz açılmadı")),
     yildizDugme(b),
     bag);
 }
 
 function yildizDugme(b) {
-  const d = h("button", { class: "yildiz", type: "button", "aria-pressed": String(!!b.favori), "aria-label": b.favori ? "Favorilerden çıkar" : "Favorilere ekle" }, icon("yildiz"));
+  const d = h("button", { class: "yildiz", type: "button", "aria-pressed": String(!!b.favori), "aria-label": b.favori ? t("Favorilerden çıkar") : t("Favorilere ekle") }, icon("yildiz"));
   d.addEventListener("click", () => favoriDegistir(b, d));
   return d;
 }
@@ -1302,7 +1564,7 @@ function favoriDegistir(b, dugme) {
   try { bus.emit("belgeler", { tur: "favori", id: b.id }); } finally { sessiz = false; }
   if (tercih.secim === "favoriler") {
     kitaplikYenile();
-    if (!b.favori) toast("Favorilerden çıkarıldı", { etiket: "Geri al", calistir: () => favoriDegistir(b) });
+    if (!b.favori) toast(t("Favorilerden çıkarıldı"), { etiket: t("Geri al"), calistir: () => favoriDegistir(b) });
     return;
   }
   // Yerinde güncelle: yıldız dolar, kurdele kapağın üstünden sarkar
@@ -1310,7 +1572,7 @@ function favoriDegistir(b, dugme) {
     const y = $(".yildiz", satir);
     if (y) {
       y.setAttribute("aria-pressed", String(b.favori));
-      y.setAttribute("aria-label", b.favori ? "Favorilerden çıkar" : "Favorilere ekle");
+      y.setAttribute("aria-label", b.favori ? t("Favorilerden çıkar") : t("Favorilere ekle"));
       if (y === dugme && b.favori && !hareketAz()) { y.classList.remove("basildi"); void y.offsetWidth; y.classList.add("basildi"); }
     }
     const kapak = $("a.kapak-sahne > *", satir);
@@ -1322,6 +1584,278 @@ function favoriDegistir(b, dugme) {
   baslikGuncelle();
 }
 
+/* ---------- Çoklu seçim ve toplu işlem (K6) ---------- */
+// "Seç" düğmesi, kapağa uzun basma ya da masaüstünde Ctrl/Shift tıklaması seçim kipini açar. Seçim kipinde kapaklar
+// role="button" ve aria-pressed taşır; Esc, Bitti ve geri hareketi kipi kapatır (kip açılınca geçmişe bir adım itilir).
+const secim = { acik: false, idler: new Set(), capa: null, gecmis: false };
+// Seçim kipini kapatan düğme: Türkçede raf adıyla aynı "Bitti", İngilizcede "Done" (raf adı "Finished")
+const BITTI_DUGME = ingilizceMi ? "Done" : "Bitti";
+let secimGeriYut = false;
+const seciliBelgeler = () => store.belgeler.filter((b) => secim.idler.has(b.id));
+// Görünen sırayla seçilebilir belge kimlikleri (dizgi kartları hariç)
+const gorunenIdler = () => [...new Set($$(".belge[data-id], .belge-satir[data-id], .cizgi-oge.belge[data-id]", K.sonuclar)
+  .filter((x) => !x.classList.contains("cop-satir") && !x.closest(".kaldigin")).map((x) => x.dataset.id))].filter((id) => belgeBul(id));
+
+function kapakBagla(el, b, kapak) {
+  el.addEventListener("click", (e) => {
+    e.preventDefault();
+    const ek = (e.ctrlKey || e.metaKey || e.shiftKey) && matchMedia("(pointer: fine)").matches;
+    if (secim.acik || ek) {
+      if (!secim.acik) secimKipi(true);
+      if (e.shiftKey && secim.capa) aralikSec(secim.capa, b.id); else secimDegistir(b.id);
+      return;
+    }
+    belgeAcIstegi(b, kapak);
+  });
+  // Seçim kipinde Boşluk da seçer (role="button")
+  el.addEventListener("keydown", (e) => { if (secim.acik && e.key === " ") { e.preventDefault(); secimDegistir(b.id); } });
+  uzunBasma(el, () => { if (!secim.acik) secimKipi(true); secim.idler.add(b.id); secim.capa = b.id; secimIsaretle(); }, () => belgeFisi(b, kapak));
+}
+
+function secimKipi(ac, { gecmisle = true } = {}) {
+  ac = !!ac;
+  if (ac === secim.acik) return;
+  fisKapat(true);
+  secim.acik = ac;
+  if (!ac) { secim.idler.clear(); secim.capa = null; }
+  K.kok.classList.toggle("secim-kipi", ac);
+  K.secDugme.setAttribute("aria-pressed", String(ac));
+  $("span", K.secDugme).textContent = ac ? BITTI_DUGME : t("Seç");
+  K.secimCubugu.hidden = !ac;
+  if (ac) {
+    history.pushState({ ...(history.state || {}), secimKipi: true }, "", location.href);
+    secim.gecmis = true;
+    if (!hareketAz()) { K.secimCubugu.classList.remove("gel"); void K.secimCubugu.offsetWidth; K.secimCubugu.classList.add("gel"); }
+  } else if (secim.gecmis) {
+    secim.gecmis = false;
+    if (gecmisle && history.state?.secimKipi) { secimGeriYut = true; history.back(); }
+  }
+  secimIsaretle();
+}
+function secimDegistir(id) {
+  if (secim.idler.has(id)) secim.idler.delete(id); else secim.idler.add(id);
+  secim.capa = id;
+  secimIsaretle();
+}
+function aralikSec(a, b) {
+  const ids = gorunenIdler(), i = ids.indexOf(a), j = ids.indexOf(b);
+  if (i < 0 || j < 0) { secimDegistir(b); return; }
+  for (const id of ids.slice(Math.min(i, j), Math.max(i, j) + 1)) secim.idler.add(id);
+  secim.capa = b;
+  secimIsaretle();
+}
+function tumunuSec() {
+  const ids = gorunenIdler();
+  if (ids.length && ids.every((id) => secim.idler.has(id))) secim.idler.clear();
+  else for (const id of ids) secim.idler.add(id);
+  secimIsaretle();
+}
+// Kapaklar ve satırlar: seçim kipinde düğme (aria-pressed), değilse bağlantı
+function secimIsaretle() {
+  for (const kap of $$(".belge[data-id], .belge-satir[data-id], .cizgi-oge.belge[data-id]", K.sonuclar)) {
+    if (kap.classList.contains("cop-satir") || kap.closest(".kaldigin")) continue;
+    const bag = $(":scope > a.kapak-sahne, :scope > .satir-bag, :scope > a.kapak", kap);
+    const sec = secim.acik && secim.idler.has(kap.dataset.id);
+    kap.classList.toggle("secili", sec);
+    if (!bag) continue;
+    if (secim.acik) { bag.setAttribute("role", "button"); bag.setAttribute("aria-pressed", String(sec)); }
+    else { bag.removeAttribute("role"); bag.removeAttribute("aria-pressed"); }
+  }
+  K.secimCubugu?._guncelle();
+}
+
+function secimCubuguKur() {
+  const sayi = h("span", { class: "secim-sayi", role: "status" });
+  const eylem = (ik, ad, fn) => {
+    const d = h("button", { class: "secim-eylem", type: "button" }, icon(ik, "i-20"), h("span", {}, ad));
+    d.addEventListener("click", (e) => fn(d, e.detail === 0));
+    return d;
+  };
+  const tasi = eylem("klasor", t("Klasöre taşı"), topluKlasor);
+  const raf = eylem("raf-okunuyor", t("Rafa koy"), topluRaf);
+  const fav = eylem("yildiz", t("Favori"), () => topluFavori());
+  const daha = eylem("daha", t("Seçenekler"), (d) => { const [b] = seciliBelgeler(); if (b) belgeFisi(b, d); });
+  const silEtiket = h("span", {}, t("Sil"));
+  const sil = h("button", { class: "secim-eylem tehlikeli", type: "button" }, icon("sil", "i-20"), silEtiket);
+  onayla(sil, silEtiket, t("Emin misin?"), topluSil);
+  const tumu = eylem("sec", t("Tümünü seç"), () => tumunuSec());
+  const bitti = h("button", { class: "secim-bitti", type: "button", onclick: () => secimKipi(false) }, BITTI_DUGME);
+  const el = h("div", { class: "secim-cubugu", role: "toolbar", "aria-label": t("Seçilenler"), hidden: true },
+    sayi, h("i", { class: "secim-ayrac", "aria-hidden": "true" }), tasi, raf, fav, daha, sil,
+    h("i", { class: "secim-ayrac", "aria-hidden": "true" }), tumu, bitti);
+  el._guncelle = () => {
+    const l = seciliBelgeler(), n = l.length;
+    sayi.textContent = n ? t("{n} seçildi", { n }) : t("Seç");
+    for (const d of [tasi, raf, fav, sil]) d.disabled = !n;
+    daha.hidden = n !== 1;
+    $("span", fav).textContent = n && l.every((b) => b.favori) ? t("Favoriden çıkar") : t("Favori");
+    fav.setAttribute("aria-pressed", String(!!n && l.every((b) => b.favori)));
+    const ids = gorunenIdler();
+    $("span", tumu).textContent = ids.length && ids.every((id) => secim.idler.has(id)) ? t("Seçimi kaldır") : t("Tümünü seç");
+  };
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const d = $$("button", el).filter((x) => !x.disabled && !x.hidden && x.getClientRects().length);
+    const i = d.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    d[(i + (e.key === "ArrowRight" ? 1 : -1) + d.length) % d.length].focus();
+  });
+  return el;
+}
+// Toplu işlemler tek geri alınabilir işlem (K6 kabul 4): eski değerler saklanır, "Geri al" hepsini döndürür
+function topluUygula(l, alan, deger, metin) {
+  const eski = l.map((b) => [b, b[alan]]);
+  for (const b of l) { if (deger === undefined) delete b[alan]; else b[alan] = deger; }
+  bus.emit("belgeler", { tur: "toplu" });
+  secimKipi(false);
+  toast(metin, { etiket: t("Geri al"), calistir: () => {
+    for (const [b, v] of eski) { if (v === undefined) delete b[alan]; else b[alan] = v; }
+    bus.emit("belgeler", { tur: "toplu" });
+  } });
+}
+function topluKlasor(capa, klavye) {
+  const l = seciliBelgeler();
+  if (!l.length) return;
+  const uygula = (id) => { fisKapat(true); topluUygula(l, "klasor", id, id ? t("{n} belge {klasor} klasörüne taşındı", { n: l.length, klasor: klasorBul(id).ad }) : t("{n} belge klasörden çıkarıldı", { n: l.length })); };
+  fisAc(capa, [h("div", { class: "fis-baslik" }, t("{n} belgeyi taşı", { n: l.length })),
+    ...KLASORLER.map((k) => secenekSatir(h("i", { class: "kumas-sekme", style: `--c:${k.renk}` }), k.ad, l.every((b) => b.klasor === k.id), () => uygula(k.id))),
+    h("div", { class: "fis-ayrac" }),
+    secenekSatir(icon("kapat", "i-20"), t("Klasörsüz"), l.every((b) => !b.klasor), () => uygula(undefined))],
+  { hiza: "ust-sol", etiket: t("Klasöre taşı"), klavye });
+}
+const RAF_ADLARI = { okunacak: t("Okunacak"), okunuyor: t("Okunuyor"), bitti: t("Bitti") };
+function rafSecenekleri(l, uygula) {
+  return [...RAFLAR.map((r) => secenekSatir(icon("raf-" + r, "i-20"), RAF_ADLARI[r], l.every((b) => b.raf === r), () => uygula(r))),
+    h("div", { class: "fis-ayrac" }),
+    secenekSatir(icon("tema-oto", "i-20"), t("İlerlemeye göre"), l.every((b) => !b.raf), () => uygula(undefined))];
+}
+function topluRaf(capa, klavye) {
+  const l = seciliBelgeler().filter((b) => b.tur !== "defter");
+  if (!l.length) { toast(t("Defterler rafa konmaz; seçimde kitap yok.")); return; }
+  fisAc(capa, [h("div", { class: "fis-baslik" }, t("Rafa koy")), ...rafSecenekleri(l, (r) => {
+    fisKapat(true);
+    topluUygula(l, "raf", r, r ? t("{n} belge {raf} rafına kondu", { n: l.length, raf: RAF_ADLARI[r] }) : t("{n} belgenin rafı ilerlemeye göre", { n: l.length }));
+  })], { hiza: "ust-sol", etiket: t("Rafa koy"), klavye });
+}
+function topluFavori() {
+  const l = seciliBelgeler();
+  if (!l.length) return;
+  const yeni = !l.every((b) => b.favori);
+  topluUygula(l, "favori", yeni, yeni ? t("{n} belge favorilere eklendi", { n: l.length }) : t("{n} belge favorilerden çıkarıldı", { n: l.length }));
+}
+function topluSil() {
+  const l = seciliBelgeler();
+  if (!l.length) return;
+  const giden = l.map((b) => kayit.copaAt(b, { yay: false })).filter(Boolean);
+  bus.emit("belgeler", { tur: "sil" });
+  secimKipi(false);
+  toast(t("{n} belge çöpe taşındı", { n: giden.length }), { etiket: t("Geri al"), calistir: () => {
+    for (const g of [...giden].reverse()) kayit.coptenGeriAl(g.belge.id, { yay: false });
+    bus.emit("belgeler", { tur: "ekle" });
+  } });
+}
+
+/* ---------- Künye penceresi (K8) ---------- */
+// Ad, yazar, seri, cilt no ve kapak (görsel seç ya da üretilen kapağa dön). Telefonda alt çekmece
+function kunyeAc(b, acan = document.activeElement) {
+  fisKapat(true);
+  const alan = (ad, deger, ek = {}) => {
+    const girdi = h("input", { class: "girdi", value: deger ?? "", autocomplete: "off", ...ek });
+    return [h("label", { class: "kunye-alan" }, h("span", { class: "t-etiket" }, ad), girdi), girdi];
+  };
+  const [adA, adG] = alan(t("Ad"), b.ad, { maxlength: "200", required: true, enterkeyhint: "next" });
+  const [yazarA, yazarG] = alan(b.tur === "defter" ? t("Alt başlık") : t("Yazar"), b.yazar, { maxlength: "160", enterkeyhint: "next" });
+  const [seriA, seriG] = alan(t("Seri"), b.seri, { maxlength: "120", enterkeyhint: "next", list: "kunye-seriler" });
+  const [ciltA, ciltG] = alan(t("Cilt"), b.cilt, { type: "number", min: "0", step: "any", inputmode: "decimal", enterkeyhint: "done" });
+  ciltA.classList.add("kunye-cilt");
+  const seriler = [...new Set(store.belgeler.map((x) => x.seri).filter(Boolean))];
+  const liste = h("datalist", { id: "kunye-seriler" }, seriler.map((s) => h("option", { value: s })));
+  let yeniKapak = null, kapakSifirla = false;
+  const onizleme = h("div", { class: "kunye-kapak kapak-sahne" }, kapakOlustur(b));
+  const kapakGirdi = h("input", { type: "file", accept: "image/*", hidden: true });
+  const kapakSec = h("button", { class: "ikincil", type: "button" }, icon("gorsel", "i-20"), t("Görsel seç"));
+  const kapakGeri = h("button", { class: "metin-dugme", type: "button", hidden: !b.kapakElle }, t("Üretilen kapağa dön"));
+  kapakSec.addEventListener("click", () => kapakGirdi.click());
+  kapakGirdi.addEventListener("change", () => {
+    const f = kapakGirdi.files[0];
+    kapakGirdi.value = "";
+    if (!f || !/^image\//.test(f.type)) return;
+    yeniKapak = f; kapakSifirla = false;
+    const url = URL.createObjectURL(f);
+    onizleme.replaceChildren(h("div", { class: "kapak-kitap gorselli", "aria-hidden": "true" }, h("img", { class: "kapak-gorsel", src: url, alt: "" })));
+    kapakGeri.hidden = false;
+  });
+  kapakGeri.addEventListener("click", () => {
+    yeniKapak = null; kapakSifirla = true; kapakGeri.hidden = true;
+    const { kapakElle, kapakGorsel, ...geri } = b;
+    onizleme.replaceChildren(kapakOlustur(b.dosya ? { ...geri, kapakGorsel: b.kapakElle ? null : kapakGorsel } : geri));
+  });
+  const form = h("form", { class: "kunye-form" },
+    h("div", { class: "kunye-ust" }, onizleme, h("div", { class: "kunye-kapak-eylem" }, kapakSec, kapakGeri, kapakGirdi)),
+    adA, yazarA, h("div", { class: "kunye-seri" }, seriA, ciltA), liste);
+  const kaydet = async () => {
+    const ad = adG.value.trim();
+    if (!ad) { adG.focus(); toast(t("Belgenin bir adı olmalı.")); return false; }
+    b.ad = ad;
+    const yaz = (k, v) => { if (v === "" || v == null) delete b[k]; else b[k] = v; };
+    yaz("yazar", yazarG.value.trim());
+    yaz("seri", seriG.value.trim().slice(0, 120));
+    const c = Number.parseFloat(ciltG.value);
+    yaz("cilt", b.seri && Number.isFinite(c) && c > 0 ? c : "");
+    for (const k of store.kirpintilar) if (k.belgeId === b.id) k.belgeAd = ad;
+    bus.emit("belgeler", { tur: "kunye", id: b.id });
+    try {
+      if (yeniKapak) await kayit.kapakDegistir(b, yeniKapak);
+      else if (kapakSifirla) await kayit.kapakDegistir(b, null);
+    } catch (hata) { console.warn("[kenar-notu] Kapak kaydedilemedi:", hata); toast(t("Kapak görseli okunamadı.")); }
+    toast(t("“{ad}” künyesi güncellendi", { ad }));
+    return true;
+  };
+  const alt = (kapat) => h("div", { class: "pencere-alt" },
+    h("button", { class: "metin-dugme", type: "button", onclick: kapat }, t("Vazgeç")),
+    h("button", { class: "birincil", type: "submit" }, t("Kaydet")));
+  if (cekmeceMi()) {
+    let c = null;
+    form.append(alt(() => c?.kapat()));
+    form.addEventListener("submit", async (e) => { e.preventDefault(); if (await kaydet()) c?.kapat(); });
+    c = altCekmece({ baslik: t("Künye"), govde: form, duraklar: ["tam"], ilk: "tam", sinif: "kunye-cekmece", acan });
+    setTimeout(() => adG.focus({ preventScroll: true }), 300);
+    return;
+  }
+  const dlg = h("dialog", { class: "pencere kunye-pencere", "aria-labelledby": "kunyeBaslik" },
+    h("header", { class: "ayarlar-ust" }, h("h2", { class: "t-b2", id: "kunyeBaslik" }, t("Künye")),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => dlg.close() }, icon("kapat"))),
+    form);
+  form.append(alt(() => dlg.close()));
+  form.addEventListener("submit", async (e) => { e.preventDefault(); if (await kaydet()) dlg.close(); });
+  dlg.addEventListener("close", () => acan?.isConnected && acan.focus?.({ preventScroll: true }));
+  pencereKur(dlg);
+  adG.focus();
+  adG.select();
+}
+
+// Çoğalt (K8): dosya paylaşılır, veri kopyalanır
+async function belgeCogalt(b) {
+  fisKapat(true);
+  try {
+    const yeni = await kayit.belgeCogalt(b);
+    toast(t("“{ad}” hazır", { ad: yeni.ad }), { etiket: t("Aç"), calistir: () => belgeAcIstegi(yeni, kapakBul(yeni.id)) });
+  } catch (hata) {
+    console.warn("[kenar-notu] Çoğaltılamadı:", hata);
+    toast(t("Belge çoğaltılamadı."));
+  }
+}
+// Özgün dosyayı paylaş (K8): notsuz, içe aktarıldığı hâliyle (disa-aktar.js paylas)
+async function ozgunPaylas(b) {
+  fisKapat(true);
+  const blob = await kayit.dosyaGetir(b.id);
+  if (!blob) { toast(t("Dosya okunamadı.")); return; }
+  const uzanti = { pdf: "pdf", epub: "epub", cizgi: "cbz" }[b.tur] || "bin";
+  const ad = `${String(b.ad).replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 120) || t("belge")}.${uzanti}`;
+  await dosyaPaylas(blob, ad);
+}
+
 /* ---------- Bağlam fişi: belge ---------- */
 function belgeFisi(b, capa) {
   const icerik = h("div");
@@ -1329,46 +1863,52 @@ function belgeFisi(b, capa) {
     const klasor = klasorBul(b.klasor);
     icerik.replaceChildren(
       h("div", { class: "fis-baslik" }, b.ad),
-      fisSatir("yildiz", b.favori ? "Favorilerden çıkar" : "Favorilere ekle", null, () => { fisKapat(); favoriDegistir(b); }),
-      fisSatir("metin", "Yeniden adlandır", null, adlandir),
-      fisSatir("klasor", "Klasöre taşı", klasor ? `Şu an: ${klasor.ad}` : "Klasörsüz", klasorSec),
+      fisSatir("yildiz", b.favori ? t("Favorilerden çıkar") : t("Favorilere ekle"), null, () => { fisKapat(); favoriDegistir(b); }),
+      fisSatir("metin", t("Yeniden adlandır"), null, adlandir),
+      // 7.0 (K8): künye penceresi; ad, yazar, seri, cilt ve kapak
+      fisSatir("kunye", t("Künyeyi düzenle"), b.seri ? `${b.seri}${b.cilt ? ` · ${t("{n}. cilt", { n: b.cilt })}` : ""}` : t("Ad, yazar, seri, kapak"), () => kunyeAc(b, capa)),
+      fisSatir("klasor", t("Klasöre taşı"), klasor ? t("Şu an: {ad}", { ad: klasor.ad }) : t("Klasörsüz"), klasorSec),
+      ...(b.tur !== "defter" ? [fisSatir("raf-" + (rafAl(b) || "okunacak"), t("Rafa koy"), rafAl(b) ? `${RAF_ADLARI[rafAl(b)]}${b.raf ? "" : ` · ${t("ilerlemeye göre")}`}` : t("Çalışma belgesi, rafta değil"), rafSec)] : []),
+      fisSatir("cogalt", t("Çoğalt"), t("Notlarıyla birlikte ikinci kopya"), () => belgeCogalt(b)),
+      ...(b.dosya ? [fisSatir("paylas", t("Özgün dosyayı paylaş"), t("Notsuz, içe aktarıldığı hâliyle"), () => ozgunPaylas(b))] : []),
+      fisSatir("sec", t("Seç"), t("Birden çok belgeyle işlem"), () => { fisKapat(true); secimKipi(true); secim.idler.add(b.id); secim.capa = b.id; secimIsaretle(); }),
       // Kitabın dili (OZELLIKLER-6 §2): çeviri düğmeleri hedef dilden farklıysa görünür
-      ...(dilDestekli(b) ? [fisSatir("ceviri", "Kitabın dili", dilOzet(b), dilSec)] : []),
+      ...(dilDestekli(b) ? [fisSatir("ceviri", t("Kitabın dili"), dilOzet(b), dilSec)] : []),
       // Cep defteri: altı çizilen, yuvarlak içine alınan ve kenarına işaret konan yerler (OZELLIKLER-5)
-      fisSatir("izler", "Cep defteri", "Kalemin değdiği yerler", () => { fisKapat(true); bus.emit("defter:ac", { belgeId: b.id }); }),
+      fisSatir("izler", t("Cep defteri"), t("Kalemin değdiği yerler"), () => { fisKapat(true); bus.emit("defter:ac", { belgeId: b.id }); }),
       // Bir PDF çizgi roman olarak da okunabilir: sayfa sayfa, panel panel (cizgi.js)
       // replaceChildren null'u "null" yazısına çevirir: satır yoksa hiç eklenmez
-      ...(b.tur === "pdf" && b.dosya ? [fisSatir("cizgi-roman", b.cizgi ? "Belge olarak oku" : "Çizgi roman olarak oku",
-        b.cizgi ? "Masa ve Koltuk’ta açılır" : "Sayfa ve panel görünümü, karanlık zemin", () => cizgiDegistir(b))] : []),
+      ...(b.tur === "pdf" && b.dosya ? [fisSatir("cizgi-roman", b.cizgi ? t("Belge olarak oku") : t("Çizgi roman olarak oku"),
+        b.cizgi ? t("Masa ve Koltuk’ta açılır") : t("Sayfa ve panel görünümü, karanlık zemin"), () => cizgiDegistir(b))] : []),
       // Belge değiştikçe günde bir kez saklanan önceki hâller (OZELLIKLER-8 §3.2)
-      fisSatir("geri-al", "Önceki hâline dön", "Son 7 günün kayıtları", oncekiSec),
+      fisSatir("geri-al", t("Önceki hâline dön"), t("Son 7 günün kayıtları"), oncekiSec),
       h("div", { class: "fis-ayrac" }),
-      silSatiri("Sil", () => { fisKapat(true); belgeSil(b); }));
+      silSatiri(t("Sil"), () => { fisKapat(true); belgeSil(b); }));
   };
   const oncekiSec = async () => {
-    const baslik = h("div", { class: "fis-baslik" }, "Önceki hâline dön");
-    icerik.replaceChildren(baslik, h("p", { class: "onceki-not" }, "Bakılıyor"));
+    const baslik = h("div", { class: "fis-baslik" }, t("Önceki hâline dön"));
+    icerik.replaceChildren(baslik, h("p", { class: "onceki-not" }, t("Bakılıyor")));
     aktifFis?.konumla();
     const { liste, buyuk } = await kayit.oncekiHaller(b.id);
     if (!icerik.isConnected) return;
     const satirlar = liste.map((g) => h("button", { class: "fis-satir onceki-satir", type: "button", role: "menuitem", onclick: () => oncekiyeDon(b, g) },
       icon(g.donus ? "geri-al" : "kronometre", "i-20"), h("span", {}, oncekiTarih(g)),
-      h("small", {}, (g.donus ? "Dönmeden önceki hâl · " : "") + oncekiOzet(g.ozet))));
+      h("small", {}, (g.donus ? `${t("Dönmeden önceki hâl")} · ` : "") + oncekiOzet(g.ozet))));
     icerik.replaceChildren(baslik,
-      ...(satirlar.length ? satirlar : [h("p", { class: "onceki-not" }, "Henüz önceki hâl yok. Belge değiştikçe günde bir kez saklanır.")]),
-      ...(buyuk ? [h("p", { class: "onceki-not" }, "Belge çok büyük; yeni önceki hâller saklanmıyor.")] : []),
+      ...(satirlar.length ? satirlar : [h("p", { class: "onceki-not" }, t("Henüz önceki hâl yok. Belge değiştikçe günde bir kez saklanır."))]),
+      ...(buyuk ? [h("p", { class: "onceki-not" }, t("Belge çok büyük; yeni önceki hâller saklanmıyor."))] : []),
       h("div", { class: "fis-ayrac" }),
-      h("button", { class: "fis-satir", type: "button", role: "menuitem", onclick: () => { anaMenu(); aktifFis?.konumla(); } }, icon("sol", "i-20"), h("span", {}, "Geri")));
+      h("button", { class: "fis-satir", type: "button", role: "menuitem", onclick: () => { anaMenu(); aktifFis?.konumla(); } }, icon("sol", "i-20"), h("span", {}, t("Geri"))));
     aktifFis?.konumla();
     $("button", icerik)?.focus();
   };
   const adlandir = () => {
-    const girdi = h("input", { class: "ad-alani kucuk", value: b.ad, "aria-label": "Belgenin yeni adı", maxlength: "120", autocomplete: "off", enterkeyhint: "done" });
+    const girdi = h("input", { class: "ad-alani kucuk", value: b.ad, "aria-label": t("Belgenin yeni adı"), maxlength: "120", autocomplete: "off", enterkeyhint: "done" });
     const form = h("form", { class: "fis-form" },
-      h("span", { class: "t-etiket" }, "Yeni ad"), girdi,
+      h("span", { class: "t-etiket" }, t("Yeni ad")), girdi,
       h("div", { class: "fis-form-alt" },
-        h("button", { class: "metin-dugme", type: "button", onclick: () => { anaMenu(); aktifFis?.konumla(); } }, "Vazgeç"),
-        h("button", { class: "metin-dugme vurgulu", type: "submit" }, "Kaydet")));
+        h("button", { class: "metin-dugme", type: "button", onclick: () => { anaMenu(); aktifFis?.konumla(); } }, t("Vazgeç")),
+        h("button", { class: "metin-dugme vurgulu", type: "submit" }, t("Kaydet"))));
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const ad = girdi.value.trim();
@@ -1389,56 +1929,68 @@ function belgeFisi(b, capa) {
       if (b.klasor === id) return;
       b.klasor = id;
       bus.emit("belgeler", { tur: "tasi", id: b.id });
-      toast(id ? `${klasorBul(id).ad} klasörüne taşındı` : "Klasörden çıkarıldı");
+      toast(id ? t("{klasor} klasörüne taşındı", { klasor: klasorBul(id).ad }) : t("Klasörden çıkarıldı"));
     };
     icerik.replaceChildren(
-      h("div", { class: "fis-baslik" }, "Klasöre taşı"),
+      h("div", { class: "fis-baslik" }, t("Klasöre taşı")),
       ...KLASORLER.map((k) => secenekSatir(h("i", { class: "kumas-sekme", style: `--c:${k.renk}` }), k.ad, b.klasor === k.id, () => tasi(k.id))),
       h("div", { class: "fis-ayrac" }),
-      secenekSatir(icon("kapat", "i-20"), "Klasörsüz", !b.klasor, () => tasi(undefined)));
+      secenekSatir(icon("kapat", "i-20"), t("Klasörsüz"), !b.klasor, () => tasi(undefined)));
+    aktifFis?.konumla();
+    $("button", icerik)?.focus();
+  };
+  const rafSec = () => {
+    icerik.replaceChildren(h("div", { class: "fis-baslik" }, t("Rafa koy")), ...rafSecenekleri([b], (r) => {
+      fisKapat();
+      if ((b.raf || undefined) === r) return;
+      const eski = b.raf;
+      if (r) b.raf = r; else delete b.raf;
+      bus.emit("belgeler", { tur: "raf", id: b.id });
+      toast(r ? t("{raf} rafına kondu", { raf: RAF_ADLARI[r] }) : t("Raf ilerlemeye göre"), { etiket: t("Geri al"), calistir: () => { if (eski) b.raf = eski; else delete b.raf; bus.emit("belgeler", { tur: "raf", id: b.id }); } });
+    }));
     aktifFis?.konumla();
     $("button", icerik)?.focus();
   };
   const dilSec = () => {
-    const otoAlt = h("small", {}, b.dilElle ? "Metinden bulunur" : b.dil ? `Bulunan: ${dilAdi(b.dil)}` : b.dil === null ? "Bulunamadı" : "Bakılıyor");
+    const otoAlt = h("small", {}, b.dilElle ? t("Metinden bulunur") : b.dil ? t("Bulunan: {dil}", { dil: dilAdi(b.dil) }) : b.dil === null ? t("Bulunamadı") : t("Bakılıyor"));
     const sec = (kod) => { fisKapat(); dilAyarla(b, kod); };
     const oto = h("button", { class: "fis-satir secenek", type: "button", role: "menuitemradio", "aria-checked": String(!b.dilElle), onclick: () => sec("oto") },
-      icon("tema-oto", "i-20"), h("span", {}, "Otomatik", otoAlt), !b.dilElle ? icon("tik", "i-20") : h("span"));
+      icon("tema-oto", "i-20"), h("span", {}, t("Otomatik"), otoAlt), !b.dilElle ? icon("tik", "i-20") : h("span"));
     const listede = KITAP_DILLERI.includes(b.dil) || !b.dil ? KITAP_DILLERI : [b.dil, ...KITAP_DILLERI];
     icerik.replaceChildren(
-      h("div", { class: "fis-baslik" }, "Kitabın dili"),
+      h("div", { class: "fis-baslik" }, t("Kitabın dili")),
       oto,
       h("div", { class: "fis-ayrac" }),
       ...listede.map((k) => secenekSatir(h("span", { class: "dil-kod" }, anaDil(k).toUpperCase()), dilAdi(k), !!b.dilElle && b.dil === k, () => sec(k))));
     aktifFis?.konumla();
     $("button", icerik)?.focus();
     // Daha bakılmadıysa şimdi bakılır; menü açıkken sonuç alt satıra yazılır
-    if (!b.dilElle && b.dil === undefined) dilBak(b).then((dil) => { if (otoAlt.isConnected) otoAlt.textContent = dil ? `Bulunan: ${dilAdi(dil)}` : "Bulunamadı"; });
+    if (!b.dilElle && b.dil === undefined) dilBak(b).then((dil) => { if (otoAlt.isConnected) otoAlt.textContent = dil ? t("Bulunan: {dil}", { dil: dilAdi(dil) }) : t("Bulunamadı"); });
   };
   anaMenu();
-  fisAc(capa, icerik, { hiza: "yan", etiket: `${b.ad} seçenekleri` });
+  fisAc(capa, icerik, { hiza: "yan", etiket: t("{ad} seçenekleri", { ad: b.ad }) });
 }
 
 // Önceki hâl satırı: o hâlin son değiştiği an (bilinmiyorsa kopyanın alındığı günden önce) ve kısa özet
 function oncekiTarih(g) {
-  if (g.zaman) return new Date(g.zaman).toLocaleString("tr", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  return `${new Date(g.alindi).toLocaleDateString("tr", { day: "numeric", month: "long" })} öncesi`;
+  if (g.zaman) return new Date(g.zaman).toLocaleString(yerel, { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  return t("{tarih} öncesi", { tarih: new Date(g.alindi).toLocaleDateString(yerel, { day: "numeric", month: "long" }) });
 }
-const oncekiOzet = (o) => [o?.sayfa ? `${o.sayfa} sayfa` : null, `${o?.cizgi || 0} çizgi`, `${o?.iz || 0} iz`].filter(Boolean).join(" · ");
+const oncekiOzet = (o) => [o?.sayfa ? t("{n} sayfa", { n: o.sayfa }) : null, t("{n} çizgi", { n: o?.cizgi || 0 }), t("{n} iz", { n: o?.iz || 0 })].filter(Boolean).join(" · ");
 // Seçilen hâle döner: şimdiki hâl de önceki hâller listesine girer (aynı menüden ona dönülür), belge yeniden açılır
 async function oncekiyeDon(b, g) {
   fisKapat(true);
   const yan = window.__knYan;
-  if ((acik.ekran === "belge" && acik.belgeId === b.id) || (yan?.belgeId === b.id && yan.cerceve?.isConnected)) { toast("Önce belgeyi kapat."); return; }
+  if ((acik.ekran === "belge" && acik.belgeId === b.id) || (yan?.belgeId === b.id && yan.cerceve?.isConnected)) { toast(t("Önce belgeyi kapat.")); return; }
   try {
     const donus = await kayit.oncekiHaleDon(b.id, g.anahtar);
-    toast(`“${b.ad}” ${oncekiTarih(g)} hâline döndü.${donus ? " Şimdiki hâli de saklandı." : ""}`);
+    toast(t("“{ad}” {tarih} hâline döndü.", { ad: b.ad, tarih: oncekiTarih(g) }) + (donus ? ` ${t("Şimdiki hâli de saklandı.")}` : ""));
     belgeAcIstegi(b, kapakBul(b.id));
   } catch (hata) {
     console.warn("[kenar-notu] Önceki hâle dönülemedi:", hata);
-    toast(hata?.kod === "kilit" ? "Kayıt bu pencerede kapalı; dönülemedi."
-      : hata?.kod === "okuma" ? "Önceki hâline dönüldü ama okunamadı; sayfayı yenile."
-        : "Önceki hâline dönülemedi; belge değişmedi.");
+    toast(hata?.kod === "kilit" ? t("Kayıt bu pencerede kapalı; dönülemedi.")
+      : hata?.kod === "okuma" ? t("Önceki hâline dönüldü ama okunamadı; sayfayı yenile.")
+        : t("Önceki hâline dönülemedi; belge değişmedi."));
   }
 }
 
@@ -1448,26 +2000,56 @@ function cizgiDegistir(b) {
   if (b.cizgi) delete b.cizgi; else b.cizgi = true;
   bus.emit("belgeler", { tur: "cizgi", id: b.id });
   if (b.cizgi) belgeAcIstegi(b, kapakBul(b.id));
-  else toast(`“${b.ad}” yeniden belge olarak açılacak`);
+  else toast(t("“{ad}” yeniden belge olarak açılacak", { ad: b.ad }));
 }
 
-// Belgenin kartları da gider; dosyası, verisi ve ekleri bildirim geri alınmadan kapanınca kayit.js'te silinir
-// (bildirim üstünde beklenirken süre durur; geri alınan belgenin dosyası yerinde kalmalı)
+// 7.0 (K5): silinen belge çöpe gider (store.cop), kartları çöp kaydına taşınır. Dosyası, verisi ve ekleri 30 gün
+// yerinde durur; "Son silinenler"den geri yüklenir ya da kalıcı silinir. "Geri al" bildirimi bugünkü gibi kalır.
 function belgeSil(b) {
-  const i = store.belgeler.indexOf(b);
-  if (i < 0) return;
-  store.belgeler.splice(i, 1);
-  const kartlariGeri = kayit.belgeKartlariniKaldir(b.id);
-  bus.emit("belgeler", { tur: "sil", id: b.id });
-  toast(`“${b.ad}” silindi`, {
-    etiket: "Geri al",
-    calistir: () => {
-      store.belgeler.splice(Math.min(i, store.belgeler.length), 0, b);
-      bus.emit("belgeler", { tur: "ekle", belge: b });
-      kartlariGeri();
-    },
-    kapaninca: (geriAlindi) => { if (!geriAlindi) kayit.silinmisBelgeyiTemizle(b.id); },
+  if (store.belgeler.indexOf(b) < 0) return;
+  // Açık yan yana defter ya da açık belge silinmez (kitaplıktan silinir, ekran zaten kapalı)
+  if (!kayit.copaAt(b)) return;
+  toast(t("“{ad}” çöpe taşındı", { ad: b.ad }), {
+    etiket: t("Geri al"),
+    calistir: () => kayit.coptenGeriAl(b.id),
   });
+}
+
+/* ---------- Son silinenler (K5) ---------- */
+function copCiz() {
+  const q = arama.trim();
+  if (!store.cop.length) return bos("sil", t("Çöp kutusu boş."), t("Sildiğin belgeler burada {n} gün durur; o sürede geri yükleyebilirsin.", { n: kayit.COP_GUN }));
+  const liste = q ? store.cop.filter((g) => eslesir(`${g.belge.ad} ${g.belge.yazar || ""}`, q)) : store.cop;
+  if (!liste.length) return bos("ara", t("“{q}” silinenlerde yok.", { q }), t("Başka bir ad dene."));
+  const bosaltEtiket = h("span", {}, t("Çöpü boşalt"));
+  const bosalt = h("button", { class: "ikincil tehlikeli cop-bosalt", type: "button" }, icon("sil", "i-20"), bosaltEtiket);
+  onayla(bosalt, bosaltEtiket, t("Emin misin? Tekrar dokun"), async () => {
+    const n = store.cop.length;
+    await kayit.copuBosalt();
+    toast(t("{n} belge kalıcı silindi", { n }));
+  });
+  const satirlar = liste.map((g) => {
+    const b = g.belge, kalan = kayit.copKalanGun(g);
+    const geri = h("button", { class: "ikincil", type: "button" }, icon("geri-al", "i-20"), t("Geri yükle"));
+    geri.addEventListener("click", () => {
+      kayit.coptenGeriAl(b.id);
+      toast(t("“{ad}” kitaplığa geri döndü", { ad: b.ad }), { etiket: t("Aç"), calistir: () => belgeAcIstegi(b, kapakBul(b.id)) });
+    });
+    const silEtiket = h("span", {}, t("Kalıcı sil"));
+    const sil = h("button", { class: "metin-dugme tehlikeli", type: "button" }, silEtiket);
+    onayla(sil, silEtiket, t("Emin misin?"), async () => { await kayit.copKaliciSil(b.id); toast(t("“{ad}” kalıcı silindi", { ad: b.ad })); });
+    return h("div", { class: "belge-satir cop-satir", role: "listitem", dataset: { id: b.id } },
+      h("div", { class: "mini kapak-sahne" }, kapakOlustur(b, { mini: true })),
+      h("div", { style: "min-width:0" },
+        h("div", { class: "ad" }, vurgula(b.ad, arama)),
+        h("div", { class: "t-kucuk" }, `${turAdi(b)} · ${t("{zaman} silindi", { zaman: neZaman(g.silindi) })}`)),
+      h("span", { class: "cop-kalan" + (kalan <= 3 ? " az" : ""), title: COP_GUN_METNI }, kalan ? t("{n} gün kaldı", { n: kalan }) : t("Bugün silinecek")),
+      h("div", { class: "cop-eylem" }, geri, sil));
+  });
+  return h("section", { class: "cop-bolum", "aria-labelledby": "cop-b" },
+    h("header", { class: "bolum-ust" }, h("h2", { class: "t-b2", id: "cop-b" }, t("Çöp kutusu")),
+      h("span", { class: "bolum-ust__sayi t-kucuk" }, `${t("{n} belge", { n: liste.length })} · ${COP_GUN_METNI}`), bosalt),
+    h("div", { class: "liste cop-liste", role: "list" }, satirlar));
 }
 
 /* ---------- Kırpılanlar panosu (3.7) ---------- */
@@ -1475,27 +2057,27 @@ function panoCiz() {
   const q = arama.trim();
   if (!store.kirpintilar.length) {
     const pdf = sirala(store.belgeler.filter((b) => b.tur === "pdf" && !cizgiMi(b)))[0];
-    return bos("kirp", "Kırpılmış bir şey yok.", "Masa’da Kırp aracıyla bir bölge seç, buraya düşer.", pdf ? { etiket: "Masa’ya git", calistir: () => bus.emit("git", { ekran: "belge", belgeId: pdf.id, mod: "masa" }) } : null);
+    return bos("kirp", t("Kırpılmış bir şey yok."), t("Masa’da Kırp aracıyla bir bölge seç, buraya düşer."), pdf ? { etiket: t("Masa’ya git"), calistir: () => bus.emit("git", { ekran: "belge", belgeId: pdf.id, mod: "masa" }) } : null);
   }
   let liste = q ? store.kirpintilar.filter((k) => eslesir(`${k.not} ${k.metin || ""} ${k.belgeAd}`, q)) : [...store.kirpintilar];
-  if (!liste.length) return bos("ara", `“${q}” için sonuç yok.`, "Kırpıntılarda yok. Yukarıdan bütün kitaplıkta ara.");
-  if (tercih.siralama === "ad") liste.sort((a, b) => a.belgeAd.localeCompare(b.belgeAd, "tr") || a.sayfa - b.sayfa);
+  if (!liste.length) return bos("ara", t("“{q}” için sonuç yok.", { q }), t("Kırpıntılarda yok. Yukarıdan bütün kitaplıkta ara."));
+  if (siralamaAl() === "ad") liste.sort((a, b) => a.belgeAd.localeCompare(b.belgeAd, yerel) || a.sayfa - b.sayfa);
   else liste.sort((a, b) => b.zaman - a.zaman);
   return h("div", { class: "pano", role: "list" }, liste.map(kirpintiKart));
 }
 
 // Paylaş menüsünden gelen görüntü ve not bir belgeye bağlı değil (belgeId boş): sayfa yazılmaz, dokununca büyür
-const sayfaEki = (k) => (k.belgeId ? ` · s. ${k.sayfa}` : "");
+const sayfaEki = (k) => (k.belgeId ? ` · ${t("s. {n}", { n: k.sayfa })}` : "");
 function kirpintiKart(k) {
-  const baski = h("button", { class: "kirpinti-baski", type: "button", "aria-label": k.belgeId ? `${k.belgeAd}, s. ${k.sayfa}: belgede göster` : `${k.belgeAd}: büyüt` },
-    h("img", { src: k.gorsel, alt: k.belgeId ? `${k.belgeAd}, sayfa ${k.sayfa} kırpıntısı` : `${k.belgeAd} kırpıntısı`, draggable: "false" }));
+  const baski = h("button", { class: "kirpinti-baski", type: "button", "aria-label": k.belgeId ? t("{ad}, s. {n}: belgede göster", { ad: k.belgeAd, n: k.sayfa }) : t("{ad}: büyüt", { ad: k.belgeAd }) },
+    h("img", { src: k.gorsel, alt: k.belgeId ? t("{ad}, sayfa {n} kırpıntısı", { ad: k.belgeAd, n: k.sayfa }) : t("{ad} kırpıntısı", { ad: k.belgeAd }), draggable: "false" }));
   const altyazi = h("figcaption");
   const not = notAlani(k, altyazi);
-  const daha = h("button", { class: "kirpinti-daha", type: "button", "aria-label": "Kırpıntı seçenekleri", "aria-haspopup": "menu" }, icon("daha"));
+  const daha = h("button", { class: "kirpinti-daha", type: "button", "aria-label": t("Kırpıntı seçenekleri"), "aria-haspopup": "menu" }, icon("daha"));
   const kart = h("div", { class: "kirpinti", role: "listitem", dataset: { id: k.id } },
     h("figure", {}, baski, altyazi),
     // Uzun ad kısalır, sayfa numarası her zaman okunur
-    h("div", { class: "kaynak" }, h("span", {}, k.belgeAd), k.belgeId ? h("b", {}, `· s. ${k.sayfa}`) : null, daha));
+    h("div", { class: "kaynak" }, h("span", {}, k.belgeAd), k.belgeId ? h("b", {}, `· ${t("s. {n}", { n: k.sayfa })}`) : null, daha));
   baski.addEventListener("click", () => kirpintiAc(k));
   uzunBasma(baski, () => kirpintiFisi(k, baski, kart, not));
   daha.addEventListener("click", () => kirpintiFisi(k, daha, kart, not));
@@ -1505,21 +2087,22 @@ function kirpintiKart(k) {
 // Not satırı: dokununca yerinde düzenlenir, Enter ya da dışarı dokunmak kaydeder
 function notAlani(k, altyazi) {
   const goster = () => {
-    const d = h("button", { class: "not-yaz" + (k.not ? "" : " bos-not"), type: "button", "aria-label": k.not ? `Notu düzenle: ${k.not}` : "Not ekle" },
-      k.not ? vurgula(k.not, arama) : "not ekle");
+    const d = h("button", { class: "not-yaz" + (k.not ? "" : " bos-not"), type: "button", "aria-label": k.not ? t("Notu düzenle: {not}", { not: k.not }) : t("Not ekle") },
+      k.not ? vurgula(k.not, arama) : t("not ekle"));
     d.addEventListener("click", duzenle);
     altyazi.replaceChildren(d);
   };
   const duzenle = () => {
-    const t = h("textarea", { class: "not-girdi", rows: "1", maxlength: "240", "aria-label": "Kırpıntı notu", placeholder: "not ekle" });
-    t.value = k.not || "";
+    // Alanın adı "t" değil: t() çeviri işlevini gölgelemesin
+    const alan = h("textarea", { class: "not-girdi", rows: "1", maxlength: "240", "aria-label": t("Kırpıntı notu"), placeholder: t("not ekle") });
+    alan.value = k.not || "";
     let vazgec = false;
-    t.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); t.blur(); }
-      else if (e.key === "Escape") { e.stopPropagation(); vazgec = true; t.blur(); }
+    alan.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); alan.blur(); }
+      else if (e.key === "Escape") { e.stopPropagation(); vazgec = true; alan.blur(); }
     });
-    t.addEventListener("blur", () => {
-      const yeni = t.value.trim();
+    alan.addEventListener("blur", () => {
+      const yeni = alan.value.trim();
       if (!vazgec && yeni !== (k.not || "")) {
         k.not = yeni;
         sessiz = true;
@@ -1529,13 +2112,13 @@ function notAlani(k, altyazi) {
     });
     // field-sizing olmayan Safari'de (17, 26.2 öncesi) alan yazdıkça büyüsün
     if (!CSS.supports?.("field-sizing", "content")) {
-      const boyutla = () => { t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; };
-      t.addEventListener("input", boyutla);
+      const boyutla = () => { alan.style.height = "auto"; alan.style.height = `${alan.scrollHeight}px`; };
+      alan.addEventListener("input", boyutla);
       requestAnimationFrame(boyutla);
     }
-    altyazi.replaceChildren(t);
-    t.focus();
-    t.setSelectionRange(t.value.length, t.value.length);
+    altyazi.replaceChildren(alan);
+    alan.focus();
+    alan.setSelectionRange(alan.value.length, alan.value.length);
   };
   goster();
   return { duzenle };
@@ -1545,16 +2128,16 @@ function kirpintiFisi(k, capa, kart, not) {
   kart.classList.add("secili");
   fisAc(capa, [
     h("div", { class: "fis-baslik" }, k.belgeAd + sayfaEki(k)),
-    k.belgeId ? fisSatir("sayfalar", "Belgede göster", null, () => { fisKapat(true); kirpintiAc(k); }) : null,
-    fisSatir("notlar", k.not ? "Notu düzenle" : "Not ekle", null, () => { fisKapat(true); not.duzenle(); }),
+    k.belgeId ? fisSatir("sayfalar", t("Belgede göster"), null, () => { fisKapat(true); kirpintiAc(k); }) : null,
+    fisSatir("notlar", k.not ? t("Notu düzenle") : t("Not ekle"), null, () => { fisKapat(true); not.duzenle(); }),
     h("div", { class: "fis-ayrac" }),
-    silSatiri("Sil", () => { fisKapat(true); kirpintiyiSil(k, kart); }),
-  ], { hiza: "yan", etiket: "Kırpıntı seçenekleri", kapaninca: () => kart.classList.remove("secili") });
+    silSatiri(t("Sil"), () => { fisKapat(true); kirpintiyiSil(k, kart); }),
+  ], { hiza: "yan", etiket: t("Kırpıntı seçenekleri"), kapaninca: () => kart.classList.remove("secili") });
 }
 
 function kirpintiAc(k) {
   if (!k.belgeId) { kirpintiBuyut(k); return; }
-  if (!belgeBul(k.belgeId)) { toast("Bu kırpıntının belgesi artık kitaplıkta yok."); return; }
+  if (!belgeBul(k.belgeId)) { toast(t("Bu kırpıntının belgesi artık kitaplıkta yok.")); return; }
   sonKaynak = null;
   bus.emit("git", { ekran: "belge", belgeId: k.belgeId, sayfa: k.sayfa });
 }
@@ -1565,7 +2148,7 @@ function kirpintiBuyut(k) {
     k.not ? h("p", {}, k.not) : null,
     // Paylaşımla gelen uzun metnin tamamı (not alanı kısaltılmış hâlini tutar)
     k.metin ? h("p", { style: "white-space: pre-wrap; max-height: 40vh; overflow: auto; user-select: text" }, k.metin) : null,
-    h("div", { class: "pencere-alt" }, h("button", { class: "metin-dugme vurgulu", type: "button", onclick: () => dlg.close() }, "Kapat")));
+    h("div", { class: "pencere-alt" }, h("button", { class: "metin-dugme vurgulu", type: "button", onclick: () => dlg.close() }, t("Kapat"))));
   pencereKur(dlg);
   $(".pencere-alt button", dlg)?.focus();
 }
@@ -1574,8 +2157,8 @@ async function kirpintiyiSil(k, kart) {
   const i = store.kirpintilar.indexOf(k);
   if (!hareketAz()) await bitince(kart.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(.96)" }], { duration: 160, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" }), 160);
   kirpintiSil(k.id);
-  toast("Kırpıntı silindi", {
-    etiket: "Geri al",
+  toast(t("Kırpıntı silindi"), {
+    etiket: t("Geri al"),
     calistir: () => {
       store.kirpintilar.splice(Math.min(i, store.kirpintilar.length), 0, k);
       bus.emit("kirpintilar", { tur: "ekle", kirpinti: k });
@@ -1588,7 +2171,7 @@ function yeniKlasor() {
   const varOlan = $(".klasor-yeni input", K.kenar);
   if (varOlan) { varOlan.focus(); return; }
   const renk = KLASOR_RENKLERI[KLASORLER.length % KLASOR_RENKLERI.length];
-  const girdi = h("input", { placeholder: "Klasör adı", "aria-label": "Yeni klasörün adı", maxlength: "40", autocomplete: "off", enterkeyhint: "done" });
+  const girdi = h("input", { placeholder: t("Klasör adı"), "aria-label": t("Yeni klasörün adı"), maxlength: "40", autocomplete: "off", enterkeyhint: "done" });
   const satir = h("div", { class: "klasor-yeni" }, h("i", { class: "kumas-sekme", style: `--c:${renk}` }), girdi);
   let bitti = false;
   const bitir = (kaydet) => {
@@ -1601,7 +2184,7 @@ function yeniKlasor() {
     KLASORLER.push(k);
     klasorlerCiz();
     gorunumSec("klasor:" + k.id);
-    toast(`${ad} klasörü hazır. Kapaklara uzun basıp taşıyabilirsin.`);
+    toast(t("{ad} klasörü hazır. Kapaklara uzun basıp taşıyabilirsin.", { ad }));
   };
   girdi.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); bitir(true); }
@@ -1618,20 +2201,20 @@ function yeniMenusu(klavye) {
   K.yeni.setAttribute("aria-expanded", "true");
   // Dosya açmak ilk satır (TASARIM-4 3.1); alt satır platforma göre başka yolu söyler
   fisAc(K.yeni, [
-    fisSatir("pdf", "Dosya aç", `PDF, EPUB, CBZ ya da .kenar yedeği. ${dosyaIpucu()}`, () => { fisKapat(true); dosyaSec(); }),
+    fisSatir("pdf", t("Dosya aç"), `${t("PDF, EPUB, CBZ ya da .kenar yedeği.")} ${dosyaIpucu()}`, () => { fisKapat(true); dosyaSec(); }),
     // Klasör seçici olmayan tarayıcıda (Android, iOS) görünmez; orada "Dosya aç" çoklu seçer
-    kayit.klasorDestegi() ? fisSatir("klasor", "Bilgisayardaki kitaplar",
-      kitapKlasoruAdi ? `${kitapKlasoruAdi} klasöründe yeni kitaplara bak` : "Bir klasör seç; içindeki PDF, EPUB ve CBZ’ler listelenir",
+    kayit.klasorDestegi() ? fisSatir("klasor", t("Bilgisayardaki kitaplar"),
+      kitapKlasoruAdi ? t("{ad} klasöründe yeni kitaplara bak", { ad: kitapKlasoruAdi }) : t("Bir klasör seç; içindeki PDF, EPUB ve CBZ’ler listelenir"),
       () => { fisKapat(true); kitapKlasoruAc(); }) : null,
-    fisSatir("yeni-defter", "Yeni defter", "Boş, çizgili, kareli, noktalı ya da Cornell", () => { fisKapat(true); yeniDefterPenceresi(); }),
-  ], { hiza: "alt-sag", etiket: "Yeni", klavye, kapaninca: () => K.yeni.setAttribute("aria-expanded", "false") });
+    fisSatir("yeni-defter", t("Yeni defter"), t("Boş, çizgili, kareli, noktalı ya da Cornell"), () => { fisKapat(true); yeniDefterPenceresi(); }),
+  ], { hiza: "alt-sag", etiket: t("Yeni"), klavye, kapaninca: () => K.yeni.setAttribute("aria-expanded", "false") });
 }
 
 /* ---------- İçe aktarma (OZELLIKLER-3 §1) ---------- */
 // Belge almanın öbür yolu, platforma göre (iOS'ta paylaş hedefi yok)
-const dosyaIpucu = () => (iosMu() ? (ipadMi() ? "Dosyalar uygulamasından sürükleyip de bırakabilirsin." : "Dosyalar uygulamasından seçersin.")
-  : platform() === "android" ? "Başka bir uygulamadan Paylaş > Kenar Notu da olur."
-  : "Dosyayı pencereye sürükleyip de bırakabilirsin.");
+const dosyaIpucu = () => (iosMu() ? (ipadMi() ? t("Dosyalar uygulamasından sürükleyip de bırakabilirsin.") : t("Dosyalar uygulamasından seçersin."))
+  : platform() === "android" ? t("Başka bir uygulamadan Paylaş > Kenar Notu da olur.")
+  : t("Dosyayı pencereye sürükleyip de bırakabilirsin."));
 // Kapak hazırlanırken rafta yer tutan dizgi kartları: { id, dizgi: true, tur, ad, klasor }
 const dizgiler = [];
 let dosyaGirdisi = null;
@@ -1675,7 +2258,7 @@ const secimKlasoru = () => (tercih.secim.startsWith("klasor:") && klasorBul(terc
 async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
   const yerler = dosyalar.map((f) => {
     const tur = tahminiTur(f);
-    return { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz|cbr|zip)$/i, "") || "Adsız", klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
+    return { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz|cbr|zip)$/i, "") || t("Adsız"), klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
   });
   dizgiler.unshift(...yerler);
   kitaplikYenile();
@@ -1690,7 +2273,7 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
       if (hata?.kod === "yedek") { yedekPenceresi(f); continue; }
       console.warn("[kenar-notu] İçe aktarılamadı:", f.name, hata);
       toast(hata?.kod === "cbr" || hata?.kod === "bozuk" ? hata.message
-        : hata?.kod === "tur" ? `“${f.name}” açılamadı: yalnız PDF, EPUB ve CBZ.` : `“${f.name}” içe aktarılamadı.`);
+        : hata?.kod === "tur" ? t("“{ad}” açılamadı: yalnız PDF, EPUB ve CBZ.", { ad: f.name }) : t("“{ad}” içe aktarılamadı.", { ad: f.name }));
     } finally {
       const j = dizgiler.indexOf(yerler[i]);
       if (j >= 0) dizgiler.splice(j, 1);
@@ -1700,11 +2283,11 @@ async function dosyalariAl(dosyalar, { klasor = secimKlasoru() } = {}) {
   if (sonuclar.some((s) => !s.vardi)) depoUyarisiBirKez();
   if (sonuclar.length === 1) {
     const { b, vardi } = sonuclar[0];
-    if (vardi) { toast(`“${b.ad}” zaten kitaplıkta, açılıyor.`); belgeAcIstegi(b, kapakBul(b.id)); }
-    else toast(`“${b.ad}” kitaplığa eklendi`, { etiket: "Aç", calistir: () => belgeAcIstegi(b, kapakBul(b.id)) });
+    if (vardi) { toast(t("“{ad}” zaten kitaplıkta, açılıyor.", { ad: b.ad })); belgeAcIstegi(b, kapakBul(b.id)); }
+    else toast(t("“{ad}” kitaplığa eklendi", { ad: b.ad }), { etiket: t("Aç"), calistir: () => belgeAcIstegi(b, kapakBul(b.id)) });
   } else if (sonuclar.length > 1) {
     const yeni = sonuclar.filter((s) => !s.vardi).length;
-    toast(yeni ? `${yeni} belge kitaplığa eklendi` : "Bu dosyalar zaten kitaplıkta.");
+    toast(yeni ? t("{n} belge kitaplığa eklendi", { n: yeni }) : t("Bu dosyalar zaten kitaplıkta."));
   }
   return sonuclar.map((s) => s.b);
 }
@@ -1717,7 +2300,7 @@ const kitapKlasoruModulu = () => (kitapKlasoruSoz ||= import("./kitap-klasoru.js
     bitince: (n) => { if (n) depoUyarisiBirKez(); }, fisKabi: () => K.klasorFisi });
   return m;
 }).catch((hata) => { kitapKlasoruSoz = null; throw hata; }));
-const kitapKlasoruHatasi = (hata) => { console.warn("[kenar-notu] Kitap klasörü açılamadı:", hata); toast("Kitap klasörü açılamadı."); };
+const kitapKlasoruHatasi = (hata) => { console.warn("[kenar-notu] Kitap klasörü açılamadı:", hata); toast(t("Kitap klasörü açılamadı.")); };
 // Dokunuşla çağrılır: kayıtlı klasör varsa ona bakılır, yoksa seçici açılır
 function kitapKlasoruAc() { kitapKlasoruModulu().then((m) => m.ac()).catch(kitapKlasoruHatasi); }
 function kitapKlasoruSec() { kitapKlasoruModulu().then((m) => m.sec()).catch(kitapKlasoruHatasi); }
@@ -1725,7 +2308,7 @@ bus.on("kitap-klasoru", (o) => { if (o?.tur === "birakildi") kitapKlasoruAdi = n
 // Klasörden tek dosya: Dosya aç ile aynı kayıt yolu ve aynı dizgi kartı; hata fırlatır (liste satırında gösterilir)
 async function klasordenAl(f) {
   const tur = tahminiTur(f), klasor = secimKlasoru();
-  const yer = { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz)$/i, "") || "Adsız", klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
+  const yer = { id: yeniId("dz"), dizgi: true, tur, ad: f.name.replace(/\.(pdf|epub|cbz)$/i, "") || t("Adsız"), klasor: tur === "pdf" ? klasor : undefined, acilis: Date.now() };
   dizgiler.unshift(yer);
   kitaplikYenile();
   const once = new Set(store.belgeler.map((b) => b.id));
@@ -1754,39 +2337,39 @@ function dizgiHucre(d, ekSinif = "") {
   return h("div", { class: `belge dizgi ${ekSinif}`.trim(), role: "listitem", "aria-busy": "true", dataset: { id: d.id } },
     h("div", { class: "kapak-sahne" }, dizgiKapak(d)),
     h("h3", { class: "belge-ad" }, d.ad),
-    h("div", { class: "belge-meta" }, h("span", { class: "t-etiket" }, h("span", {}, "Dizgide"))));
+    h("div", { class: "belge-meta" }, h("span", { class: "t-etiket" }, h("span", {}, t("Dizgide")))));
 }
 function dizgiSatir(d) {
   return h("div", { class: "belge-satir dizgi", role: "listitem", "aria-busy": "true", dataset: { id: d.id } },
     h("div", { class: "mini kapak-sahne" }, dizgiKapak(d, true)),
-    h("div", { style: "min-width:0" }, h("div", { class: "ad" }, d.ad), h("div", { class: "t-kucuk" }, "Dizgide · kapak hazırlanıyor")));
+    h("div", { style: "min-width:0" }, h("div", { class: "ad" }, d.ad), h("div", { class: "t-kucuk" }, t("Dizgide · kapak hazırlanıyor"))));
 }
 
 /* ---------- Yeni defter penceresi (3.8) ---------- */
 function yeniDefterPenceresi() {
   const d = { renk: KAPAK_RENKLERI[0], kagit: "grid" };
-  const etiketAd = h("b", {}, "Adsız defter");
+  const etiketAd = h("b", {}, t("Adsız defter"));
   const etiketTur = h("small");
   const kapak = h("div", { class: "kapak-defter" }, h("div", { class: "etiket" }, etiketAd, etiketTur));
   const yaprak = h("i", { class: "onizleme-yaprak" });
-  const girdi = h("input", { class: "ad-alani", placeholder: "Defterin adı", "aria-label": "Defterin adı", maxlength: "80", autocomplete: "off", enterkeyhint: "done" });
+  const girdi = h("input", { class: "ad-alani", placeholder: t("Defterin adı"), "aria-label": t("Defterin adı"), maxlength: "80", autocomplete: "off", enterkeyhint: "done" });
 
   const numuneler = KAPAK_RENKLERI.map((r) => {
-    const n = h("button", { class: "numune" + (r[2] ? " acik-renk" : ""), type: "button", style: `--c:${r[1]}`, "aria-label": r[0], "aria-pressed": "false" });
+    const n = h("button", { class: "numune" + (r[2] ? " acik-renk" : ""), type: "button", style: `--c:${r[1]}`, "aria-label": t(r[0]), "aria-pressed": "false" });
     n.addEventListener("click", () => { d.renk = r; guncelle(); });
     return n;
   });
-  const yapraklar = TEMPLATES.map((t) => {
-    const y = h("button", { class: "mini-yaprak", type: "button", "aria-pressed": "false" }, h("i", { class: KAGIT_SINIF[t.id] }), t.label);
-    y.addEventListener("click", () => { d.kagit = t.id; guncelle(); });
+  const yapraklar = TEMPLATES.map((sb) => {
+    const y = h("button", { class: "mini-yaprak", type: "button", "aria-pressed": "false" }, h("i", { class: KAGIT_SINIF[sb.id] }), t(sb.label));
+    y.addEventListener("click", () => { d.kagit = sb.id; guncelle(); });
     return y;
   });
 
   const guncelle = () => {
     kapak.style.setProperty("--c", d.renk[1]);
     kapak.classList.toggle("acik-renk", !!d.renk[2]);
-    etiketAd.textContent = girdi.value.trim() || "Adsız defter";
-    etiketTur.textContent = kagitAdi(d.kagit).toLocaleUpperCase("tr");
+    etiketAd.textContent = girdi.value.trim() || t("Adsız defter");
+    etiketTur.textContent = t(kagitAdi(d.kagit)).toLocaleUpperCase(yerel);
     yaprak.className = `onizleme-yaprak ${KAGIT_SINIF[d.kagit]}`;
     numuneler.forEach((n, i) => n.setAttribute("aria-pressed", String(KAPAK_RENKLERI[i] === d.renk)));
     yapraklar.forEach((y, i) => y.setAttribute("aria-pressed", String(TEMPLATES[i].id === d.kagit)));
@@ -1794,15 +2377,15 @@ function yeniDefterPenceresi() {
   girdi.addEventListener("input", guncelle);
 
   const form = h("form", { method: "dialog" },
-    h("h2", { class: "t-b1", id: "ydBaslik" }, "Yeni defter"),
+    h("h2", { class: "t-b1", id: "ydBaslik" }, t("Yeni defter")),
     girdi,
-    h("span", { class: "t-etiket", id: "ydKapak" }, "Kapak"),
+    h("span", { class: "t-etiket", id: "ydKapak" }, t("Kapak")),
     h("div", { class: "numuneler", role: "group", "aria-labelledby": "ydKapak" }, numuneler),
-    h("span", { class: "t-etiket", id: "ydKagit" }, "Kâğıt"),
+    h("span", { class: "t-etiket", id: "ydKagit" }, t("Kâğıt")),
     h("div", { class: "kagit-turu", role: "group", "aria-labelledby": "ydKagit" }, yapraklar),
     h("div", { class: "pencere-alt" },
-      h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, "Vazgeç"),
-      h("button", { class: "birincil", type: "submit" }, icon("yeni-defter", "i-20"), "Oluştur")));
+      h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, t("Vazgeç")),
+      h("button", { class: "birincil", type: "submit" }, icon("yeni-defter", "i-20"), t("Oluştur"))));
 
   const dlg = h("dialog", { class: "pencere", "aria-labelledby": "ydBaslik" },
     h("div", { class: "yeni-defter" }, h("div", { class: "onizleme", "aria-hidden": "true" }, yaprak, kapak), form));
@@ -1811,7 +2394,7 @@ function yeniDefterPenceresi() {
     e.preventDefault();
     const klasor = tercih.secim.startsWith("klasor:") ? tercih.secim.slice(7) : undefined;
     const b = {
-      id: yeniId("d"), tur: "defter", ad: girdi.value.trim() || "Adsız defter", klasor,
+      id: yeniId("d"), tur: "defter", ad: girdi.value.trim() || t("Adsız defter"), klasor,
       sayfaSayisi: 3, sayfa: 1, ilerleme: 0, favori: false, acilis: Date.now(),
       kapak: d.renk[1], kagit: d.kagit, veri: null,
     };
@@ -1852,7 +2435,7 @@ function bilgiPenceresi({ ikon, baslik, metin, satirlar, not, eylem }) {
     ...(not ? [h("p", { class: "bilgi-not" }, not)] : []),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, parca('<svg viewBox="0 0 28 16"><use href="#i-hedera"/></svg>')),
     h("div", { class: "pencere-alt" },
-      h("button", { class: eylem ? "metin-dugme" : "metin-dugme vurgulu", type: "button", onclick: () => dlg.close() }, eylem ? "Kapat" : "Tamam"),
+      h("button", { class: eylem ? "metin-dugme" : "metin-dugme vurgulu", type: "button", onclick: () => dlg.close() }, eylem ? t("Kapat") : t("Tamam")),
       eylem ? h("button", { class: "birincil", type: "button", onclick: () => { dlg.close(); eylem.calistir(); } }, eylem.etiket) : null));
   pencereKur(dlg);
   odakla($(".pencere-alt button:last-child", dlg));
@@ -1861,33 +2444,33 @@ function bilgiPenceresi({ ikon, baslik, metin, satirlar, not, eylem }) {
 /* ---------- Yedek ve depo (OZELLIKLER-3 §2) ---------- */
 function boyutMetni(n) {
   const mb = n / 1048576;
-  if (mb >= 1024) return `${(mb / 1024).toLocaleString("tr", { maximumFractionDigits: 1 })} GB`;
-  if (mb >= 1) return `${mb.toLocaleString("tr", { maximumFractionDigits: mb < 10 ? 1 : 0 })} MB`;
+  if (mb >= 1024) return `${(mb / 1024).toLocaleString(yerel, { maximumFractionDigits: 1 })} GB`;
+  if (mb >= 1) return `${mb.toLocaleString(yerel, { maximumFractionDigits: mb < 10 ? 1 : 0 })} MB`;
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 // Depo göstergesi: "Kullanılan 84 MB · kalıcı", ölçü camın arkasında
 function depoGostergesi() {
   const cam = h("span", { class: "cam cam-k depo-cam" }, "··");
   const durum = h("span", {}, "");
-  const el = h("div", { class: "depo-gosterge", role: "status" }, h("span", {}, "Kullanılan"), cam, durum);
+  const el = h("div", { class: "depo-gosterge", role: "status" }, h("span", {}, t("Kullanılan")), cam, durum);
   kayit.depoDurumu().then((d) => {
     if (!d.olculdu) {   // güvenli olmayan bağlantıda navigator.storage yoktur
       cam.textContent = "?";
-      durum.textContent = "· geçici";
-      el.title = "Bu bağlantıda tarayıcı depo bilgisini vermez ve kalıcılık istenemez; localhost ya da https ile aç";
+      durum.textContent = `· ${t("geçici")}`;
+      el.title = t("Bu bağlantıda tarayıcı depo bilgisini vermez ve kalıcılık istenemez; localhost ya da https ile aç");
       return;
     }
     cam.textContent = boyutMetni(d.kullanilan);
-    durum.textContent = d.kalici ? "· kalıcı" : "· geçici";
-    el.title = d.kalici ? "Tarayıcı bu verileri kendiliğinden silmez" : "Yer daralırsa tarayıcı silebilir; ilk kayıtta kalıcılık istenir";
-    if (d.kota) el.setAttribute("aria-label", `Kullanılan ${boyutMetni(d.kullanilan)}, ${boyutMetni(d.kota)} yerin içinden, ${d.kalici ? "kalıcı" : "geçici"}`);
+    durum.textContent = `· ${d.kalici ? t("kalıcı") : t("geçici")}`;
+    el.title = d.kalici ? t("Tarayıcı bu verileri kendiliğinden silmez") : t("Yer daralırsa tarayıcı silebilir; ilk kayıtta kalıcılık istenir");
+    if (d.kota) el.setAttribute("aria-label", t("Kullanılan {kullanilan}, {kota} yerin içinden, {durum}", { kullanilan: boyutMetni(d.kullanilan), kota: boyutMetni(d.kota), durum: d.kalici ? t("kalıcı") : t("geçici") }));
   });
   return el;
 }
 const yedekAdi = () => {
-  const t = new Date();
+  const z = new Date();
   const iki = (n) => String(n).padStart(2, "0");
-  return `Kenar Notu yedeği ${t.getFullYear()}-${iki(t.getMonth() + 1)}-${iki(t.getDate())}.kenar`;
+  return `${t("Kenar Notu yedeği")} ${z.getFullYear()}-${iki(z.getMonth() + 1)}-${iki(z.getDate())}.kenar`;
 };
 // Paylaş menüsü varsa orada (Drive, Samsung Notes...), yoksa indirilir. disa-aktar.js yoksa kendi yolumuz.
 async function dosyaPaylas(blob, ad) {
@@ -1908,22 +2491,23 @@ async function dosyaPaylas(blob, ad) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 let yedekSuruyor = false;
-async function yedekAlIstegi(dugme) {
+// parola: şifreli yedek (10.5). Parola hiçbir yere yazılmaz, yalnız bu çağrıda kullanılır
+async function yedekAlIstegi(dugme, { parola = null } = {}) {
   if (yedekSuruyor) return;
   yedekSuruyor = true;
   const asil = dugme ? [...dugme.childNodes] : null;
-  if (dugme) { dugme.disabled = true; dugme.textContent = "Hazırlanıyor"; }
-  else toast("Yedek hazırlanıyor", { kalici: true });
+  if (dugme) { dugme.disabled = true; dugme.textContent = t("Hazırlanıyor"); }
+  else toast(t("Yedek hazırlanıyor"), { kalici: true });
   // Ağır iş işçide: ekran kilitlenmez, düğme yüzdeyi gösterir
-  const ilerleme = (o) => { if (dugme) dugme.textContent = `Yedek hazırlanıyor %${Math.round(o * 100)}`; };
+  const ilerleme = (o) => { if (dugme) dugme.textContent = t("Yedek hazırlanıyor %{n}", { n: Math.round(o * 100) }); };
   try {
-    const blob = await kayit.yedekAl({ ilerleme });
+    const blob = await kayit.yedekAl({ ilerleme, parola });
     await dosyaPaylas(blob, yedekAdi());
     ayarla({ sonYedek: Date.now() });
-    toast(`Yedek hazır: ${boyutMetni(blob.size)}`);
+    toast(parola ? t("Şifreli yedek hazır: {boyut}", { boyut: boyutMetni(blob.size) }) : t("Yedek hazır: {boyut}", { boyut: boyutMetni(blob.size) }));
   } catch (hata) {
     console.warn("[kenar-notu] Yedek alınamadı:", hata);
-    toast(hata?.kod === "eksik" || hata?.kod === "buyuk" ? hata.message : "Yedek alınamadı.");
+    toast(hata?.kod === "eksik" || hata?.kod === "buyuk" || hata?.kod === "sifre-yok" ? hata.message : t("Yedek alınamadı."));
   } finally {
     yedekSuruyor = false;
     if (dugme) { dugme.disabled = false; dugme.replaceChildren(...asil); }
@@ -1942,15 +2526,31 @@ function yedekSec() {
   }
   yedekGirdisi.click();
 }
+// Şifreli yedekte parola sorulur; yanlışsa anlaşılır iletiyle yeniden sorulur (10.5 madde 3). Vazgeçilirse kitaplık değişmez
 async function yedekYukleIstegi(f) {
-  toast("Yedek yükleniyor…");
-  try { await kayit.yedekYukle(f); }   // bitince sayfa yenilenir
-  catch (hata) {
+  let parola = null, hataMetni = "";
+  for (;;) {
+    if (parola !== null || !hataMetni) toast(parola ? t("Yedek açılıyor…") : t("Yedek yükleniyor…"));
+    try { await kayit.yedekYukle(f, { parola }); return; }   // bitince sayfa yenilenir
+    catch (hata) {
+      if (hata?.kod === "parola" || hata?.kod === "parola-yanlis") {
+        hataMetni = hata.kod === "parola-yanlis" ? t("Parola yanlış. Büyük küçük harfe dikkat edip yeniden dene.") : "";
+        parola = await parolaSor({ hata: hataMetni });
+        if (parola === null) { toast(t("Yedek yüklenmedi; kitaplık değişmedi.")); return; }
+        continue;
+      }
+      yedekYuklemeHatasi(hata);
+      return;
+    }
+  }
+}
+function yedekYuklemeHatasi(hata) {
+  {
     console.warn("[kenar-notu] Yedek yüklenemedi:", hata);
-    toast(hata?.kod === "bicim" ? "Bu bir Kenar Notu yedeği değil."
-      : hata?.kod === "okuma" ? "Yedek dosyası okunamadı: dosyaya erişilemedi ya da bellek yetmedi. Kitaplık değişmedi."
-      : hata?.kod === "baska" ? "Kitaplık başka bir pencerede açık. Yüklemek için o pencereyi kapatıp burayı yenile."
-      : "Yedek yüklenemedi; kitaplık değişmedi.");
+    toast(hata?.kod === "sifre-yok" ? hata.message : hata?.kod === "bicim" ? t("Bu bir Kenar Notu yedeği değil.")
+      : hata?.kod === "okuma" ? t("Yedek dosyası okunamadı: dosyaya erişilemedi ya da bellek yetmedi. Kitaplık değişmedi.")
+      : hata?.kod === "baska" ? t("Kitaplık başka bir pencerede açık. Yüklemek için o pencereyi kapatıp burayı yenile.")
+      : t("Yedek yüklenemedi; kitaplık değişmedi."));
   }
 }
 // Otomatik yedek (OZELLIKLER-8 §3.1). Ayarlar'da klasör seçimi ve son yazılan yedek; kayit.js günde bir yazar.
@@ -1958,31 +2558,32 @@ async function yedekYukleIstegi(f) {
 function otoYedekDenetimi() {
   const el = h("div", { class: "oto-yedek" });
   if (!kayit.klasorDestegi()) {
-    el.append(h("p", { class: "ayar-not" }, "Bu tarayıcı klasöre kendiliğinden yazamıyor; haftada bir yedek almayı hatırlatırız."));
+    el.append(h("p", { class: "ayar-not" }, t("Bu tarayıcı klasöre kendiliğinden yazamıyor; haftada bir yedek almayı hatırlatırız.")));
     return { el, guncelle: () => {} };
   }
   let yaziyor = "";
   const ciz = async () => {
     const k = await kayit.yedekKlasoru().catch(() => null);
-    const sec = h("button", { class: "ikincil", type: "button" }, icon("klasor", "i-20"), k ? "Klasörü değiştir" : "Otomatik yedek klasörü seç");
+    const sec = h("button", { class: "ikincil", type: "button" }, icon("klasor", "i-20"), k ? t("Klasörü değiştir") : t("Otomatik yedek klasörü seç"));
     sec.addEventListener("click", () => klasorSecIstegi(sec));
     if (!k) {
-      el.replaceChildren(h("p", { class: "ayar-not" }, "Bir klasör seç: Kenar Notu oraya günde bir yedek yazar, son 7 tanesi kalır."),
+      el.replaceChildren(h("p", { class: "ayar-not" }, t("Bir klasör seç: Kenar Notu oraya günde bir yedek yazar, son 7 tanesi kalır.")),
         h("div", { class: "ayar-yedek__dugmeler" }, sec));
       return;
     }
-    const durum = yaziyor || (k.izin !== "granted" ? "İzin bekliyor" : k.hata ? k.hata : k.son ? `Son otomatik yedek: ${neZaman(k.son)}` : "Henüz yazılmadı");
+    // k.hata kayıtta Türkçe durabilir (kayit.js yazar): görüntülerken çevrilir
+    const durum = yaziyor || (k.izin !== "granted" ? t("İzin bekliyor") : k.hata ? t(k.hata) : k.son ? t("Son otomatik yedek: {zaman}", { zaman: neZaman(k.son) }) : t("Henüz yazılmadı"));
     const izin = k.izin !== "granted"
-      ? h("button", { class: "ikincil", type: "button", onclick: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); ciz(); }) }, "İzin ver")
+      ? h("button", { class: "ikincil", type: "button", onclick: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast(t("İzin verilmedi; otomatik yedek bekliyor.")); ciz(); }) }, t("İzin ver"))
       : null;
-    const kapat = h("button", { class: "metin-dugme", type: "button", onclick: () => kayit.yedekKlasoruBirak().then(() => toast("Otomatik yedek kapandı; klasördeki dosyalar duruyor.")) }, "Otomatik yedeği kapat");
+    const kapat = h("button", { class: "metin-dugme", type: "button", onclick: () => kayit.yedekKlasoruBirak().then(() => toast(t("Otomatik yedek kapandı; klasördeki dosyalar duruyor."))) }, t("Otomatik yedeği kapat"));
     el.replaceChildren(
       h("p", { class: "oto-yedek__klasor" }, icon("klasor", "i-20"), h("span", {}, k.ad, h("small", { class: k.hata && !yaziyor ? "hata" : null }, durum))),
       h("div", { class: "ayar-yedek__dugmeler" }, izin, sec, kapat));
   };
   const coz = bus.on("yedek:klasor", (o) => {
     if (!el.isConnected && el.dataset.cizildi) { coz(); return; }
-    yaziyor = o?.tur === "yaziyor" ? "Yedek yazılıyor" : "";
+    yaziyor = o?.tur === "yaziyor" ? t("Yedek yazılıyor") : "";
     ciz();
   });
   ciz().then(() => { el.dataset.cizildi = "1"; });
@@ -1991,13 +2592,13 @@ function otoYedekDenetimi() {
 async function klasorSecIstegi(dugme) {
   const asil = [...dugme.childNodes];
   try {
-    const ilerleme = (o) => { dugme.disabled = true; dugme.textContent = `Yedek hazırlanıyor %${Math.round(o * 100)}`; };
+    const ilerleme = (o) => { dugme.disabled = true; dugme.textContent = t("Yedek hazırlanıyor %{n}", { n: Math.round(o * 100) }); };
     const ok = await kayit.yedekKlasoruSec({ ilerleme });
-    toast(ok ? "Otomatik yedek açık: ilk yedek klasöre yazıldı." : "Klasör seçildi ama yedek yazılamadı.");
+    toast(ok ? t("Otomatik yedek açık: ilk yedek klasöre yazıldı.") : t("Klasör seçildi ama yedek yazılamadı."));
   } catch (hata) {
     if (hata?.name !== "AbortError") {
       console.warn("[kenar-notu] Yedek klasörü seçilemedi:", hata);
-      toast(hata?.kod === "baska" ? "Kitaplık başka bir pencerede açık; klasörü orada seç." : "Klasör seçilemedi.");
+      toast(hata?.kod === "baska" ? t("Kitaplık başka bir pencerede açık; klasörü orada seç.") : t("Klasör seçilemedi."));
     }
   } finally {
     if (dugme.isConnected) { dugme.disabled = false; dugme.replaceChildren(...asil); }
@@ -2012,14 +2613,14 @@ try { klasorIzniSoruldu = sessionStorage.getItem(IZIN_FISI) === "1"; } catch { /
 bus.on("yedek:klasor", (o) => {
   if (o?.tur === "izin-gerek" && !klasorIzniSoruldu) {
     klasorIzniSoruldu = true;
-    toast("Yedek klasörüne izin ver", { etiket: "İzin ver", kalici: true, kapatilir: true,
-      calistir: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast("İzin verilmedi; otomatik yedek bekliyor."); }),
+    toast(t("Yedek klasörüne izin ver"), { etiket: t("İzin ver"), kalici: true, kapatilir: true,
+      calistir: () => kayit.yedekKlasoruIzinIste().then((ok) => { if (!ok) toast(t("İzin verilmedi; otomatik yedek bekliyor.")); }),
       kapaninca: (eylemle, elle) => {
         if (!eylemle && !elle) { klasorIzniSoruldu = false; return; }
         try { sessionStorage.setItem(IZIN_FISI, "1"); } catch { /* gizli pencere */ }
       } });
   } else if (o?.tur === "yazildi") ayarla({ sonYedek: o.son });
-  else if (o?.tur === "hata") toast(`Otomatik yedek: ${o.mesaj}`);
+  else if (o?.tur === "hata") toast(t("Otomatik yedek: {mesaj}", { mesaj: t(o.mesaj || "") }));
   else if (o?.tur === "hatirlat") yedekHatirlat();
 });
 // Klasöre yazamayan tarayıcıda: son yedekten (ya da son hatırlatmadan) 7 gün geçtiyse "Yedeği kaydet".
@@ -2030,7 +2631,7 @@ function yedekHatirlat() {
   if (!son) { ayarla({ yedekHatirlatma: simdi }); return; }
   if (simdi - son < 7 * 864e5) return;
   ayarla({ yedekHatirlatma: simdi });
-  toast("Son yedeğin üstünden bir hafta geçti.", { etiket: "Yedeği kaydet", kalici: true, calistir: () => yedekAlIstegi() });
+  toast(t("Son yedeğin üstünden bir hafta geçti."), { etiket: t("Yedeği kaydet"), kalici: true, calistir: () => yedekAlIstegi() });
 }
 
 const izSayisi = () => store.belgeler.reduce((t, b) => t + (Array.isArray(b.veri?.izler) ? b.veri.izler.length : 0), 0);
@@ -2039,30 +2640,62 @@ function yedekPenceresi(dosya = null) {
   cekmeceKapat();
   const s = sayilar();
   const dlg = h("dialog", { class: "pencere bilgi yedek-pencere", "aria-labelledby": "yedekBaslik" });
-  const al = h("button", { class: "birincil", type: "button" }, "Yedek al");
-  const yukle = h("button", { class: "metin-dugme", type: "button" }, dosya ? "Yükle" : "Yedekten yükle");
-  al.addEventListener("click", () => yedekAlIstegi(al));
+  const al = h("button", { class: "birincil", type: "button" }, t("Yedek al"));
+  const yukle = h("button", { class: "metin-dugme", type: "button" }, dosya ? t("Yükle") : t("Yedekten yükle"));
+  // Şifreli yedek (10.5 madde 3): anahtar ve iki kez yazılan parola. yedek-isci.js şifreyi bilmiyorsa anahtar görünmez
+  const sifre = !dosya && kayit.sifreliYedekVar() ? sifreDenetimi() : null;
+  al.addEventListener("click", () => {
+    if (!sifre?.acik()) { yedekAlIstegi(al); return; }
+    const p = sifre.parola();
+    if (p) yedekAlIstegi(al, { parola: p });
+  });
   yukle.addEventListener("click", () => { dlg.close(); if (dosya) yedekYukleIstegi(dosya); else yedekSec(); });
   dlg.append(
     icon("yedekle", "bilgi-simge"),
-    h("h2", { class: "t-b2", id: "yedekBaslik" }, dosya ? `“${dosya.name}”` : "Yedekle"),
+    h("h2", { class: "t-b2", id: "yedekBaslik" }, dosya ? `“${dosya.name}”` : t("Yedekle")),
     h("p", {}, dosya
-      ? "Yedekteki belgeler, kalem izleri, notlar, kartlar ve kırpıntılar bu kitaplıkla birleştirilir. İkisinde de olan belgede son açılan kalır."
-      : "Her şey tek bir .kenar dosyasına yazılır: belgeler, çizgi romanlar ve dosyaları, kalem izleri ve cep defterleri, derlemeler, notlar, bantlar, kartlar ve kırpıntılar. API anahtarları yedeğe girmez."),
+      ? t("Yedekteki belgeler, kalem izleri, notlar, kartlar ve kırpıntılar bu kitaplıkla birleştirilir. İkisinde de olan belgede son açılan kalır.")
+      : t("Her şey tek bir .kenar dosyasına yazılır: belgeler, çizgi romanlar ve dosyaları, kalem izleri ve cep defterleri, derlemeler, notlar, bantlar, kartlar ve kırpıntılar. API anahtarları yedeğe girmez.")),
+    // Satır adları Türkçe kalır (İzler satırı adıyla tanınır), görüntülerken çevrilir
     h("dl", { class: "kilavuzlar" }, [["Kitaplar", s.kitaplar], ["Defterler", s.defterler], ...(s.cizgiler ? [["Çizgi romanlar", s.cizgiler]] : []),
       ["Klasörler", KLASORLER.length], ["Kırpıntılar", s.kirpilanlar], ["Kartlar", store.kartlar.length],
       ["İzler", izSayisi()]]
-      .map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, ad), h("dd", ad === "İzler" ? { "data-iz-sayisi": "" } : {}, String(deger))))),
+      .map(([ad, deger]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, t(ad)), h("dd", ad === "İzler" ? { "data-iz-sayisi": "" } : {}, String(deger))))),
     depoGostergesi(),
+    ...(sifre ? [sifre.el] : []),
     h("div", { class: "fis-hedera", "aria-hidden": "true" }, parca('<svg viewBox="0 0 28 16"><use href="#i-hedera"/></svg>')),
     h("div", { class: "pencere-alt" },
-      h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, "Kapat"),
+      h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, t("Kapat")),
       dosya ? null : yukle, dosya ? yukle : al));
   if (dosya) yukle.className = "birincil";
   // Belge verileri açılışta kitaplıktan sonra gelir: iz sayısı onlar gelince yeniden yazılır
   kayit.veriBekle().then(() => { const dd = $("[data-iz-sayisi]", dlg); if (dd) dd.textContent = String(izSayisi()); });
   pencereKur(dlg);
   odakla($(".pencere-alt button:last-child", dlg));
+}
+
+// "Parolayla şifrele" anahtarı ve iki parola alanı. parola(): eşleşiyorsa parola, değilse uyarı ve null
+function sifreDenetimi() {
+  let acik = false;
+  const p1 = h("input", { class: "girdi", type: "password", autocomplete: "new-password", "aria-label": t("Parola"), placeholder: t("Parola"), enterkeyhint: "next" });
+  const p2 = h("input", { class: "girdi", type: "password", autocomplete: "new-password", "aria-label": t("Parola yeniden"), placeholder: t("Parola yeniden"), enterkeyhint: "done" });
+  const uyari = h("p", { class: "parola-hata", role: "alert", hidden: true });
+  const alanlar = h("div", { class: "sifre-alanlar", hidden: true }, p1, p2, uyari,
+    h("p", { class: "ayar-not" }, t("Parola hiçbir yere kaydedilmez; unutursan yedek açılmaz. Klasöre otomatik yedek şifresiz kalır.")));
+  const anahtar = anahtarSatiri(t("Parolayla şifrele"), t("AES-256; yedek yalnız parolayla açılır"), () => acik, (v) => {
+    acik = v; anahtar.guncelle(); alanlar.hidden = !v; uyari.hidden = true;
+    if (v) p1.focus();
+  });
+  for (const g of [p1, p2]) g.addEventListener("input", () => { uyari.hidden = true; });
+  return {
+    el: h("div", { class: "sifre-denetim" }, anahtar.el, alanlar),
+    acik: () => acik,
+    parola: () => {
+      const hata = !p1.value ? t("Bir parola yaz.") : p1.value.length < 6 ? t("Parola en az 6 karakter olmalı.") : p1.value !== p2.value ? t("İki parola aynı değil.") : "";
+      if (hata) { uyari.textContent = hata; uyari.hidden = false; (p1.value && p1.value.length >= 6 ? p2 : p1).focus(); return null; }
+      return p1.value;
+    },
+  };
 }
 
 // Masaüstünde dosya sürükleyip bırakma
@@ -2092,7 +2725,7 @@ function dosyaBirakma() {
     dosyalariAyir(dosyalar).then(({ belgeler, yedek }) => {
       if (yedek) { yedekPenceresi(yedek); return; }
       if (belgeler.length) { dosyalariAl(belgeler); return; }
-      bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: "Kenar Notu PDF, EPUB ve CBZ (çizgi roman) dosyalarını açar. Not almak için yeni bir defter de açabilirsin." });
+      bilgiPenceresi({ ikon: "pdf", baslik: `“${dosyalar[0].name}”`, metin: t("Kenar Notu PDF, EPUB ve CBZ (çizgi roman) dosyalarını açar. Not almak için yeni bir defter de açabilirsin.") });
     });
   });
 }
@@ -2100,23 +2733,119 @@ function dosyaBirakma() {
 /* ---------- Ayarlar denetimleri ---------- */
 function parcali(secenekler, etiket, deger, sec) {
   const dugmeler = secenekler.map(([v, ad, ik]) => h("button", { type: "button", "aria-pressed": "false", onclick: () => sec(v) }, ik ? icon(ik) : null, ad));
-  const el = h("div", { class: "parcali", role: "group", "aria-label": etiket }, dugmeler);
-  const guncelle = () => { const d = deger(); dugmeler.forEach((b, i) => b.setAttribute("aria-pressed", String(secenekler[i][0] === d))); };
+  // 7.0 (6.5): seçili parçanın altında kayan tek topuz; seçenekler arasında atlamaz, transform ile kayar
+  const topuz = h("i", { class: "parcali-topuz", "aria-hidden": "true" });
+  const el = h("div", { class: "parcali", role: "group", "aria-label": etiket }, topuz, dugmeler);
+  const guncelle = () => { const d = deger(); dugmeler.forEach((b, i) => b.setAttribute("aria-pressed", String(secenekler[i][0] === d))); topuzYerlestir(el, topuz); };
+  // Pencere açılıp ölçü belli olunca bir kez daha
+  new ResizeObserver(() => topuzYerlestir(el, topuz)).observe(el);
   guncelle();
   return { el, guncelle };
 }
 function kagitDiskleri() {
   // Oto: Koltuk'ta temayı izler, Masa'da beyaz kalır (ortak.js sayfaCoz). Disk yarı açık yarı koyu.
-  const SAYFA = [["oto", "Oto", "linear-gradient(90deg, #FDFBF6 50%, #1B1A17 50%)", "#24211E"], ["beyaz", "Beyaz", "#FDFBF6", "#24211E"],
-    ["sepya", "Sepya", "#F5EDDA", "#3B2F22"], ["koyu", "Koyu", "#1B1A17", "#D9D0BE"], ["tahta", "Tahta", "#1F2622", "#DCD8CB"], ["mum", "Mum", "#1E1710", "#E6CFA5"]];
+  const SAYFA = [["oto", t("Oto"), "linear-gradient(90deg, #FDFBF6 50%, #1B1A17 50%)", "#24211E"], ["beyaz", t("Beyaz"), "#FDFBF6", "#24211E"],
+    ["sepya", t("Sepya"), "#F5EDDA", "#3B2F22"], ["koyu", t("Koyu"), "#1B1A17", "#D9D0BE"], ["tahta", t("Tahta"), "#1F2622", "#DCD8CB"], ["mum", t("Mum"), "#1E1710", "#E6CFA5"]];
   const dugmeler = SAYFA.map(([v, ad, kd, kdy]) =>
     h("button", { class: "kagit-disk" + (v === "oto" ? " oto" : ""), type: "button", "aria-pressed": "false", style: `--kd:${kd};--kdy:${kdy}`, onclick: () => ayarla({ sayfaRengi: v }) },
       h("i", {}, v === "oto" ? h("span", {}, "Aa") : "Aa"), ad));
-  const el = h("div", { class: "kagit-diskler", role: "group", "aria-label": "Sayfa rengi" }, dugmeler);
+  const el = h("div", { class: "kagit-diskler", role: "group", "aria-label": t("Sayfa rengi") }, dugmeler);
   const guncelle = () => dugmeler.forEach((b, i) => b.setAttribute("aria-pressed", String(SAYFA[i][0] === (store.ayarlar.sayfaRengi || "oto"))));
   guncelle();
   return { el, guncelle };
 }
+// Radyo grubu: oklar seçimi taşır ve uygular, Boşluk ve Enter seçer (düğmenin kendi tıklaması). Gezici tabindex.
+function radyoGrubu(el, dugmeler, sec) {
+  el.addEventListener("keydown", (e) => {
+    const i = dugmeler.indexOf(document.activeElement);
+    if (i < 0) return;
+    const ileri = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    let j = ileri ? (i + ileri + dugmeler.length) % dugmeler.length : e.key === "Home" ? 0 : e.key === "End" ? dugmeler.length - 1 : -1;
+    if (j < 0) return;
+    e.preventDefault();
+    dugmeler[j].focus();
+    sec(j);
+  });
+}
+const radyoIsaretle = (dugmeler, seciliIndis) => dugmeler.forEach((b, i) => {
+  b.setAttribute("aria-checked", String(i === seciliIndis));
+  b.tabIndex = i === Math.max(0, seciliIndis) ? 0 : -1;
+});
+const kipSimdi = () => (koyuMu() ? "gece" : "gunduz");
+
+// 7.0 Atmosfer ızgarası (TASARIM-5 4.5): her kart o atmosferin canlı önizlemesi (.atmosfer-onizleme kendi tokenlarını alır).
+// Kart etkin kipte çizilir; yalnız gece olanlar her zaman gece. Seçim anında uygulanır.
+function atmosferIzgarasi() {
+  const dugmeler = ATMOSFERLER.map((a) => {
+    const onizleme = h("span", { class: "atmosfer-onizleme", "aria-hidden": "true", dataset: { atmosfer: a.id } },
+      h("i", { class: "o-izgara" }), h("i", { class: "o-kapsul" }), h("i", { class: "o-kart" }), h("i", { class: "o-disk" }));
+    const ad = h("span", {});
+    const etiket = a.yalnizGece ? h("small", {}, t("Gece")) : null;
+    const b = h("button", { class: "atmosfer-kart", type: "button", role: "radio", "aria-checked": "false", tabindex: "-1",
+      onclick: () => ayarla({ atmosfer: a.id }) }, onizleme, h("span", { class: "atmosfer-kart__ad" }, ad, etiket));
+    b._kur = () => {
+      const kip = a.yalnizGece ? "gece" : kipSimdi();
+      onizleme.dataset.kip = kip;
+      // Nebula'nın gündüz yüzü Lavanta: kartın adı da ona döner, ekran okuyucu ikisini birden söyler
+      const asilAd = t(a.ad);
+      const gorunenAd = kip === "gunduz" && a.gunduzAd ? t(a.gunduzAd) : asilAd;
+      ad.textContent = gorunenAd;
+      b.setAttribute("aria-label", gorunenAd === asilAd ? (a.yalnizGece ? t("{ad}, yalnız gece", { ad: asilAd }) : asilAd) : t("{ad}, gündüz yüzü {gunduz}", { ad: asilAd, gunduz: gorunenAd }));
+    };
+    return b;
+  });
+  const el = h("div", { class: "atmosfer-izgara", role: "radiogroup", "aria-label": t("Atmosfer") }, dugmeler);
+  radyoGrubu(el, dugmeler, (i) => ayarla({ atmosfer: ATMOSFERLER[i].id }));
+  const guncelle = () => {
+    for (const b of dugmeler) b._kur();
+    const secim = atmosferBul(store.ayarlar.atmosfer) ? store.ayarlar.atmosfer : "aurora";
+    radyoIsaretle(dugmeler, ATMOSFERLER.findIndex((a) => a.id === secim));
+  };
+  guncelle();
+  return { el, guncelle };
+}
+
+// 7.0 Vurgu rengi (TASARIM-5 4.5): "Atmosferin rengi" ve sekiz hazır numune. Serbest renk yok: AA garanti kalsın.
+function vurguDiskleri() {
+  const SECENEK = [{ id: null, ad: "Atmosferin rengi" }, ...VURGULAR];
+  const dugmeler = SECENEK.map((v) => h("button", { class: "vurgu-disk" + (v.id ? "" : " atmosferin"), type: "button", role: "radio",
+    "aria-checked": "false", tabindex: "-1", "aria-label": t(v.ad), title: t(v.ad), onclick: () => ayarla({ vurgu: v.id }) }, h("i", {}, icon("tik"))));
+  const el = h("div", { class: "vurgu-diskler", role: "radiogroup", "aria-label": t("Vurgu rengi") }, dugmeler);
+  const secili = h("p", { class: "vurgu-secili-ad", "aria-hidden": "true" });
+  radyoGrubu(el, dugmeler, (i) => ayarla({ vurgu: SECENEK[i].id }));
+  const guncelle = () => {
+    const kip = kipSimdi();
+    const etkin = atmosferBul(kok.dataset.atmosfer) || ATMOSFERLER[0];
+    dugmeler.forEach((b, i) => {
+      const [d1, d2] = SECENEK[i].id ? SECENEK[i][kip] : etkin.onizleme[kip].slice(1);
+      b.style.setProperty("--d1", d1);
+      b.style.setProperty("--d2", d2);
+      b.style.setProperty("--d-yazi", kip === "gece" ? "#0B0C11" : "#FFFFFF");
+    });
+    const v = VURGULAR.find((x) => x.id === store.ayarlar.vurgu);
+    radyoIsaretle(dugmeler, v ? SECENEK.indexOf(v) : 0);
+    secili.textContent = v ? t(v.ad) : t("Atmosferin rengi ({ad})", { ad: t((atmosferBul(store.ayarlar.atmosfer) || ATMOSFERLER[0]).ad) });
+  };
+  guncelle();
+  return { el: h("div", {}, el, secili), guncelle };
+}
+
+// Canlı zemin: sade hareket (ayar ya da sistem) açıkken devre dışı görünür, açıklaması değişir
+function canliZeminSatiri() {
+  const s = anahtarSatiri(t("Canlı zemin"), t("Zemin ışığı çok yavaş kayar. Pil için kapalı."), () => !!store.ayarlar.canliZemin && !hareketAz(),
+    (v) => { if (!hareketAz()) ayarla({ canliZemin: v }); });
+  const aciklama = s.el.querySelector("small");
+  const ilk = s.guncelle;
+  const guncelle = () => {
+    ilk();
+    const kapali = hareketAz();
+    if (kapali) s.el.setAttribute("aria-disabled", "true"); else s.el.removeAttribute("aria-disabled");
+    aciklama.textContent = kapali ? t("Sade hareket açıkken kapalı") : t("Zemin ışığı çok yavaş kayar. Pil için kapalı.");
+  };
+  guncelle();
+  return { el: s.el, guncelle };
+}
+
 const sekilDuzeltAcik = () => (store.ayarlar.araclar?.sekilDuzelt ?? store.ayarlar.sekilDuzelt) !== false;
 // Araçlar kurulmadan seçilen şekil düzeltme, araçlar kurulunca onlara geçer
 function sekilDuzeltAktar() {
@@ -2140,7 +2869,7 @@ function anahtarSatiri(ad, aciklama, deger, sec) {
 // Kalınlık basincUygula'dan: kalem.js de aynı eğriyi kullanınca önizleme ile kâğıt aynı çıkar.
 function basincOnizleme() {
   const W = 240, H = 48, dpr = Math.min(3, devicePixelRatio || 1);
-  const c = h("canvas", { class: "spen-onizleme", width: String(W * dpr), height: String(H * dpr), role: "img", "aria-label": "Basınç eğrisi önizlemesi" });
+  const c = h("canvas", { class: "spen-onizleme", width: String(W * dpr), height: String(H * dpr), role: "img", "aria-label": t("Basınç eğrisi önizlemesi") });
   const g = c.getContext("2d");
   const renk = () => getComputedStyle(c).color || "#1C1B19";
   const nokta = (x, y, p) => {
@@ -2181,114 +2910,129 @@ function basincOnizleme() {
 /* ---------- Ayarlar sayfası (TASARIM-4 1.2) ---------- */
 // Geniş ekranda 760 px'lik pencere: solda bölüm listesi, sağda kayan içerik. Telefonda ve iPad dikeyde tam alt çekmece,
 // bölümler üstte kayan çip satırı. Bölüm değişince içerik o başlığa kayar.
-const kalemBaslik = () => ({ spen: "S Pen", pencil: "Apple Pencil" })[kalemTuru()] || "Kalem";
+const kalemBaslik = () => ({ spen: "S Pen", pencil: "Apple Pencil" })[kalemTuru()] || t("Kalem");
+// Arayüz dili seçimi (dil.js). Yerel adlar başka adlarla karışmasın diye takma adla alınır
+import { dil as arayuzDili, DILLER, dilSec as arayuzDiliSec } from "./dil.js";
 let ayarlarAcik = null;
 function ayarlarAc({ acan = null, bolum = null } = {}) {
   if (ayarlarAcik) { ayarlarAcik.git(bolum); return; }
   rehberKapat();
   fisKapat(true);
   cekmeceKapat();
-  const tema = parcali([["oto", "Otomatik", "tema-oto"], ["acik", "Açık", "tema-acik"], ["koyu", "Koyu", "tema-koyu"]],
-    "Uygulama teması", () => store.ayarlar.tema, (v) => ayarla({ tema: v }));
+  // Dil: her seçenek kendi dilinde yazılır; seçilince sayfa yeniden yüklenir
+  const dilD = parcali(DILLER, t("Dil"), () => arayuzDili, (v) => arayuzDiliSec(v));
+  dilD.el.querySelectorAll("button").forEach((b, i) => { b.lang = DILLER[i][0]; });
+  const tema = parcali([["oto", t("Otomatik"), "tema-oto"], ["acik", t("Açık"), "tema-acik"], ["koyu", t("Koyu"), "tema-koyu"]],
+    t("Uygulama teması"), () => store.ayarlar.tema, (v) => ayarla({ tema: v }));
+  const atmosferD = atmosferIzgarasi();
+  const vurguD = vurguDiskleri();
+  const canliD = canliZeminSatiri();
   const sayfa = kagitDiskleri();
-  const yazi = parcali([["kucuk", "Küçük"], ["orta", "Orta"], ["buyuk", "Büyük"]], "Arayüz yazı boyutu",
+  const yazi = parcali([["kucuk", t("Küçük")], ["orta", t("Orta")], ["buyuk", t("Büyük")]], t("Arayüz yazı boyutu"),
     () => store.ayarlar.arayuzYazi || "orta", (v) => ayarla({ arayuzYazi: v }));
-  const sade = anahtarSatiri("Sade hareket", "Dönüş ve uçuş yerine kısa geçişler", () => store.ayarlar.sadeHareket, (v) => ayarla({ sadeHareket: v }));
-  const elYazisi = anahtarSatiri("Notlarda el yazısı", "Kapalıyken notlar düz yazıyla", () => store.ayarlar.elYazisi !== false, (v) => ayarla({ elYazisi: v }));
-  const parmak = anahtarSatiri("Parmakla çiz", "Kalem algılanınca kendiliğinden kapanır", () => store.ayarlar.parmaklaCiz, (v) => ayarla({ parmaklaCiz: v }));
+  const sade = anahtarSatiri(t("Sade hareket"), t("Dönüş ve uçuş yerine kısa geçişler"), () => store.ayarlar.sadeHareket, (v) => ayarla({ sadeHareket: v }));
+  const elYazisi = anahtarSatiri(t("Notlarda el yazısı"), t("Kapalıyken notlar düz yazıyla"), () => store.ayarlar.elYazisi !== false, (v) => ayarla({ elYazisi: v }));
+  const parmak = anahtarSatiri(t("Parmakla çiz"), t("Kalem algılanınca kendiliğinden kapanır"), () => store.ayarlar.parmaklaCiz, (v) => ayarla({ parmaklaCiz: v }));
   // Masa'nın ayarı araç ayarlarında (araclar.sekilDuzelt); araçlar ilk belge açılınca kurulur, o zamana kadar bekler
-  const sekil = anahtarSatiri("Şekil düzeltme", "Çizip bir an bekleyince çizgi, daire ve kutu düzelir", sekilDuzeltAcik,
+  const sekil = anahtarSatiri(t("Şekil düzeltme"), t("Çizip bir an bekleyince çizgi, daire ve kutu düzelir"), sekilDuzeltAcik,
     (v) => { const a = store.ayarlar.araclar; if (a) { a.sekilDuzelt = v; ayarla({}); } else ayarla({ sekilDuzelt: v }); });
-  const yanTus = anahtarSatiri("Yan tuş silgi", "Yan tuş basılıyken kalem siler", () => store.ayarlar.yanTusSilgi !== false, (v) => ayarla({ yanTusSilgi: v }));
-  const egri = parcali([["yumusak", "Yumuşak"], ["orta", "Orta"], ["sert", "Sert"]], "Basınç eğrisi",
+  const yanTus = anahtarSatiri(t("Yan tuş silgi"), t("Yan tuş basılıyken kalem siler"), () => store.ayarlar.yanTusSilgi !== false, (v) => ayarla({ yanTusSilgi: v }));
+  const egri = parcali([["yumusak", t("Yumuşak")], ["orta", t("Orta")], ["sert", t("Sert")]], t("Basınç eğrisi"),
     () => store.ayarlar.basincEgrisi || "orta", (v) => ayarla({ basincEgrisi: v }));
   const onizleme = basincOnizleme();
   const kalemD = { el: null, guncelle: () => { yanTus.guncelle(); egri.guncelle(); onizleme.ciz(); } };
-  const sonBelge = anahtarSatiri("Açılışta son belgeyle başla", "Uygulama doğrudan son okuduğun yerde açılır", () => !!store.ayarlar.sonBelgeyleBasla, (v) => ayarla({ sonBelgeyleBasla: v }));
-  const exGoster = anahtarSatiri("Ex libris", "Kitabın iç kapağında senin mührün", () => store.ayarlar.exLibrisGoster !== false, (v) => ayarla({ exLibrisGoster: v }));
-  const odunc = anahtarSatiri("Ödünç kartı", "Kitabın sonunda okuduğun günler ve toplam süre", () => store.ayarlar.oduncKarti !== false, (v) => ayarla({ oduncKarti: v }));
-  const mum = anahtarSatiri("Mum ışığı önerisi", "Saat 22’den sonra bir kez, nazikçe", () => store.ayarlar.mumOneri !== false, (v) => ayarla({ mumOneri: v }));
-  const exDisa = anahtarSatiri("Dışa aktarırken ex libris ekle", "Notlu PDF’in ilk sayfasında, sağ altta", () => store.ayarlar.exLibrisDisa !== false, (v) => ayarla({ exLibrisDisa: v }));
+  const sonBelge = anahtarSatiri(t("Açılışta son belgeyle başla"), t("Uygulama doğrudan son okuduğun yerde açılır"), () => !!store.ayarlar.sonBelgeyleBasla, (v) => ayarla({ sonBelgeyleBasla: v }));
+  const exGoster = anahtarSatiri(t("Ex libris"), t("Kitabın iç kapağında senin mührün"), () => store.ayarlar.exLibrisGoster !== false, (v) => ayarla({ exLibrisGoster: v }));
+  const odunc = anahtarSatiri(t("Ödünç kartı"), t("Kitabın sonunda okuduğun günler ve toplam süre"), () => store.ayarlar.oduncKarti !== false, (v) => ayarla({ oduncKarti: v }));
+  const mum = anahtarSatiri(t("Mum ışığı önerisi"), t("Saat 22’den sonra bir kez, nazikçe"), () => store.ayarlar.mumOneri !== false, (v) => ayarla({ mumOneri: v }));
+  const exDisa = anahtarSatiri(t("Dışa aktarırken ex libris ekle"), t("Notlu PDF’in ilk sayfasında, sağ altta"), () => store.ayarlar.exLibrisDisa !== false, (v) => ayarla({ exLibrisDisa: v }));
   // Yapay zekâ ve Çeviri: alt satırda seçili yol, dokununca ayrı pencere
   const yzAlt = h("small", {}, yzOzet());
   const yzSatir = h("button", { class: "fis-satir yz-satir", type: "button", "aria-haspopup": "dialog", onclick: () => yzPenceresi() },
-    icon("sor", "i-20"), h("span", {}, "Yapay zekâ"), yzAlt);
+    icon("sor", "i-20"), h("span", {}, t("Yapay zekâ")), yzAlt);
   const cvAlt = h("small", {}, ceviriOzet());
   const cvSatir = h("button", { class: "fis-satir yz-satir", type: "button", "aria-haspopup": "dialog", onclick: () => ceviriPenceresi() },
-    icon("ceviri", "i-20"), h("span", {}, "Çeviri"), cvAlt);
+    icon("ceviri", "i-20"), h("span", {}, t("Çeviri")), cvAlt);
   const metinler = { el: null, guncelle: () => { yzAlt.textContent = yzOzet(); cvAlt.textContent = ceviriOzet(); } };
   // Yedek ve depolama
   const sonYedek = h("p", { class: "ayar-not" });
   const sonYedekYaz = () => {
-    const t = Number(store.ayarlar.sonYedek) || 0;
-    sonYedek.textContent = t ? `Son yedek: ${neZaman(t)}.` : "Henüz yedek alınmadı.";
+    const son = Number(store.ayarlar.sonYedek) || 0;
+    sonYedek.textContent = son ? t("Son yedek: {zaman}.", { zaman: neZaman(son) }) : t("Henüz yedek alınmadı.");
   };
   sonYedekYaz();
-  const yedekAl = h("button", { class: "ikincil", type: "button" }, icon("yedekle", "i-20"), "Şimdi yedekle");
+  const yedekAl = h("button", { class: "ikincil", type: "button" }, icon("yedekle", "i-20"), t("Şimdi yedekle"));
   yedekAl.addEventListener("click", () => yedekAlIstegi(yedekAl));
-  const yedekYukle = h("button", { class: "metin-dugme", type: "button", onclick: () => yedekSec() }, "Yedekten yükle");
+  const yedekYukle = h("button", { class: "metin-dugme", type: "button", onclick: () => yedekSec() }, t("Yedekten yükle"));
   const otoYedek = otoYedekDenetimi();
   // Kitap klasörü (13. tur): modül tembel yüklenir, durum sonradan yazılır
   const kitapKlasoruD = kayit.klasorDestegi() ? h("div", { class: "oto-yedek kitap-klasoru-ayar" }) : null;
   if (kitapKlasoruD) kitapKlasoruModulu().then((m) => m.ayarDenetimi(kitapKlasoruD)).catch(() => kitapKlasoruD.remove());
-  const sifirEtiket = h("span", {}, "Örnek verilere dön");
+  const sifirEtiket = h("span", {}, t("Örnek verilere dön"));
   const sifir = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
-    h("span", {}, sifirEtiket, h("small", {}, "Çizimler, notlar, içe aktarılan dosyalar silinir; API anahtarları kalır")));
-  onayla(sifir, sifirEtiket, "Emin misin? Tekrar dokun", () => durumuSifirla());
-  const temizEtiket = h("span", {}, "Her şeyi temizle");
+    h("span", {}, sifirEtiket, h("small", {}, t("Çizimler, notlar, içe aktarılan dosyalar silinir; API anahtarları kalır"))));
+  onayla(sifir, sifirEtiket, t("Emin misin? Tekrar dokun"), () => durumuSifirla());
+  const temizEtiket = h("span", {}, t("Her şeyi temizle"));
   const temiz = h("button", { class: "fis-satir onayli sifirla", type: "button" }, icon("sil", "i-20"),
-    h("span", {}, temizEtiket, h("small", {}, "Örnekler dahil her şey ve API anahtarları silinir; boş bir defterle başlar")));
-  onayla(temiz, temizEtiket, "Emin misin? Tekrar dokun", () => durumuSifirla({ hepsi: true }));
+    h("span", {}, temizEtiket, h("small", {}, t("Örnekler dahil her şey ve API anahtarları silinir; boş bir defterle başlar"))));
+  onayla(temiz, temizEtiket, t("Emin misin? Tekrar dokun"), () => durumuSifirla({ hepsi: true }));
   const exDuz = exLibrisDuzenleyici();
   const rehberD = h("button", { class: "fis-satir", type: "button", onclick: () => { kapat(); rehberBaslat(); } },
-    icon("sor", "i-20"), h("span", {}, "Rehberi yeniden göster"), h("small", {}, "Üç kısa ipucu, gerçek ekranın üstünde"));
+    icon("sor", "i-20"), h("span", {}, t("Rehberi yeniden göster")), h("small", {}, t("Üç kısa ipucu, gerçek ekranın üstünde")));
   const kurulumD = iosMu() && !kuruluMu()
-    ? h("button", { class: "fis-satir", type: "button", onclick: () => iosKurulumFisi({ zorla: true }) }, icon("paylas", "i-20"), h("span", {}, "Ana ekrana ekle"), h("small", {}, "Tam ekran açılır, verilerin kalıcı olur"))
+    ? h("button", { class: "fis-satir", type: "button", onclick: () => iosKurulumFisi({ zorla: true }) }, icon("paylas", "i-20"), h("span", {}, t("Ana ekrana ekle")), h("small", {}, t("Tam ekran açılır, verilerin kalıcı olur")))
     : null;
 
-  const kalemIpucu = { spen: "Kalem havadayken yan tuş Samsung menüsünü açar. Önce ekrana değdir, sonra bas.",
-    pencil: "Silgi kalem tepsisinde. İki parmakla dokunmak geri alır, üç parmakla dokunmak yineler.",
-  }[kalemTuru()] || "İki parmakla dokunmak geri alır, üç parmakla dokunmak yineler.";
-  const kisayollar = dokunmatikMiYalniz() ? null : h("dl", { class: "kilavuzlar ayar-kisayol" },
-    [["Ctrl K", "Hızlı erişim: belge, ekran ve komut"], ["/", "Kitaplıkta ara"], ["Ctrl Z", "Geri al"], ["Esc", "Pencereyi ya da paneli kapat"]]
-      .map(([t, a]) => h("div", { class: "kilavuz-satir" }, h("dt", {}, h("kbd", { class: "kisayol" }, t)), h("dd", {}, a))));
+  const kalemIpucu = { spen: t("Kalem havadayken yan tuş Samsung menüsünü açar. Önce ekrana değdir, sonra bas."),
+    pencil: t("Silgi kalem tepsisinde. İki parmakla dokunmak geri alır, üç parmakla dokunmak yineler."),
+  }[kalemTuru()] || t("İki parmakla dokunmak geri alır, üç parmakla dokunmak yineler.");
+  // 7.0 (K9): kısayollar ve yenilikler kendi sheet'lerinde
+  const kisayolSatir = h("button", { class: "fis-satir", type: "button", "aria-haspopup": "dialog", onclick: (e) => kisayollarAc(e.currentTarget) },
+    icon("klavye", "i-20"), h("span", {}, t("Klavye kısayolları")), h("small", {}, dokunmatikMiYalniz() ? t("Klavye bağlıyken") : t("Her yerde ? tuşu")));
+  const yenilikSatir = h("button", { class: "fis-satir", type: "button", "aria-haspopup": "dialog",
+    onclick: (e) => { const acan = e.currentTarget; import("./hakkinda.js").then((m) => m.yeniliklerAc({ acan })); } },
+    icon("yildizlar", "i-20"), h("span", {}, t("Yenilikler")), h("small", {}, t("Kenar Notu 7.0’da neler var")));
 
   const BOLUMLER = [
-    ["gorunum", "Görünüm", [h("span", { class: "t-etiket" }, "Uygulama teması"), tema.el, h("span", { class: "t-etiket" }, "Sayfa rengi"), sayfa.el,
-      h("span", { class: "t-etiket" }, "Arayüz yazı boyutu"), yazi.el, sade.el, elYazisi.el]],
+    // Ayarlar bölüm adı: "Görünüm" anahtarı başka yerde görünüm seçicisi (View), burada Appearance
+    ["gorunum", ingilizceMi ? "Appearance" : "Görünüm", [h("span", { class: "t-etiket" }, t("Dil")), dilD.el,
+      h("span", { class: "t-etiket" }, t("Uygulama teması")), tema.el,
+      h("span", { class: "t-etiket" }, t("Atmosfer")), atmosferD.el, h("span", { class: "t-etiket" }, t("Vurgu rengi")), vurguD.el, canliD.el,
+      h("span", { class: "t-etiket" }, t("Sayfa rengi")), sayfa.el,
+      h("span", { class: "t-etiket" }, t("Arayüz yazı boyutu")), yazi.el, sade.el, elYazisi.el]],
     ["kalem", kalemBaslik(), [parmak.el, sekil.el,
       h("div", { class: "spen-kart" },
         samsungMu() ? yanTus.el : null,
-        h("div", { class: "spen-egri" }, h("span", { class: "spen-egri__ad" }, "Basınç eğrisi", h("small", {}, kalemTuru() === "fare" || kalemTuru() === "parmak" ? "Kalemin varsa önizlemeye yaz" : "Önizlemeye kalemle yaz")), egri.el, onizleme.el),
+        h("div", { class: "spen-egri" }, h("span", { class: "spen-egri__ad" }, t("Basınç eğrisi"), h("small", {}, kalemTuru() === "fare" || kalemTuru() === "parmak" ? t("Kalemin varsa önizlemeye yaz") : t("Önizlemeye kalemle yaz"))), egri.el, onizleme.el),
         h("p", { class: "spen-ipucu" }, kalemIpucu))]],
-    ["okuma", "Okuma", [sonBelge.el, h("span", { class: "t-etiket" }, "Küçük sürprizler"), exGoster.el, odunc.el, mum.el]],
-    ["ceviri", "Çeviri ve yapay zekâ", [cvSatir, yzSatir]],
-    ...(kitapKlasoruD ? [["klasor", "Kitap klasörü", [kitapKlasoruD]]] : []),
-    ["yedek", "Yedek ve depolama", [depoUyarisi(), h("div", { class: "ayar-yedek" }, depoGostergesi(), sonYedek,
+    ["okuma", t("Okuma"), [sonBelge.el, h("span", { class: "t-etiket" }, t("Küçük sürprizler")), exGoster.el, odunc.el, mum.el]],
+    ["ceviri", t("Çeviri ve yapay zekâ"), [cvSatir, yzSatir]],
+    ...(kitapKlasoruD ? [["klasor", t("Kitap klasörü"), [kitapKlasoruD]]] : []),
+    ["yedek", t("Yedek ve depolama"), [depoUyarisi(), h("div", { class: "ayar-yedek" }, depoGostergesi(), sonYedek,
       h("div", { class: "ayar-yedek__dugmeler" }, yedekAl, yedekYukle)), otoYedek.el, kurulumD, h("div", { class: "fis-ayrac" }), sifir, temiz]],
-    ["exlibris", "Ex libris", [exDuz.el, exDisa.el]],
-    ["yardim", "Yardım", [rehberD,
+    ["exlibris", t("Ex libris"), [exDuz.el, exDisa.el]],
+    ["yardim", t("Yardım"), [rehberD,
       h("button", { class: "fis-satir", type: "button", "aria-haspopup": "dialog", onclick: (e) => { const acan = e.currentTarget; import("./hakkinda.js").then((m) => m.hakkindaAc({ acan })); } },
-        icon("kitap", "i-20"), h("span", {}, "Hakkında"), h("small", {}, "Sürüm, gizlilik, açık kaynak lisansları")),
-      kisayollar,
-      h("div", { class: "ayarlar-alt" }, parca('<svg viewBox="0 0 28 16" aria-hidden="true"><use href="#i-hedera"/></svg>'), "Kenar Notu, tasarım prototipi")]],
+        icon("kitap", "i-20"), h("span", {}, t("Hakkında")), h("small", {}, t("Sürüm, gizlilik, açık kaynak lisansları"))),
+      yenilikSatir, kisayolSatir,
+      h("div", { class: "ayarlar-alt" }, markaOgesi(), h("span", { class: "ayarlar-alt__not" }, t("Çevrimdışı çalışır. Verilerin bu cihazda kalır.")))]],
   ];
-  ayarDenetimleri = [tema, sayfa, yazi, sade, parmak, elYazisi, sekil, kalemD, sonBelge, exGoster, odunc, mum, exDisa, metinler, exDuz, { guncelle: sonYedekYaz }];
+  ayarDenetimleri = [tema, atmosferD, vurguD, canliD, sayfa, yazi, sade, parmak, elYazisi, sekil, kalemD, sonBelge, exGoster, odunc, mum, exDisa, metinler, exDuz, { guncelle: sonYedekYaz }];
   const bolumler = BOLUMLER.map(([id, ad, ogeler]) => h("section", { class: "ayar-bolum", id: "ayar-" + id, "aria-labelledby": "ayar-b-" + id },
     h("h3", { class: "ayar-bolum__baslik", id: "ayar-b-" + id }, ad), ...ogeler.filter(Boolean)));
   const navDugmeler = BOLUMLER.map(([id, ad]) => h("button", { class: "cip", type: "button", dataset: { bolum: id }, "aria-pressed": "false" }, ad));
-  const nav = h("nav", { class: "ayarlar-nav", "aria-label": "Ayarlar bölümleri" }, navDugmeler);
+  const nav = h("nav", { class: "ayarlar-nav", "aria-label": t("Ayarlar bölümleri") }, navDugmeler);
   const icerik = h("div", { class: "ayarlar-icerik" }, bolumler);
 
   let kaydirici, kapat, kok;
   const bitir = () => { ayarDenetimleri = []; ayarlarAcik = null; for (const d of [K.ayarlarDugme, K.basAyarlar]) d?.setAttribute("aria-expanded", "false"); };
   if (cekmeceMi()) {
-    const c = altCekmece({ baslik: "Ayarlar", govde: [nav, icerik], duraklar: ["tam"], ilk: "tam", sinif: "ayarlar-sayfa", acan, kapaninca: bitir });
+    const c = altCekmece({ baslik: t("Ayarlar"), govde: [nav, icerik], duraklar: ["tam"], ilk: "tam", sinif: "ayarlar-sayfa", acan, kapaninca: bitir });
     kaydirici = c.govde; kapat = () => c.kapat(); kok = c.kok;
   } else {
     const dlg = h("dialog", { class: "pencere ayarlar-sayfa", "aria-labelledby": "ayarlarBaslik" },
-      h("header", { class: "ayarlar-ust" }, h("h2", { class: "t-b2", id: "ayarlarBaslik", tabindex: "-1" }, "Ayarlar"),
-        h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => dlg.close() }, icon("kapat"))),
+      h("header", { class: "ayarlar-ust" }, h("h2", { class: "t-b2", id: "ayarlarBaslik", tabindex: "-1" }, t("Ayarlar")),
+        h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => dlg.close() }, icon("kapat"))),
       h("div", { class: "ayarlar-govde" }, nav, icerik));
     dlg.addEventListener("close", bitir);
     pencereKur(dlg);
@@ -2325,12 +3069,80 @@ function ayarlarAc({ acan = null, bolum = null } = {}) {
 // Fare ve klavyesi olmayan cihazda kısayol listesi gösterilmez
 const dokunmatikMiYalniz = () => matchMedia("(hover: none) and (pointer: coarse)").matches;
 
+/* ---------- Sheet: geniş ekranda pencere, telefonda alt çekmece (TASARIM-5 6.11) ---------- */
+// govde: öğe ya da dizi. Dönen { kapat }. sinif hem pencereye hem çekmeceye verilir
+function sheetAc({ baslik, govde, sinif = "", acan = document.activeElement, kapaninca, duraklar = ["yarim", "tam"], ilk = "tam" }) {
+  if (cekmeceMi()) {
+    const c = altCekmece({ baslik, govde, duraklar, ilk, sinif, acan, kapaninca });
+    return { kapat: () => c.kapat(), kok: c.kok };
+  }
+  const id = "sheet-" + Math.random().toString(36).slice(2, 8);
+  const dlg = h("dialog", { class: `pencere sheet ${sinif}`.trim(), "aria-labelledby": id },
+    h("header", { class: "ayarlar-ust" }, h("h2", { class: "t-b2", id, tabindex: "-1" }, baslik),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => dlg.close() }, icon("kapat"))),
+    h("div", { class: "sheet-govde" }, govde));
+  dlg.addEventListener("close", () => { kapaninca?.(); if (acan?.isConnected) acan.focus?.({ preventScroll: true }); });
+  pencereKur(dlg);
+  odakla($("#" + id, dlg));
+  return { kapat: () => dlg.close(), kok: dlg };
+}
+
+/* ---------- Klavye kısayolları (K9) ---------- */
+// kisayollar() kaydını alana göre gruplar; tuşlar Plex Mono kapsül. Mac'te Ctrl yerine ⌘
+const ALAN_ADLARI = { genel: t("Genel"), koltuk: t("Koltuk"), masa: t("Masa"), tekrar: t("Tekrar"), izler: t("İzlerim"), arama: t("Arama") };
+const macMi = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+function tusKapsulleri(tus) {
+  const parcalar = String(tus).split(/\s+(?=\S)/).filter(Boolean);
+  return h("span", { class: "tuslar" }, parcalar.map((p) => h("kbd", { class: "tus" }, macMi() && p === "Ctrl" ? "⌘" : p)));
+}
+let kisayolAcik = null;
+function kisayollarAc(acan = document.activeElement) {
+  if (kisayolAcik) return;
+  fisKapat(true);
+  const gruplar = new Map();
+  for (const k of kisayollar()) gruplar.set(k.alan, [...(gruplar.get(k.alan) || []), k]);
+  const sira = [...Object.keys(ALAN_ADLARI), ...[...gruplar.keys()].filter((a) => !ALAN_ADLARI[a])].filter((a) => gruplar.has(a));
+  const govde = h("div", { class: "kisayol-sayfa" },
+    dokunmatikMiYalniz() ? h("p", { class: "ayar-not" }, t("Klavye bağlıyken çalışır: kılıf klavyesi ya da Bluetooth klavye.")) : null,
+    sira.map((a) => h("section", { class: "kisayol-grup", "aria-labelledby": "ks-" + a },
+      h("h3", { class: "t-etiket", id: "ks-" + a }, ALAN_ADLARI[a] || a),
+      // Kısayol adları kaydeden modülden gelir; çevrilmediyse burada çevrilir
+      h("dl", { class: "kisayol-liste" }, gruplar.get(a).map((k) => h("div", { class: "kisayol-satir" }, h("dt", {}, tusKapsulleri(k.tus)), h("dd", {}, t(k.ad))))))));
+  kisayolAcik = sheetAc({ baslik: t("Klavye kısayolları"), govde, sinif: "kisayol-sheet", acan, kapaninca: () => { kisayolAcik = null; } });
+}
+
+/* ---------- Parola sorusu (şifreli yedek, 10.5) ---------- */
+// Dönen söz: parola ya da vazgeçilince null. hata: önceki deneme yanlışsa gösterilen satır
+function parolaSor({ baslik = t("Yedeğin parolası"), metin = t("Bu yedek parolayla şifreli. Parolayı yaz."), hata = "", dugme = t("Aç") } = {}) {
+  return new Promise((coz) => {
+    const girdi = h("input", { class: "girdi", type: "password", autocomplete: "current-password", "aria-label": t("Parola"), enterkeyhint: "go", required: true });
+    const goz = h("button", { class: "ikon-dugme parola-goz", type: "button", "aria-label": t("Parolayı göster"), "aria-pressed": "false" }, icon("goz", "i-20"));
+    goz.addEventListener("click", () => { const ac = girdi.type === "password"; girdi.type = ac ? "text" : "password"; goz.setAttribute("aria-pressed", String(ac)); girdi.focus(); });
+    let sonuc = null;
+    const dlg = h("dialog", { class: "pencere bilgi parola-pencere", "aria-labelledby": "parolaBaslik" });
+    const form = h("form", { class: "parola-form", method: "dialog" },
+      icon("kilit", "bilgi-simge"),
+      h("h2", { class: "t-b2", id: "parolaBaslik" }, baslik),
+      h("p", {}, metin),
+      h("label", { class: "parola-alan" }, girdi, goz),
+      hata ? h("p", { class: "parola-hata", role: "alert" }, hata) : null,
+      h("div", { class: "pencere-alt" },
+        h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, t("Vazgeç")),
+        h("button", { class: "birincil", type: "submit" }, dugme)));
+    form.addEventListener("submit", (e) => { e.preventDefault(); if (!girdi.value) return; sonuc = girdi.value; dlg.close(); });
+    dlg.append(form);
+    dlg.addEventListener("close", () => coz(sonuc));
+    pencereKur(dlg);
+    girdi.focus();
+  });
+}
+
 // Safari 7 gün kuralı (OZELLIKLER-7 §3): kurulu değilse ve tarayıcı kalıcılık vermediyse kısa uyarı
 function depoUyarisi() {
   if (!safariMi() || kuruluMu()) return null;
   const el = h("div", { class: "ayar-uyari", role: "note" }, icon("kilit", "i-20"),
-    h("p", {}, "Safari, ana ekrana eklenmemiş sitelerin verisini 7 gün açılmayınca silebilir. ",
-      iosMu() ? "Ana ekrana ekle ya da düzenli yedek al." : "Düzenli yedek al."));
+    h("p", {}, `${t("Safari, ana ekrana eklenmemiş sitelerin verisini 7 gün açılmayınca silebilir.")} `,
+      iosMu() ? t("Ana ekrana ekle ya da düzenli yedek al.") : t("Düzenli yedek al.")));
   navigator.storage?.persisted?.().then((k) => { if (k) el.remove(); }).catch(() => {});
   return el;
 }
@@ -2339,7 +3151,7 @@ async function depoUyarisiBirKez() {
   if (!safariMi() || kuruluMu() || depo.oku(ANAHTAR.depoUyari)) return;
   try { if (await navigator.storage?.persisted?.()) return; } catch { /* bilinmiyor: uyar */ }
   depo.yaz(ANAHTAR.depoUyari, Date.now());
-  setTimeout(() => toast("Safari bu verileri 7 gün açılmayınca silebilir. Ana ekrana ekle ya da yedek al.", { etiket: "Yedekle", calistir: () => yedekPenceresi() }), 4500);
+  setTimeout(() => toast(t("Safari bu verileri 7 gün açılmayınca silebilir. Ana ekrana ekle ya da yedek al."), { etiket: t("Yedekle"), calistir: () => yedekPenceresi() }), 4500);
 }
 
 // iOS'ta kurulum fişi (OZELLIKLER-7 §3): Safari sekmesinde bir kez, sessiz; kapatılınca bir daha çıkmaz
@@ -2352,12 +3164,12 @@ function iosKurulumFisi({ zorla = false, deneme = 0 } = {}) {
   if (!zorla && !["kitaplik", "izler", "tekrar", "arama"].includes(document.documentElement.dataset.ekran)) return;
   if (!zorla && $("dialog[open], .alt-cekmece")) return;   // açık pencere ya da çekmecenin üstüne binmesin
   depo.yaz(ANAHTAR.iosKurulum, Date.now());
-  const kapatD = h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat" }, icon("kapat", "i-20"));
-  const el = h("div", { class: "kurulum-fis", role: "note", "aria-label": "Ana ekrana ekle" },
+  const kapatD = h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat") }, icon("kapat", "i-20"));
+  const el = h("div", { class: "kurulum-fis", role: "note", "aria-label": t("Ana ekrana ekle") },
     h("span", { class: "kurulum-fis__simge", "aria-hidden": "true" }, icon("paylas")),
-    h("p", {}, h("b", {}, "Ana ekrana ekle"),
-      h("span", {}, ipadMi() ? "Üstteki Paylaş simgesine, sonra Ana Ekrana Ekle’ye dokun." : "Alttaki Paylaş simgesine, sonra Ana Ekrana Ekle’ye dokun.",
-        " Tam ekran açılır, verilerin kalıcı olur.")),
+    h("p", {}, h("b", {}, t("Ana ekrana ekle")),
+      h("span", {}, ipadMi() ? t("Üstteki Paylaş simgesine, sonra Ana Ekrana Ekle’ye dokun.") : t("Alttaki Paylaş simgesine, sonra Ana Ekrana Ekle’ye dokun."),
+        ` ${t("Tam ekran açılır, verilerin kalıcı olur.")}`)),
     kapatD);
   let zaman = 0;
   const kapat = () => { clearTimeout(zaman); if (hareketAz()) el.remove(); else { el.classList.add("gidiyor"); setTimeout(() => el.remove(), 200); } };
@@ -2375,9 +3187,9 @@ function exLibrisDuzenleyici() {
     vuruslar: exLibrisVar(kayitli) ? kayitli.vuruslar.map((v) => v.map((q) => [...q])) : [],
     cerceve: kayitli?.cerceve || "daire", renk: kayitli?.renk || EXLIBRIS_RENKLERI[0][1], yazi: kayitli?.yazi || "",
   };
-  const c = h("canvas", { class: "exlibris-tuval", width: String(W * dpr), height: String(W * dpr), role: "img", "aria-label": "Ex libris çizim alanı. Kalemle ya da parmakla imzanı ya da monogramını çiz." });
+  const c = h("canvas", { class: "exlibris-tuval", width: String(W * dpr), height: String(W * dpr), role: "img", "aria-label": t("Ex libris çizim alanı. Kalemle ya da parmakla imzanı ya da monogramını çiz.") });
   const g = c.getContext("2d");
-  const onizleme = h("div", { class: "exlibris-onizleme", "aria-label": "Mühür önizlemesi", role: "img" });
+  const onizleme = h("div", { class: "exlibris-onizleme", "aria-label": t("Mühür önizlemesi"), role: "img" });
   const ciz = () => {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, W);
@@ -2394,7 +3206,7 @@ function exLibrisDuzenleyici() {
       g.beginPath(); g.moveTo(a[0] * W, a[1] * W); g.lineTo(b[0] * W + (i ? 0 : 0.1), b[1] * W); g.stroke();
     }
   };
-  const onizle = () => { onizleme.innerHTML = exLibrisSvg(96, taslak, { aci: -4 }) || '<span class="exlibris-bos">Mühür burada görünür</span>'; };
+  const onizle = () => { onizleme.innerHTML = exLibrisSvg(96, taslak, { aci: -4 }) || `<span class="exlibris-bos">${t("Mühür burada görünür")}</span>`; };
   let vurus = null;
   c.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -2420,31 +3232,31 @@ function exLibrisDuzenleyici() {
   const bitir = () => { if (!vurus) return; if (!vurus.length) taslak.vuruslar.pop(); vurus = null; onizle(); durum(); };
   c.addEventListener("pointerup", bitir);
   c.addEventListener("pointercancel", bitir);
-  const cerceve = parcali([["daire", "Daire"], ["oval", "Oval"], ["yok", "Yok"]], "Çerçeve", () => taslak.cerceve, (v) => { taslak.cerceve = v; cerceve.guncelle(); onizle(); });
-  const renkler = h("div", { class: "exlibris-renkler", role: "group", "aria-label": "Mürekkep" }, EXLIBRIS_RENKLERI.map(([ad, hex]) => {
-    const d = h("button", { class: "renk-secim", type: "button", "aria-label": ad, title: ad, "aria-pressed": String(taslak.renk === hex), style: `--renk:${hex}` });
+  const cerceve = parcali([["daire", t("Daire")], ["oval", t("Oval")], ["yok", t("Yok")]], t("Çerçeve"), () => taslak.cerceve, (v) => { taslak.cerceve = v; cerceve.guncelle(); onizle(); });
+  const renkler = h("div", { class: "exlibris-renkler", role: "group", "aria-label": t("Mürekkep") }, EXLIBRIS_RENKLERI.map(([ad, hex]) => {
+    const d = h("button", { class: "renk-secim", type: "button", "aria-label": t(ad), title: t(ad), "aria-pressed": String(taslak.renk === hex), style: `--renk:${hex}` });
     d.addEventListener("click", () => { taslak.renk = hex; for (const x of renkler.children) x.setAttribute("aria-pressed", String(x === d)); ciz(); onizle(); });
     return d;
   }));
-  const yaziGirdi = h("input", { class: "exlibris-yazi", type: "text", maxlength: "18", placeholder: "EX LİBRİS · CAN", "aria-label": "Mühürdeki yazı (isteğe bağlı)", autocomplete: "off", enterkeyhint: "done" });
+  const yaziGirdi = h("input", { class: "exlibris-yazi", type: "text", maxlength: "18", placeholder: t("EX LİBRİS · CAN"), "aria-label": t("Mühürdeki yazı (isteğe bağlı)"), autocomplete: "off", enterkeyhint: "done" });
   yaziGirdi.value = taslak.yazi;
   yaziGirdi.addEventListener("input", () => { taslak.yazi = yaziGirdi.value.slice(0, 18); onizle(); durum(); });
-  const geriD = h("button", { class: "metin-dugme", type: "button" }, "Geri al");
+  const geriD = h("button", { class: "metin-dugme", type: "button" }, t("Geri al"));
   geriD.addEventListener("click", () => { taslak.vuruslar.pop(); ciz(); onizle(); durum(); });
-  const temizleD = h("button", { class: "metin-dugme", type: "button" }, "Temizle");
+  const temizleD = h("button", { class: "metin-dugme", type: "button" }, t("Temizle"));
   temizleD.addEventListener("click", () => {
     const eski = taslak.vuruslar.slice();
     taslak.vuruslar.length = 0; ciz(); onizle(); durum();
-    if (eski.length) toast("Çizim temizlendi", { etiket: "Geri al", calistir: () => { taslak.vuruslar.push(...eski); ciz(); onizle(); durum(); } });
+    if (eski.length) toast(t("Çizim temizlendi"), { etiket: t("Geri al"), calistir: () => { taslak.vuruslar.push(...eski); ciz(); onizle(); durum(); } });
   });
-  const kaydetD = h("button", { class: "birincil", type: "button" }, "Kaydet");
+  const kaydetD = h("button", { class: "birincil", type: "button" }, t("Kaydet"));
   kaydetD.addEventListener("click", () => {
     const eski = store.ayarlar.exLibris || null;
     const ex = { vuruslar: taslak.vuruslar.map((v) => v.map((q) => [...q])), cerceve: taslak.cerceve, renk: taslak.renk, yazi: taslak.yazi.trim(), surum: (Number(eski?.surum) || 0) + 1 };
     ayarla({ exLibris: exLibrisVar(ex) ? ex : null });
     bus.emit("exlibris", store.ayarlar.exLibris);
-    toast(exLibrisVar(ex) ? "Ex libris kaydedildi. Kitapların iç kapağında görünür." : "Ex libris kaldırıldı",
-      eski ? { etiket: "Geri al", calistir: () => { ayarla({ exLibris: eski }); bus.emit("exlibris", eski); } } : undefined);
+    toast(exLibrisVar(ex) ? t("Ex libris kaydedildi. Kitapların iç kapağında görünür.") : t("Ex libris kaldırıldı"),
+      eski ? { etiket: t("Geri al"), calistir: () => { ayarla({ exLibris: eski }); bus.emit("exlibris", eski); } } : undefined);
     durum();
   });
   const durum = () => {
@@ -2452,11 +3264,11 @@ function exLibrisDuzenleyici() {
     temizleD.disabled = !taslak.vuruslar.length;
   };
   const el = h("div", { class: "exlibris" },
-    h("p", { class: "ayar-not" }, "Kendi kitap mührünü çiz: imza, monogram ya da küçük bir resim. Her kitabın iç kapağında küçük bir mühür olarak durur."),
+    h("p", { class: "ayar-not" }, t("Kendi kitap mührünü çiz: imza, monogram ya da küçük bir resim. Her kitabın iç kapağında küçük bir mühür olarak durur.")),
     h("div", { class: "exlibris-alan" }, h("div", { class: "exlibris-kagit" }, c), onizleme),
-    h("span", { class: "t-etiket" }, "Çerçeve"), cerceve.el,
-    h("span", { class: "t-etiket" }, "Mürekkep"), renkler,
-    h("span", { class: "t-etiket" }, "Yazı"), yaziGirdi,
+    h("span", { class: "t-etiket" }, t("Çerçeve")), cerceve.el,
+    h("span", { class: "t-etiket" }, t("Mürekkep")), renkler,
+    h("span", { class: "t-etiket" }, t("Yazı")), yaziGirdi,
     h("div", { class: "exlibris-alt" }, geriD, temizleD, h("span", { class: "bosluk" }), kaydetD));
   requestAnimationFrame(() => { ciz(); onizle(); durum(); });
   return { el, guncelle: () => {} };
@@ -2469,28 +3281,28 @@ function yzOzet() {
   const yz = store.ayarlar.yz;
   if (yz.yol === "anahtar") {
     const s = YZ_SAGLAYICILAR.find((x) => x.id === yz.saglayici) || YZ_SAGLAYICILAR[0];
-    return s.id === "deneme" ? "Deneme, çevrimdışı" : `${s.ad}, kendi anahtarınla`;
+    return s.id === "deneme" ? t("Deneme, çevrimdışı") : t("{ad}, kendi anahtarınla", { ad: s.ad });
   }
   const u = YZ_UYGULAMALAR.find((x) => x.id === yz.uygulama) || YZ_UYGULAMALAR[0];
-  return `${u.ad} ile, hesabınla`;
+  return t("{ad} ile, hesabınla", { ad: u.ad });
 }
 
 // asistan.js'in baglantiDene() sonucunu cam şeritteki yazıya çevirir.
 // Beklenen: { ok: true, ms } ya da { ok: false, durum: 401 | 403 | 404 | 429 | "ag" | "anahtar-yok", mesaj }; atılan hata da olur.
 function denemeSonucu(s, ms) {
   if (s === true || (s && !(s instanceof Error) && (s.ok === true || s.tamam === true))) {
-    return { tamam: true, metin: `BAĞLI · ${Math.round(s?.ms ?? ms)} ms` };
+    return { tamam: true, metin: t("BAĞLI · {ms} ms", { ms: Math.round(s?.ms ?? ms) }) };
   }
   const kod = s?.durum ?? s?.status ?? s?.kod ?? s?.code ?? (s instanceof TypeError ? "ag" : null);
   const n = Number(kod);
-  if (n === 401 || n === 403) return { metin: `${n} · ANAHTAR` };
+  if (n === 401 || n === 403) return { metin: t("{n} · ANAHTAR", { n }) };
   if (n === 404) return { metin: "404 · MODEL" };
-  if (n === 429) return { metin: "429 · SINIR" };
-  if (kod === "ag" || kod === "network" || n === 0) return { metin: "AĞ YOK" };
-  if (kod === "anahtar-yok" || kod === "anahtar") return { metin: "ANAHTAR YOK" };
-  if (kod === "hazir-degil") return { metin: "HAZIR DEĞİL" };
-  if (typeof s?.mesaj === "string" && s.mesaj) return { metin: s.mesaj.toLocaleUpperCase("tr") };
-  return { metin: Number.isFinite(n) && n ? `${n} · HATA` : "HATA" };
+  if (n === 429) return { metin: t("429 · SINIR") };
+  if (kod === "ag" || kod === "network" || n === 0) return { metin: t("AĞ YOK") };
+  if (kod === "anahtar-yok" || kod === "anahtar") return { metin: t("ANAHTAR YOK") };
+  if (kod === "hazir-degil") return { metin: t("HAZIR DEĞİL") };
+  if (typeof s?.mesaj === "string" && s.mesaj) return { metin: s.mesaj.toLocaleUpperCase(yerel) };
+  return { metin: Number.isFinite(n) && n ? t("{n} · HATA", { n }) : t("HATA") };
 }
 
 function yzPenceresi() {
@@ -2504,7 +3316,7 @@ function yzPenceresi() {
   const hesapRadyo = h("input", { type: "radio", name: "yz-yol", value: "hesap" });
   const karolar = YZ_UYGULAMALAR.map((u) => h("button", { class: "element", type: "button", role: "radio", "aria-label": u.ad, "aria-checked": "false", tabindex: "-1", dataset: { id: u.id } },
     h("b", { "aria-hidden": "true" }, MONOGRAM[u.id] || u.ad.slice(0, 2)), h("small", { "aria-hidden": "true" }, u.ad)));
-  const uygulamaSec = h("div", { class: "uygulama-sec", role: "radiogroup", "aria-label": "Uygulama" }, karolar);
+  const uygulamaSec = h("div", { class: "uygulama-sec", role: "radiogroup", "aria-label": t("Uygulama") }, karolar);
   const uygulamaSecildi = (id, odak = false) => {
     yz.uygulama = id;
     yz.yol = "hesap";   // uygulama seçmek bu yolu seçmektir
@@ -2523,15 +3335,15 @@ function yzPenceresi() {
   });
   const hesapKart = h("label", { class: "yol-kart" },
     hesapRadyo,
-    h("span", {}, h("b", {}, "Hesabımla sor"), h("span", { class: "etiket-serit" }, "Önerilen")),
-    h("p", {}, "Telefonda o uygulamaya giriş yaptıysan yeter, anahtar gerekmez. Cevap o uygulamada gelir."),
+    h("span", {}, h("b", {}, t("Hesabımla sor")), h("span", { class: "etiket-serit" }, t("Önerilen"))),
+    h("p", {}, t("Telefonda o uygulamaya giriş yaptıysan yeter, anahtar gerekmez. Cevap o uygulamada gelir.")),
     uygulamaSec);
 
   // 2. yol: Kendi anahtarımla (gelişmiş)
   const anahtarRadyo = h("input", { type: "radio", name: "yz-yol", value: "anahtar" });
   const anahtarKart = h("label", { class: "yol-kart ic" },
-    anahtarRadyo, h("b", {}, "Anahtarla sor"),
-    h("p", {}, "Cevap uygulamanın içinde akar. Anahtarı sağlayıcının sitesinden alırsın."));
+    anahtarRadyo, h("b", {}, t("Anahtarla sor")),
+    h("p", {}, t("Cevap uygulamanın içinde akar. Anahtarı sağlayıcının sitesinden alırsın.")));
   for (const r of [hesapRadyo, anahtarRadyo]) r.addEventListener("change", () => { if (r.checked) { yz.yol = r.value; kaydet(); guncelle(); } });
 
   const satirlar = YZ_SAGLAYICILAR.map((s) => {
@@ -2539,30 +3351,30 @@ function yzPenceresi() {
     const lamba = h("span", { class: "lamba", "aria-hidden": "true" });
     const model = h("span", { class: "t-deger-k" });
     r.addEventListener("change", () => { if (!r.checked) return; yz.saglayici = s.id; kaydet(); sonucTemizle(); guncelle(); });
-    return { s, r, lamba, model, el: h("label", { class: "saglayici" }, r, lamba, h("b", {}, s.ad), model) };
+    return { s, r, lamba, model, el: h("label", { class: "saglayici" }, r, lamba, h("b", {}, t(s.ad)), model) };
   });
 
   // Anahtar alanı: gizli yazılır, "Göster" ile açılır
-  const anahtarGirdi = h("input", { type: "password", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": "API anahtarı", placeholder: "Anahtarı buraya yapıştır" });
-  const gosterYazi = h("span", {}, "Göster");
+  const anahtarGirdi = h("input", { type: "password", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": t("API anahtarı"), placeholder: t("Anahtarı buraya yapıştır") });
+  const gosterYazi = h("span", {}, t("Göster"));
   const gosterSimge = icon("goz");
   const gosterDugme = h("button", { class: "metin-dugme", type: "button", "aria-pressed": "false" }, gosterSimge, gosterYazi);
   gosterDugme.addEventListener("click", () => {
     const acikMi = anahtarGirdi.type === "password";
     anahtarGirdi.type = acikMi ? "text" : "password";
-    gosterYazi.textContent = acikMi ? "Gizle" : "Göster";
+    gosterYazi.textContent = acikMi ? t("Gizle") : t("Göster");
     gosterSimge.firstChild.setAttribute("href", acikMi ? "#i-goz-kapali" : "#i-goz");
     gosterDugme.setAttribute("aria-pressed", String(acikMi));
   });
   anahtarGirdi.addEventListener("input", () => { yz.anahtarlar[yz.saglayici] = anahtarGirdi.value.trim(); delete yz.denemeler[yz.saglayici]; sonucTemizle(); lambalar(); });
   // Anahtar girilince yol kendiliğinden "anahtar" olur (OZELLIKLER-2 5.1.7)
   anahtarGirdi.addEventListener("change", () => { if (anahtarGirdi.value.trim()) yz.yol = "anahtar"; kaydet(); guncelle(); });
-  const anahtarAlan = h("label", { class: "yz-alan" }, h("span", {}, "API anahtarı"), h("div", { class: "anahtar-alan" }, anahtarGirdi, gosterDugme));
+  const anahtarAlan = h("label", { class: "yz-alan" }, h("span", {}, t("API anahtarı")), h("div", { class: "anahtar-alan" }, anahtarGirdi, gosterDugme));
 
   // Model adı: düzenlenebilir, "Varsayılan" YZ_SAGLAYICILAR değerine döner
-  const modelGirdi = h("input", { type: "text", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": "Model adı" });
+  const modelGirdi = h("input", { type: "text", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": t("Model adı") });
   const varsayilanYazi = h("p", { class: "t-kucuk" });
-  const varsayilanDugme = h("button", { class: "metin-dugme", type: "button" }, "Varsayılan");
+  const varsayilanDugme = h("button", { class: "metin-dugme", type: "button" }, t("Varsayılan"));
   varsayilanDugme.addEventListener("click", () => { modelGirdi.value = saglayici().varsayilanModel; modelGirdi.dispatchEvent(new Event("input")); kaydet(); });
   modelGirdi.addEventListener("input", () => {
     yz.modeller[yz.saglayici] = modelGirdi.value.trim() || saglayici().varsayilanModel;
@@ -2572,10 +3384,10 @@ function yzPenceresi() {
   });
   modelGirdi.addEventListener("change", kaydet);
   const modelAlan = h("label", { class: "yz-alan" }, h("span", {}, "Model"), h("div", { class: "anahtar-alan" }, modelGirdi, varsayilanDugme), varsayilanYazi);
-  const denemeNotu = h("p", { class: "t-kucuk yz-alan" }, "Hazır cevaplarla dener, internet gerekmez.");
+  const denemeNotu = h("p", { class: "t-kucuk yz-alan" }, t("Hazır cevaplarla dener, internet gerekmez."));
 
   // Bağlantıyı dene: sonuç cam şeritte yazıyla
-  const deneDugme = h("button", { class: "metin-dugme", type: "button" }, "Bağlantıyı dene");
+  const deneDugme = h("button", { class: "metin-dugme", type: "button" }, t("Bağlantıyı dene"));
   const camLamba = h("span", { class: "lamba", "aria-hidden": "true" });
   const camIz = izOlustur();
   const camYazi = h("span");
@@ -2612,7 +3424,7 @@ function yzPenceresi() {
     if (id === "deneme" && r.tamam) {
       cam.className = "cam kehribar";
       camLamba.dataset.durum = "deneme";
-      camYazi.textContent = "DENEME · HAZIR";
+      camYazi.textContent = t("DENEME · HAZIR");
     } else {
       cam.className = r.tamam ? "cam" : "cam kehribar";
       camLamba.dataset.durum = r.tamam ? "bagli" : "hata";
@@ -2624,25 +3436,25 @@ function yzPenceresi() {
   });
 
   const gelismis = h("details", { class: "yz-gelismis" },
-    h("summary", {}, icon("anahtar"), "Kendi anahtarımla (gelişmiş)", icon("asagi")),
+    h("summary", {}, icon("anahtar"), t("Kendi anahtarımla (gelişmiş)"), icon("asagi")),
     anahtarKart,
-    h("div", { class: "saglayicilar", role: "radiogroup", "aria-label": "Sağlayıcı" }, satirlar.map((x) => x.el)),
+    h("div", { class: "saglayicilar", role: "radiogroup", "aria-label": t("Sağlayıcı") }, satirlar.map((x) => x.el)),
     denemeNotu, anahtarAlan, modelAlan,
     h("div", { class: "baglanti-dene" }, deneDugme, cam),
-    h("p", { class: "yz-uyari" }, icon("kilit"), h("span", {}, "Anahtar yalnız bu cihazda saklanır. İstek doğrudan sağlayıcıya gider.")));
+    h("p", { class: "yz-uyari" }, icon("kilit"), h("span", {}, t("Anahtar yalnız bu cihazda saklanır. İstek doğrudan sağlayıcıya gider."))));
   if (yz.yol === "anahtar") gelismis.open = true;
 
   const dlg = h("dialog", { class: "pencere yz-pencere", "aria-labelledby": "yzBaslik" },
     h("div", { class: "yz-ust" },
-      h("h2", { class: "t-b1", id: "yzBaslik" }, "Yapay zekâ"),
-      h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => dlg.close() }, icon("kapat"))),
+      h("h2", { class: "t-b1", id: "yzBaslik" }, t("Yapay zekâ")),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => dlg.close() }, icon("kapat"))),
     hesapKart, gelismis);
 
   // Sağlayıcı satırı lambası: seçili ve bağlı, seçili denenmemiş, Deneme ya da boş halka
   function lambalar() {
     for (const { s, r, lamba, model } of satirlar) {
       r.checked = s.id === yz.saglayici;
-      model.textContent = s.id === "deneme" ? "deneme" : yz.modeller[s.id] || s.varsayilanModel;
+      model.textContent = s.id === "deneme" ? t("deneme") : yz.modeller[s.id] || s.varsayilanModel;
       if (!r.checked) { lamba.removeAttribute("data-durum"); continue; }
       lamba.dataset.durum = s.id === "deneme" ? "deneme" : yz.denemeler[s.id]?.tamam ? "bagli" : "denenmedi";
     }
@@ -2662,7 +3474,7 @@ function yzPenceresi() {
     modelAlan.hidden = deneme;
     if (document.activeElement !== anahtarGirdi) anahtarGirdi.value = yz.anahtarlar[s.id] || "";
     if (document.activeElement !== modelGirdi) modelGirdi.value = yz.modeller[s.id] || s.varsayilanModel;
-    varsayilanYazi.textContent = `Varsayılan: ${s.varsayilanModel}`;
+    varsayilanYazi.textContent = t("Varsayılan: {model}", { model: s.varsayilanModel });
     lambalar();
   }
   sonucTemizle();
@@ -2675,7 +3487,7 @@ function yzPenceresi() {
 // ceviri.js ilk kullanımda yüklenir (Çeviri penceresi, kitabın dili); açılışta değil
 let ceviriSoz = null;
 const ceviriModulu = () => (ceviriSoz ||= import("./ceviri.js").catch((e) => { ceviriSoz = null; throw e; }));
-const CEVIRI_MOTORLARI = [["otomatik", "Otomatik"], ["cihaz", "Cihazda"], ["paket", "Paket"], ["anahtar", "Anahtarla"], ["hesap", "Hesabımla"]];
+const CEVIRI_MOTORLARI = [["otomatik", t("Otomatik")], ["cihaz", t("Cihazda")], ["paket", t("Paket")], ["anahtar", t("Anahtarla")], ["hesap", t("Hesabımla")]];
 // Hedef dil seçenekleri ve "Kitabın dili" listesi (kısa kod); adları tarayıcı Türkçe verir
 const HEDEF_DILLER = ["tr", "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ru", "uk", "ar", "fa", "el", "bg", "cs", "da", "fi", "hu", "ro", "sv", "ja", "ko", "zh-Hans", "hi"];
 const KITAP_DILLERI = ["en", "tr", "de", "fr", "es", "it", "pt", "nl", "ru", "ar", "ja", "zh-Hans"];
@@ -2683,8 +3495,9 @@ let dilAdlari = null;
 function dilAdi(kod) {
   if (!kod) return "";
   let ad = kod;
-  try { ad = (dilAdlari ||= new Intl.DisplayNames(["tr"], { type: "language" })).of(kod) || kod; } catch { /* eski tarayıcı: kod */ }
-  return ad.charAt(0).toLocaleUpperCase("tr") + ad.slice(1);
+  // Dil adları arayüz dilinde (Türkçede "tr", İngilizcede "en")
+  try { ad = (dilAdlari ||= new Intl.DisplayNames([ingilizceMi ? "en" : "tr"], { type: "language" })).of(kod) || kod; } catch { /* eski tarayıcı: kod */ }
+  return ad.charAt(0).toLocaleUpperCase(ingilizceMi ? "en" : "tr") + ad.slice(1);
 }
 const anaDil = (k) => String(k || "").toLowerCase().split("-")[0];
 function ceviriAyari() {
@@ -2696,14 +3509,15 @@ function ceviriAyari() {
 const anahtarVar = () => YZ_SAGLAYICILAR.some((s) => s.id !== "deneme" && String(store.ayarlar.yz?.anahtarlar?.[s.id] || "").trim());
 function ceviriOzet() {
   const c = ceviriAyari();
-  const motor = CEVIRI_MOTORLARI.find(([id]) => id === c.motor)?.[1] || "Otomatik";
-  return `${dilAdi(c.hedef)}, ${motor === "Otomatik" ? "motor otomatik" : motor.toLocaleLowerCase("tr")}`;
+  // Etiket çevrilmiş olabilir: otomatik mi, kimlikten anlaşılır
+  const m = CEVIRI_MOTORLARI.find(([id]) => id === c.motor);
+  return `${dilAdi(c.hedef)}, ${!m || m[0] === "otomatik" ? t("motor otomatik") : m[1].toLocaleLowerCase(yerel)}`;
 }
 const paketAdi = (p) => `${dilAdi(p.kaynak)} → ${dilAdi(p.hedef)}`;
 function ceviriHataMetni(e) {
-  return { ag: "Bağlantı yok; internet gelince yeniden dene.", sunucu: "Paket sunucusu şu an cevap vermiyor; biraz sonra yeniden dene.", yer: "Cihazda yer yetmiyor.", bozuk: "İnen dosya doğrulanamadı; yeniden dene.",
+  return t({ ag: "Bağlantı yok; internet gelince yeniden dene.", sunucu: "Paket sunucusu şu an cevap vermiyor; biraz sonra yeniden dene.", yer: "Cihazda yer yetmiyor.", bozuk: "İnen dosya doğrulanamadı; yeniden dene.",
     "paket-yok": "Bu dil çifti için paket bulunamadı.", "motor-yok": "Bu Chrome bu dili cihazda çeviremiyor.",
-    hareket: "İndirme için düğmeye yeniden dokun." }[e?.tur] || "İndirilemedi.";
+    hareket: "İndirme için düğmeye yeniden dokun." }[e?.tur] || "İndirilemedi.");
 }
 
 // İndirmeler pencere kapansa da sürer; iptal denetçileri burada durur
@@ -2718,11 +3532,11 @@ function ceviriPenceresi() {
   const ornekKaynak = () => (anaDil(ayar.hedef) === "en" ? "tr" : "en");
 
   // Hedef dil
-  const hedefSec = h("select", { "aria-label": "Hedef dil" });
+  const hedefSec = h("select", { "aria-label": t("Hedef dil") });
   const secenekleriKur = () => {
     const liste = HEDEF_DILLER.includes(ayar.hedef) ? HEDEF_DILLER : [ayar.hedef, ...HEDEF_DILLER];
     const [ilk, ...diger] = liste;
-    hedefSec.replaceChildren(...[ilk, ...diger.sort((a, b) => (a === "en" ? -1 : b === "en" ? 1 : dilAdi(a).localeCompare(dilAdi(b), "tr")))]
+    hedefSec.replaceChildren(...[ilk, ...diger.sort((a, b) => (a === "en" ? -1 : b === "en" ? 1 : dilAdi(a).localeCompare(dilAdi(b), yerel)))]
       .map((k) => h("option", { value: k }, dilAdi(k))));
     hedefSec.value = ayar.hedef;
   };
@@ -2731,12 +3545,12 @@ function ceviriPenceresi() {
   const hedefAlan = h("label", { class: "cv-secim" }, hedefSec, icon("asagi"));
 
   // Motor tercihi
-  const motor = parcali(CEVIRI_MOTORLARI, "Motor", () => ayar.motor || "otomatik", (v) => { kaydet({ motor: v }); motor.guncelle(); tazele(); });
+  const motor = parcali(CEVIRI_MOTORLARI, t("Motor"), () => ayar.motor || "otomatik", (v) => { kaydet({ motor: v }); motor.guncelle(); tazele(); });
   const anahtarDugme = motor.el.children[3];
   const motorNotu = h("p", { class: "cv-not", role: "status" }, " ");
 
   // Cihaz motoru (Chrome Translator API)
-  const cihazDurum = h("span", {}, "Bakılıyor");
+  const cihazDurum = h("span", {}, t("Bakılıyor"));
   const cihazIlerleme = h("i", { class: "cv-ilerleme", hidden: true }, h("b"));
   const cihazDugme = h("button", { class: "metin-dugme cv-dugme", type: "button", hidden: true });
   cihazDugme.addEventListener("click", () => {
@@ -2745,21 +3559,21 @@ function ceviriPenceresi() {
     cihazInisi = { kaynak: k, hedef: hd, oran: 0 };
     // create tıklamanın içinde çağrılır: Chrome indirmeyi kullanıcı hareketiyle başlatır
     M.cihazIndir(k, hd, { ilerleme: (o) => { if (cihazInisi) cihazInisi.oran = o; } })
-      .then(() => toast(`${dilAdi(k)} cihazda hazır`), (e) => { if (e?.name !== "AbortError") toast(ceviriHataMetni(e)); })
+      .then(() => toast(t("{dil} cihazda hazır", { dil: dilAdi(k) })), (e) => { if (e?.name !== "AbortError") toast(ceviriHataMetni(e)); })
       .finally(() => { cihazInisi = null; if (dlg.isConnected) tazele(); });
     tazele();
   });
   // Tarayıcının yerleşik çevirisi yalnız Chrome'da (Translator API); Safari ve Firefox'ta kart hiç görünmez
   const cihazVar = "Translator" in self;
   const cihazKart = h("div", { class: "cv-kart", hidden: !cihazVar }, icon("ceviri", "cv-kart__ikon"),
-    h("div", { class: "cv-kart__govde" }, h("b", {}, "Chrome’un yerleşik çevirisi"), cihazDurum, cihazIlerleme), cihazDugme);
+    h("div", { class: "cv-kart__govde" }, h("b", {}, t("Chrome’un yerleşik çevirisi")), cihazDurum, cihazIlerleme), cihazDugme);
 
   // Paketler
   const toplamYer = h("span", { class: "cv-toplam" });
   const paketListe = h("div", { class: "cv-paketler", role: "list" });
   const digerSayi = h("span", { class: "cv-sayi" });
   const digerListe = h("div", { class: "cv-paketler", role: "list" });
-  const diger = h("details", { class: "yz-gelismis cv-diger" }, h("summary", {}, "Diğer dil çiftleri", digerSayi, icon("asagi")), digerListe);
+  const diger = h("details", { class: "yz-gelismis cv-diger" }, h("summary", {}, t("Diğer dil çiftleri"), digerSayi, icon("asagi")), digerListe);
   const satirlar = new Map();   // "en-tr" -> { el, ilerleme, yuzde }
   let sonPaketler = [];
 
@@ -2767,18 +3581,18 @@ function ceviriPenceresi() {
     const id = `${p.kaynak}-${p.hedef}`;
     const yuzde = h("span", { class: "cv-yuzde" });
     const ilerleme = h("i", { class: "cv-ilerleme" }, h("b"));
-    const bilgi = p.durum === "yuklu" ? `Yüklü · ${boyutMetni(p.boyut)}` : `${boyutMetni(p.indirme || p.boyut)} indirilir`;
+    const bilgi = p.durum === "yuklu" ? t("Yüklü · {boyut}", { boyut: boyutMetni(p.boyut) }) : t("{boyut} indirilir", { boyut: boyutMetni(p.indirme || p.boyut) });
     let eylem;
     if (p.durum === "yuklu") {
       // Paket yeniden indirilebilir: onay sorulmaz (TASARIM-4 3.6)
       eylem = h("button", { class: "metin-dugme cv-dugme cv-sil", type: "button",
-        onclick: () => M?.paketSil(p.kaynak, p.hedef).then(() => toast(`${paketAdi(p)} paketi silindi. Yeniden indirilebilir.`)).catch(() => toast("Silinemedi.")) }, "Sil");
+        onclick: () => M?.paketSil(p.kaynak, p.hedef).then(() => toast(t("{paket} paketi silindi. Yeniden indirilebilir.", { paket: paketAdi(p) }))).catch(() => toast(t("Silinemedi."))) }, t("Sil"));
     } else if (p.durum === "iniyor") {
       const dc = paketInisleri.get(id);
-      eylem = h("button", { class: "metin-dugme cv-dugme", type: "button", hidden: !dc, onclick: () => paketInisleri.get(id)?.abort() }, "İptal");
+      eylem = h("button", { class: "metin-dugme cv-dugme", type: "button", hidden: !dc, onclick: () => paketInisleri.get(id)?.abort() }, t("İptal"));
     } else {
       eylem = h("button", { class: "metin-dugme cv-dugme", type: "button", disabled: !navigator.onLine,
-        title: navigator.onLine ? null : "İnternet gelince indirilir", onclick: () => paketYukle(p) }, icon("indir"), "Yükle");
+        title: navigator.onLine ? null : t("İnternet gelince indirilir"), onclick: () => paketYukle(p) }, icon("indir"), ingilizceMi ? "Install" : "Yükle");   // "Yükle" başka yerde "Load" olabilir
     }
     const el = h("div", { class: "cv-paket", role: "listitem", dataset: { durum: p.durum } },
       h("span", { class: "cv-paket__ad" }, h("b", {}, paketAdi(p)), h("small", {}, bilgi)),
@@ -2791,7 +3605,7 @@ function ceviriPenceresi() {
     const s = satirlar.get(id);
     if (!s) return;
     s.ilerleme.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, oran))})`;
-    s.yuzde.textContent = `%${Math.floor(oran * 100)}`;
+    s.yuzde.textContent = t("%{n}", { n: Math.floor(oran * 100) });
   };
   const paketYukle = (p) => {
     if (!M) return;
@@ -2800,7 +3614,7 @@ function ceviriPenceresi() {
     const dc = new AbortController();
     paketInisleri.set(id, dc);
     M.paketIndir(p.kaynak, p.hedef, { signal: dc.signal })
-      .then(() => toast(`${paketAdi(p)} paketi yüklendi; artık internetsiz çevrilir`),
+      .then(() => toast(t("{paket} paketi yüklendi; artık internetsiz çevrilir", { paket: paketAdi(p) })),
         (e) => { if (e?.name !== "AbortError") toast(ceviriHataMetni(e)); })
       .finally(() => { if (paketInisleri.get(id) === dc) paketInisleri.delete(id); if (dlg.isConnected) paketleriCiz(); });
     paketleriCiz();
@@ -2823,7 +3637,7 @@ function ceviriPenceresi() {
     satirlar.clear();
     const ust = liste.filter(onde), alt = liste.filter((p) => !onde(p));
     paketListe.replaceChildren(...ust.map(paketSatiri));
-    if (!ust.length) paketListe.append(h("p", { class: "cv-not" }, "Bu dile çeviren paket yok; Cihazda ya da Hesabımla çevrilir."));
+    if (!ust.length) paketListe.append(h("p", { class: "cv-not" }, t("Bu dile çeviren paket yok; Cihazda ya da Hesabımla çevrilir.")));
     digerSayi.textContent = alt.length ? String(alt.length) : "";
     diger.hidden = !alt.length;
     // Uzun liste yalnız açılınca çizilir
@@ -2834,18 +3648,18 @@ function ceviriPenceresi() {
   diger.addEventListener("toggle", () => { if (diger.open) paketleriCiz(); });
 
   // Önbellek
-  const onbellekYazi = h("small", {}, "Çevrilen paragraflar burada saklanır; gerekince yeniden çevrilir.");
-  const onbellekEtiket = h("span", {}, "Çeviri önbelleğini temizle");
+  const onbellekYazi = h("small", {}, t("Çevrilen paragraflar burada saklanır; gerekince yeniden çevrilir."));
+  const onbellekEtiket = h("span", {}, t("Çeviri önbelleğini temizle"));
   const onbellekDugme = h("button", { class: "fis-satir onayli cv-onbellek", type: "button" }, icon("sil", "i-20"), h("span", {}, onbellekEtiket, onbellekYazi));
   onbellekDugme.addEventListener("click", () => {
-    M?.ceviriOnbellekTemizle().then(() => { toast("Çeviri önbelleği temizlendi. Gerekince yeniden çevrilir."); yerYaz(); }).catch(() => toast("Temizlenemedi."));
+    M?.ceviriOnbellekTemizle().then(() => { toast(t("Çeviri önbelleği temizlendi. Gerekince yeniden çevrilir.")); yerYaz(); }).catch(() => toast(t("Temizlenemedi.")));
   });
   async function yerYaz() {
     if (!M) return;
     const y = await M.ceviriYeri().catch(() => null);
     if (!y || !dlg.isConnected) return;
-    toplamYer.textContent = y.paket ? `Toplam ${boyutMetni(y.paket)}` : "";
-    onbellekYazi.textContent = y.onbellek ? `Çevrilen paragraflar, ${boyutMetni(y.onbellek)}. Gerekince yeniden çevrilir.` : "Önbellek boş.";
+    toplamYer.textContent = y.paket ? t("Toplam {boyut}", { boyut: boyutMetni(y.paket) }) : "";
+    onbellekYazi.textContent = y.onbellek ? t("Çevrilen paragraflar, {boyut}. Gerekince yeniden çevrilir.", { boyut: boyutMetni(y.onbellek) }) : t("Önbellek boş.");
   }
 
   // Motor durumu: örnek yön (İngilizceden hedefe) için hangi motorun çalışacağı
@@ -2859,9 +3673,9 @@ function ceviriPenceresi() {
     const yon = `${dilAdi(k)} → ${dilAdi(hd)}`;
     const s = m(d.secilen);
     const tercih = ayar.motor || "otomatik";
-    let not = !s ? `${yon}: hazır motor yok. Aşağıdan paketi yükle.`
-      : `${yon}: ${s.ad}, ${s.cevrimdisi ? "internetsiz" : "metin internete gider"}.`;
-    if (tercih !== "otomatik" && d.secilen !== tercih) not += " Seçtiğin motor hazır değil, sıradaki kullanılıyor.";
+    let not = !s ? t("{yon}: hazır motor yok. Aşağıdan paketi yükle.", { yon })
+      : s.cevrimdisi ? t("{yon}: {motor}, internetsiz.", { yon, motor: s.ad }) : t("{yon}: {motor}, metin internete gider.", { yon, motor: s.ad });
+    if (tercih !== "otomatik" && d.secilen !== tercih) not += " " + t("Seçtiğin motor hazır değil, sıradaki kullanılıyor.");
     motorNotu.textContent = not;
     // Cihaz kartı
     const c = m("cihaz")?.durum || "yok";
@@ -2869,14 +3683,14 @@ function ceviriPenceresi() {
     cihazIlerleme.hidden = !(c === "iniyor" || iniyor);
     if (!cihazIlerleme.hidden) cihazIlerleme.firstChild.style.transform = `scaleX(${cihazInisi?.oran || 0})`;
     cihazDugme.hidden = c !== "indirilebilir" || iniyor;
-    cihazDugme.textContent = `${dilAdi(k)} paketini indir`;
+    cihazDugme.textContent = t("{dil} paketini indir", { dil: dilAdi(k) });
     cihazKart.dataset.durum = c;
-    cihazDurum.textContent = c === "hazir" ? `Bu cihazda var. ${yon} hazır, internetsiz.`
-      : c === "indirilebilir" ? `Bu cihazda var. ${dilAdi(k)} paketi Chrome’dan bir kez iner.`
-      : c === "iniyor" || iniyor ? "Chrome paketi indiriyor."
-      : "Bu Chrome’da yok. Çeviri paketleri aynı işi internetsiz görür.";
+    cihazDurum.textContent = c === "hazir" ? t("Bu cihazda var. {yon} hazır, internetsiz.", { yon })
+      : c === "indirilebilir" ? t("Bu cihazda var. {dil} paketi Chrome’dan bir kez iner.", { dil: dilAdi(k) })
+      : c === "iniyor" || iniyor ? t("Chrome paketi indiriyor.")
+      : t("Bu Chrome’da yok. Çeviri paketleri aynı işi internetsiz görür.");
     anahtarDugme.disabled = !anahtarVar() && tercih !== "anahtar";
-    anahtarDugme.title = anahtarVar() ? "" : "Asistanda kayıtlı API anahtarı yok";
+    anahtarDugme.title = anahtarVar() ? "" : t("Asistanda kayıtlı API anahtarı yok");
   }
   function tazele(hepsi = false) {
     durumYaz();
@@ -2885,16 +3699,16 @@ function ceviriPenceresi() {
 
   const dlg = h("dialog", { class: "pencere yz-pencere ceviri-pencere", "aria-labelledby": "cvBaslik" },
     h("div", { class: "yz-ust" },
-      h("h2", { class: "t-b1", id: "cvBaslik" }, "Çeviri"),
-      h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => dlg.close() }, icon("kapat"))),
+      h("h2", { class: "t-b1", id: "cvBaslik" }, t("Çeviri")),
+      h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => dlg.close() }, icon("kapat"))),
     h("div", { class: "cv-ikili" },
-      h("div", {}, h("span", { class: "t-etiket" }, "Hedef dil"), hedefAlan),
-      h("div", {}, h("span", { class: "t-etiket" }, "Motor"), motor.el)),
+      h("div", {}, h("span", { class: "t-etiket" }, t("Hedef dil")), hedefAlan),
+      h("div", {}, h("span", { class: "t-etiket" }, t("Motor")), motor.el)),
     motorNotu,
-    cihazVar ? h("span", { class: "t-etiket" }, "Cihazda") : null, cihazKart,
-    h("div", { class: "cv-baslik" }, h("span", { class: "t-etiket" }, "Çeviri paketleri"), toplamYer),
+    cihazVar ? h("span", { class: "t-etiket" }, t("Cihazda")) : null, cihazKart,
+    h("div", { class: "cv-baslik" }, h("span", { class: "t-etiket" }, t("Çeviri paketleri")), toplamYer),
     paketListe, diger,
-    h("p", { class: "yz-uyari" }, icon("kilit"), h("span", {}, "Paketler Mozilla’nın açık çeviri modelleridir. Bir kez iner, sonra internetsiz çalışır; metin cihazdan çıkmaz.")),
+    h("p", { class: "yz-uyari" }, icon("kilit"), h("span", {}, t("Paketler Mozilla’nın açık çeviri modelleridir. Bir kez iner, sonra internetsiz çalışır; metin cihazdan çıkmaz."))),
     h("div", { class: "fis-ayrac" }),
     onbellekDugme);
 
@@ -2924,15 +3738,15 @@ function ceviriPenceresi() {
     tazele(true);
     // Uzak katalog (101 çift) ilk kez geliyorsa biraz sonra liste tamamlanır
     setTimeout(() => { if (dlg.isConnected) paketleriCiz(6000); }, 400);
-  }, () => { motorNotu.textContent = "Çeviri yüklenemedi."; });
+  }, () => { motorNotu.textContent = t("Çeviri yüklenemedi."); });
 }
 
 // Kitabın dili: belge.dil (kısa kod; null: bakıldı, bulunamadı), belge.dilElle (kullanıcı seçti)
 const dilDestekli = (b) => b.tur !== "cizgi" && !b.cizgi;
 function dilOzet(b) {
   if (b.dilElle && b.dil) return dilAdi(b.dil);
-  if (b.dil) return `${dilAdi(b.dil)}, otomatik`;
-  return b.dil === null ? "Otomatik, bulunamadı" : "Otomatik";
+  if (b.dil) return t("{dil}, otomatik", { dil: dilAdi(b.dil) });
+  return b.dil === null ? t("Otomatik, bulunamadı") : t("Otomatik");
 }
 // İlk sayfaların metninden (EPUB'da paket bilgisinden) dil bulunur. Örnek belgeler Türkçedir.
 async function dilBelirle(b) {
@@ -2952,8 +3766,8 @@ async function dilBelirle(b) {
   if (!blob) return null;
   if (b.tur === "epub") return kayit.epubDili(blob);
   if (b.tur !== "pdf") return null;
-  const { pdfAc } = await import("./pdf-belge.js");
-  const pdf = await pdfAc(blob);
+  const { pdfAc, parolaAl } = await import("./pdf-belge.js");
+  const pdf = await pdfAc(blob, { parola: parolaAl(b.id) });   // parolası bu oturumda girilmediyse hata: dil bilinmez kalır
   try {
     let metin = "";
     for (let i = 0; i < Math.min(3, pdf.sayfaSayisi) && metin.length < 2500; i++) {
@@ -2982,7 +3796,7 @@ function dilAyarla(b, kod) {
     delete b.dilElle;
     b.dil = undefined;
     bus.emit("belgeler", { tur: "dil", id: b.id });
-    dilBak(b).then((dil) => toast(dil ? `Kitabın dili: ${dilAdi(dil)}` : "Dil bulunamadı; elle seçebilirsin"));
+    dilBak(b).then((dil) => toast(dil ? t("Kitabın dili: {dil}", { dil: dilAdi(dil) }) : t("Dil bulunamadı; elle seçebilirsin")));
     return;
   }
   b.dil = kod;
@@ -3076,6 +3890,8 @@ bus.on("git", (hedef) => {
   if (!hedef) return;
   // Açık alt çekmece önce kapanır ve geçmiş adımı geri alınır
   if (cekmeceAcik()) siraya(() => cekmeceleriKapat());
+  // Seçim kipi başka ekrana geçerken kapanır; geçmiş adımı yerinde kalır (geri hareketi yine kitaplığa döner)
+  if (secim.acik) secimKipi(false, { gecmisle: false });
   if (hedef.ekran === "belge") {
     const kaynak = sonKaynak;
     sonKaynak = null;
@@ -3108,6 +3924,9 @@ addEventListener("popstate", () => {
   // Alt çekmece kendi geçmiş adımını geri alırken ekran değişmez
   if (gecmisYut()) return;
   if (history.state?.cekmece) return;
+  // Seçim kipi (K6): kendi geçmiş adımı. Bitti ile kapanınca adım geri alınır; geri hareketi kipi kapatır
+  if (secimGeriYut) { secimGeriYut = false; return; }
+  if (secim.acik && !history.state?.secimKipi) { secim.gecmis = false; secimKipi(false); return; }
   const k = konumuOku();
   siraya(async () => {
     if (k.ekran === "belge") return belgeyeGit(k.belgeId, { gecmis: null });
@@ -3131,7 +3950,7 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, iz, kaynak = null, gecmi
   const belge = belgeBul(id);
   if (!belge) {
     acikPencere?.close();
-    toast("Bu belge kitaplıkta yok.");
+    toast(t("Bu belge kitaplıkta yok."));
     return kitapligaDon({ gecmis: "degistir", animasyon: false });
   }
   // İstekle gelen mod belgeye yazılır; yoksa kayıtlı mod, o da yoksa türün varsayılanı
@@ -3164,7 +3983,7 @@ async function belgeyeGit(id, { sayfa, mod, ara, konum, iz, kaynak = null, gecmi
   } catch (hata) {
     console.warn("[kenar-notu] Ekran modülü yüklenemedi:", hata);
     acikPencere?.close();
-    modulHatasi(hata, cizgi ? "Çizgi roman okuyucu henüz hazır değil." : belge.tur === "epub" ? "Okuma görünümü henüz hazır değil." : "Düzenleyici henüz hazır değil.");
+    modulHatasi(hata, cizgi ? t("Çizgi roman okuyucu henüz hazır değil.") : belge.tur === "epub" ? t("Okuma görünümü henüz hazır değil.") : t("Düzenleyici henüz hazır değil."));
     if (K.ekran.hidden) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3214,7 +4033,7 @@ async function modulAc(modul, kap, belge, sayfa, mod = varsayilanMod(belge), ek 
   catch (hata) {
     // Yarım kurulmuş ekranda kalınmaz: açılış bitince kitaplığa dönülür
     console.error("[kenar-notu] Ekran açılırken hata:", hata);
-    toast("Bu belge açılırken bir sorun çıktı.");
+    toast(t("Bu belge açılırken bir sorun çıktı."));
     setTimeout(() => bus.emit("git", { ekran: "kitaplik" }), 0);
   }
 }
@@ -3357,7 +4176,7 @@ async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] Tekrar modülü yüklenemedi:", hata);
-    modulHatasi(hata, "Tekrar ekranı henüz hazır değil.");
+    modulHatasi(hata, t("Tekrar ekranı henüz hazır değil."));
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3365,9 +4184,9 @@ async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
 
   const eski = acik.kap ? { ...acik } : null;
   const kitaplikGorunur = !K.ekran.hidden;
-  const kap = h("section", { class: "ekran ekran-belge ekran-tekrar", "aria-label": "Tekrar" });
+  const kap = h("section", { class: "ekran ekran-belge ekran-tekrar", "aria-label": TEKRAR_ADI });
   Object.assign(acik, { modul, kap, belgeId: null, ekran: "tekrar", mod: null });
-  document.title = "Tekrar · Kenar Notu";
+  document.title = `${TEKRAR_ADI} · Kenar Notu`;
   tekrarGuncelle();
   const gorunsun = kitaplikGorunur || eski;
   if (gorunsun) kap.style.opacity = "0";
@@ -3381,7 +4200,7 @@ async function tekrarAc({ gecmis = "it", sinav, kartId } = {}) {
   try { await modul.ac(kap, secenek); }
   catch (hata) {
     console.error("[kenar-notu] Tekrar açılırken hata:", hata);
-    toast("Tekrar ekranı açılırken bir sorun çıktı.");
+    toast(t("Tekrar ekranı açılırken bir sorun çıktı."));
     setTimeout(() => bus.emit("git", { ekran: "kitaplik" }), 0);
   }
   if (gorunsun) await soldur(kap, hareketAz() ? 120 : 200);
@@ -3410,7 +4229,7 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] Arama modülü yüklenemedi:", hata);
-    modulHatasi(hata, "Arama ekranı henüz hazır değil.");
+    modulHatasi(hata, t("Arama ekranı henüz hazır değil."));
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3418,9 +4237,9 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
 
   const eski = acik.kap ? { ...acik } : null;
   const kitaplikGorunur = !K.ekran.hidden;
-  const kap = h("section", { class: "ekran ekran-belge ekran-arama", "aria-label": "Ara" });
+  const kap = h("section", { class: "ekran ekran-belge ekran-arama", "aria-label": t("Ara") });
   Object.assign(acik, { modul, kap, belgeId: null, ekran: "arama", mod: null });
-  document.title = "Ara · Kenar Notu";
+  document.title = `${t("Ara")} · Kenar Notu`;
   const gorunsun = kitaplikGorunur || eski;
   if (gorunsun) kap.style.opacity = "0";
   sahne.append(kap);
@@ -3431,7 +4250,7 @@ async function aramaAc({ gecmis = "it", terim } = {}) {
   try { await modul.ac(kap, { terim: terim || sonAramaTerim || undefined }); }
   catch (hata) {
     console.error("[kenar-notu] Arama açılırken hata:", hata);
-    toast("Arama ekranı açılırken bir sorun çıktı.");
+    toast(t("Arama ekranı açılırken bir sorun çıktı."));
     setTimeout(() => bus.emit("git", { ekran: "kitaplik" }), 0);
   }
   if (gorunsun) await soldur(kap, hareketAz() ? 120 : 200);
@@ -3451,7 +4270,7 @@ async function izlerAc({ gecmis = "it" } = {}) {
     if (typeof modul.ac !== "function") throw new Error("ac() dışa aktarılmamış");
   } catch (hata) {
     console.warn("[kenar-notu] İzler modülü yüklenemedi:", hata);
-    modulHatasi(hata, "İzlerim ekranı açılamadı.");
+    modulHatasi(hata, t("İzlerim ekranı açılamadı."));
     if (K.ekran.hidden && !acik.kap) return kitapligaDon({ gecmis: "degistir", animasyon: false });
     return;
   }
@@ -3459,9 +4278,9 @@ async function izlerAc({ gecmis = "it" } = {}) {
 
   const eski = acik.kap ? { ...acik } : null;
   const kitaplikGorunur = !K.ekran.hidden;
-  const kap = h("section", { class: "ekran ekran-belge ekran-izler", "aria-label": "İzlerim" });
+  const kap = h("section", { class: "ekran ekran-belge ekran-izler", "aria-label": t("İzlerim") });
   Object.assign(acik, { modul, kap, belgeId: null, ekran: "izler", mod: null });
-  document.title = "İzlerim · Kenar Notu";
+  document.title = `${t("İzlerim")} · Kenar Notu`;
   kenarGuncelle();
   const gorunsun = kitaplikGorunur || eski;
   if (gorunsun) kap.style.opacity = "0";
@@ -3474,7 +4293,7 @@ async function izlerAc({ gecmis = "it" } = {}) {
   try { await modul.ac(kap); }
   catch (hata) {
     console.error("[kenar-notu] İzlerim açılırken hata:", hata);
-    toast("İzlerim ekranı açılırken bir sorun çıktı.");
+    toast(t("İzlerim ekranı açılırken bir sorun çıktı."));
     setTimeout(() => bus.emit("git", { ekran: "kitaplik" }), 0);
   }
   if (gorunsun) await soldur(kap, hareketAz() ? 120 : 200);
@@ -3529,12 +4348,12 @@ const izlerModulu = () => import("./izler.js");
 bus.on("defter:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  kayit.veriBekle().then(izlerModulu).then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); modulHatasi(hata, "Cep defteri açılamadı."); });
+  kayit.veriBekle().then(izlerModulu).then((m) => m.defterAc(b)).catch((hata) => { console.warn("[kenar-notu] Cep defteri açılamadı:", hata); modulHatasi(hata, t("Cep defteri açılamadı.")); });
 });
 bus.on("izler:ac", (o) => {
   const b = belgeBul(o?.belgeId);
   if (!b) return;
-  kayit.veriBekle().then(izlerModulu).then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); modulHatasi(hata, "İzler açılamadı."); });
+  kayit.veriBekle().then(izlerModulu).then((m) => m.izlerPaneliAc(b, o)).catch((hata) => { console.warn("[kenar-notu] İzler açılamadı:", hata); modulHatasi(hata, t("İzler açılamadı.")); });
 });
 bus.on("belgeler", (o) => { if (!sessiz && o?.tur !== "dil") kitaplikYenile(); });
 bus.on("kirpintilar", () => { if (!sessiz) kitaplikYenile(); });
@@ -3553,8 +4372,11 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 document.addEventListener("keydown", (e) => {
   if (!K.ekran || K.ekran.hidden || e.defaultPrevented) return;
-  if (document.querySelector("dialog[open], .karsilama")) return;
+  if (document.querySelector("dialog[open], .karsilama, .alt-cekmece")) return;
   if (e.key === "Escape" && K.kenar.classList.contains("acik")) { cekmeceKapat(); return; }
+  // Seçim kipi (K6): Esc kapatır, Ctrl A görünenlerin hepsini seçer
+  if (secim.acik && e.key === "Escape") { e.preventDefault(); secimKipi(false); return; }
+  if (secim.acik && (e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A") && !yaziAlani(e.target)) { e.preventDefault(); tumunuSec(); return; }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
     e.preventDefault();
     bus.emit("git", { ekran: "arama", terim: arama.trim() || undefined });
@@ -3574,39 +4396,68 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
   import("./arama.js").then((m) => m.paletAc?.()).catch((hata) => console.warn("[kenar-notu] Hızlı erişim açılamadı:", hata));
 });
+// Klavye kısayolları (K9): "?" her ekranda, girdi odakta değilken ve pencere açık değilken
+document.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey || yaziAlani(e.target)) return;
+  if (document.querySelector("dialog[open], .karsilama, .alt-cekmece")) return;
+  e.preventDefault();
+  kisayollarAc();
+});
+// Kabuğun kısayolları (10.4): yalnız liste kaydı; tuşları yukarıda kabuk kendisi dinler
+for (const [tus, ad] of [["Ctrl K", t("Hızlı erişim: belge, ekran ve komut")], ["Ctrl F", t("Her yerde ara")], ["/", t("Kitaplıkta ara")],
+  ["?", t("Klavye kısayolları")], ["Esc", t("Pencereyi, paneli ya da seçimi kapat")], [t("Ctrl Tık"), t("Seçime ekle ya da çıkar")],
+  [t("Shift Tık"), t("Aralığı seç")], ["Ctrl A", t("Seçim kipinde hepsini seç")]]) kisayolEkle({ tus, ad, alan: "genel" });
 
 /* ---------- Hızlı erişim komutları (kabuğun komutları; Koltuk ve Masa kendi komutlarını ekler) ---------- */
 const sonIz = (b) => {
   const izler = Array.isArray(b?.veri?.izler) ? b.veri.izler : [];
   return izler.reduce((m, x) => ((x?.zaman || 0) > (m?.zaman || 0) ? x : m), null);
 };
+// Görünüm komutlarının simgeleri (7.0): atmosfer = ufukta doğan ışık, vurgu = ışıyan damla
+simgeEkle("atmosfer", '<path class="d" d="M7 15a5 5 0 0 1 10 0Z"/><path d="M3.5 15h17M6.5 18.5h11M9.5 21.5h5M12 4v2.5M5.6 7.6l1.7 1.7M18.4 7.6l-1.7 1.7"/>');
+simgeEkle("vurgu", '<path class="d" d="M12 3.5c3.2 3.6 5.5 6.6 5.5 9.6a5.5 5.5 0 0 1-11 0c0-3 2.3-6 5.5-9.6Z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 2.5 2.5"/>');
 function komutlarKur() {
   const git = (ekran) => () => bus.emit("git", { ekran });
+  const secili = (evet) => (evet ? t("Seçili") : "");
+  // "Açık" sözlükte tema adı ("Light") olarak da geçer: anahtar paylaşılmasın diye dile göre seçilir
+  const acikKapali = ingilizceMi ? ["On", "Off"] : ["Açık", "Kapalı"];
+  // es: aramada eşleşen ek sözcükler; arayüz dilinde verilir (İngilizce kullanıcı İngilizce arar)
   [
-    { id: "git-kitaplik", grup: "git", ad: "Kitaplık", es: "ana ekran raf", ikon: "tumu", calistir: git("kitaplik") },
-    { id: "git-izler", grup: "git", ad: "İzlerim", es: "iz altını çizdiklerim alıntı cep defteri", ikon: "izler", calistir: git("izler") },
-    { id: "git-tekrar", grup: "git", ad: "Tekrar", es: "kart çalış leitner", ikon: "tekrar", alt: () => { const n = bugunTekrar().length; return n ? `${n} kart` : ""; }, calistir: git("tekrar") },
-    { id: "ayarlar", grup: "git", ad: "Ayarlar", es: "tercihler seçenekler", ikon: "ayarlar", calistir: () => ayarlarAc() },
-    { id: "dosya-ac", ad: "Dosya aç", es: "içe aktar pdf epub cbz ekle kitap", ikon: "pdf", calistir: () => dosyaSec() },
-    { id: "kitap-klasoru", ad: "Kitap klasörü", es: "bilgisayardaki kitaplar klasör tara içe aktar pdf epub cbz", ikon: "klasor",
+    { id: "git-kitaplik", grup: "git", ad: t("Kitaplık"), es: t("ana ekran raf"), ikon: "tumu", calistir: git("kitaplik") },
+    { id: "git-izler", grup: "git", ad: t("İzlerim"), es: t("iz altını çizdiklerim alıntı cep defteri"), ikon: "izler", calistir: git("izler") },
+    { id: "git-tekrar", grup: "git", ad: TEKRAR_ADI, es: t("kart çalış leitner"), ikon: "tekrar", alt: () => { const n = bugunTekrar().length; return n ? t("{n} kart", { n }) : ""; }, calistir: git("tekrar") },
+    { id: "ayarlar", grup: "git", ad: t("Ayarlar"), es: t("tercihler seçenekler"), ikon: "ayarlar", calistir: () => ayarlarAc() },
+    { id: "dosya-ac", ad: t("Dosya aç"), es: t("içe aktar pdf epub cbz ekle kitap"), ikon: "pdf", calistir: () => dosyaSec() },
+    { id: "kitap-klasoru", ad: t("Kitap klasörü"), es: t("bilgisayardaki kitaplar klasör tara içe aktar pdf epub cbz"), ikon: "klasor",
       kosul: () => kayit.klasorDestegi(), alt: () => kitapKlasoruAdi || "", calistir: () => kitapKlasoruAc() },
-    { id: "yeni-defter", ad: "Yeni defter", es: "defter not defteri kâğıt", ikon: "yeni-defter", calistir: () => yeniDefterPenceresi() },
-    { id: "yedekle", ad: "Yedekle", es: "yedek kenar dışa aktar", ikon: "yedekle", calistir: () => yedekAlIstegi() },
-    { id: "yedekten-yukle", ad: "Yedekten yükle", es: "geri yükle kenar", ikon: "yedekle", calistir: () => yedekSec() },
-    { id: "tema-acik", ad: "Tema: Açık", es: "aydınlık gündüz beyaz", ikon: "tema-acik", calistir: () => ayarla({ tema: "acik" }) },
-    { id: "tema-koyu", ad: "Tema: Koyu", es: "karanlık gece siyah", ikon: "tema-koyu", calistir: () => ayarla({ tema: "koyu" }) },
-    { id: "tema-oto", ad: "Tema: Otomatik", es: "sistem", ikon: "tema-oto", calistir: () => ayarla({ tema: "oto" }) },
-    { id: "kart-calis", ad: "Kart çalış", es: "tekrar kart leitner", ikon: "tekrar", calistir: git("tekrar") },
-    { id: "rehber", ad: "Rehberi yeniden göster", es: "yardım nasıl ipucu", ikon: "sor", calistir: () => rehberBaslat(0) },
-    { id: "ex-libris", ad: "Ex libris çiz", es: "mühür imza monogram", ikon: "damga", calistir: () => ayarlarAc({ bolum: "exlibris" }) },
-    { id: "ceviri-ayar", ad: "Çeviri ayarları", es: "çeviri paket dil translate", ikon: "ceviri", calistir: () => ceviriPenceresi() },
-    { id: "son-iz", baglam: "belge", ad: "Son izime git", es: "iz altını çizdiğim", ikon: "izler", kosul: (c) => !!sonIz(c.belge),
+    { id: "yeni-defter", ad: t("Yeni defter"), es: t("defter not defteri kâğıt"), ikon: "yeni-defter", calistir: () => yeniDefterPenceresi() },
+    { id: "yedekle", ad: t("Yedekle"), es: t("yedek kenar dışa aktar"), ikon: "yedekle", calistir: () => yedekAlIstegi() },
+    { id: "yedekten-yukle", ad: t("Yedekten yükle"), es: t("geri yükle kenar"), ikon: "yedekle", calistir: () => yedekSec() },
+    // Görünüm (TASARIM-5 4.1 madde 6): seçili olanın alt satırında "Seçili"
+    { id: "tema-acik", ad: t("Tema: Açık"), es: t("aydınlık gündüz beyaz"), ikon: "tema-acik", alt: () => secili(store.ayarlar.tema === "acik"), calistir: () => ayarla({ tema: "acik" }) },
+    { id: "tema-koyu", ad: t("Tema: Koyu"), es: t("karanlık gece siyah"), ikon: "tema-koyu", alt: () => secili(store.ayarlar.tema === "koyu"), calistir: () => ayarla({ tema: "koyu" }) },
+    { id: "tema-oto", ad: t("Tema: Otomatik"), es: t("sistem"), ikon: "tema-oto", alt: () => secili((store.ayarlar.tema || "oto") === "oto"), calistir: () => ayarla({ tema: "oto" }) },
+    ...ATMOSFERLER.map((a) => ({ id: "atmosfer-" + a.id, ad: t("Atmosfer: {ad}", { ad: a.ad }), ikon: "atmosfer",
+      es: `${t("tema zemin renk arka plan görünüm")} ${a.gunduzAd || ""} ${a.yalnizGece ? t("gece karanlık") : ""}`.trim(),
+      alt: () => secili((atmosferBul(store.ayarlar.atmosfer) ? store.ayarlar.atmosfer : "aurora") === a.id), calistir: () => ayarla({ atmosfer: a.id }) })),
+    { id: "vurgu-atmosfer", ad: t("Vurgu: Atmosferin rengi"), es: t("vurgu renk ışık varsayılan"), ikon: "vurgu",
+      alt: () => secili(!VURGULAR.some((v) => v.id === store.ayarlar.vurgu)), calistir: () => ayarla({ vurgu: null }) },
+    ...VURGULAR.map((v) => ({ id: "vurgu-" + v.id, ad: t("Vurgu: {ad}", { ad: v.ad }), es: t("vurgu renk ışık tema"), ikon: "vurgu",
+      alt: () => secili(store.ayarlar.vurgu === v.id), calistir: () => ayarla({ vurgu: v.id }) })),
+    { id: "canli-zemin", ad: t("Canlı zemin"), es: t("hareketli zemin arka plan ışık animasyon"), ikon: "atmosfer",
+      alt: () => (hareketAz() ? t("Sade hareket açıkken kapalı") : store.ayarlar.canliZemin ? acikKapali[0] : acikKapali[1]),
+      calistir: () => { if (hareketAz()) toast(t("Sade hareket açıkken canlı zemin kapalı")); else ayarla({ canliZemin: !store.ayarlar.canliZemin }); } },
+    { id: "kart-calis", ad: t("Kart çalış"), es: t("tekrar kart leitner"), ikon: "tekrar", calistir: git("tekrar") },
+    { id: "rehber", ad: t("Rehberi yeniden göster"), es: t("yardım nasıl ipucu"), ikon: "sor", calistir: () => rehberBaslat(0) },
+    { id: "ex-libris", ad: t("Ex libris çiz"), es: t("mühür imza monogram"), ikon: "damga", calistir: () => ayarlarAc({ bolum: "exlibris" }) },
+    { id: "ceviri-ayar", ad: t("Çeviri ayarları"), es: t("çeviri paket dil translate"), ikon: "ceviri", calistir: () => ceviriPenceresi() },
+    { id: "son-iz", baglam: "belge", ad: t("Son izime git"), es: t("iz altını çizdiğim"), ikon: "izler", kosul: (c) => !!sonIz(c.belge),
       calistir: (c) => bus.emit("git", { ekran: "belge", belgeId: c.belge.id, izId: sonIz(c.belge).id }) },
-    { id: "sayfaya-git", baglam: "pdf", sayi: true, ad: (c, q) => (/^\d+$/.test(q || "") ? `Sayfaya git: ${q}` : "Sayfaya git"), es: "sayfa git", ikon: "sayfalar",
+    { id: "sayfaya-git", baglam: "pdf", sayi: true, ad: (c, q) => (/^\d+$/.test(q || "") ? t("Sayfaya git: {q}", { q }) : t("Sayfaya git")), es: t("sayfa git"), ikon: "sayfalar",
       calistir: (c, q) => { const n = parseInt(q, 10); if (n > 0) bus.emit("git", { ekran: "belge", belgeId: c.belge.id, sayfa: Math.min(n, c.belge.sayfaSayisi || n) }); } },
-    { id: "masada-ac", baglam: "belge", ad: "Masa’da aç", es: "çalış masa mod", ikon: "masa", kosul: (c) => c.mod === "koltuk" && !cizgiMi(c.belge),
+    { id: "masada-ac", baglam: "belge", ad: t("Masa’da aç"), es: t("çalış masa mod"), ikon: "masa", kosul: (c) => c.mod === "koltuk" && !cizgiMi(c.belge),
       calistir: (c) => bus.emit("git", { ekran: "belge", belgeId: c.belge.id, mod: "masa" }) },
-    { id: "koltukta-ac", baglam: "belge", ad: "Koltuk’ta aç", es: "oku koltuk mod", ikon: "koltuk", kosul: (c) => c.mod === "masa" && !cizgiMi(c.belge),
+    { id: "koltukta-ac", baglam: "belge", ad: t("Koltuk’ta aç"), es: t("oku koltuk mod"), ikon: "koltuk", kosul: (c) => c.mod === "masa" && !cizgiMi(c.belge),
       calistir: (c) => bus.emit("git", { ekran: "belge", belgeId: c.belge.id, mod: "koltuk" }) },
   ].forEach(komutEkle);
 }
@@ -3618,13 +4469,15 @@ komutlarKur();
 // s: PDF_PAGES sırası (kırpıntının sayfa numarası da belgenin kaldığı sayfadan bu kadar ileri), b: bölge (x, y, gen, yük).
 // Bölgeler sayfalar.js düzeninden ölçüldü: altta komşu satırın ucu görünmez.
 // Kayıtta ornekSira bu listedeki sırayı tutar: örnek sürümü değişince görüntü aynı sıradan yeniden kesilir.
+// notlar: { tr, en }; yeni örnek arayüz dilinde kurulur, eski kayıttaki örnek iki dilde de tanınır (ornekKirpintiSirasi)
 const ORNEK_KIRPINTILAR = [
-  { s: 0, b: [62, 268, 676, 176], belgeId: "kalkulus", not: "Zincir kuralı: dış türev çarpı iç türev", dk: 35 },
-  { s: 1, b: [200, 282, 400, 348], belgeId: "kalkulus", not: "Teğet, yarıçapa diktir. Eğimler çarpımı -1", dk: 3 * 60 },
-  { s: 2, b: [96, 300, 620, 232], belgeId: "statik", not: "Önce serbest cisim diyagramı, sonra A’ya göre moment", dk: 26 * 60 },
-  { s: 0, b: [62, 455, 676, 100], belgeId: "kalkulus", not: "Leibniz: du’lar sadeleşiyormuş gibi düşün", dk: 50 * 60 },
-  { s: 0, b: [62, 540, 676, 200], belgeId: "kalkulus", not: "", dk: 4 * 24 * 60 },
+  { s: 0, b: [62, 268, 676, 176], belgeId: "kalkulus", notlar: { tr: "Zincir kuralı: dış türev çarpı iç türev", en: "Chain rule: outer derivative times inner derivative" }, dk: 35 },
+  { s: 1, b: [200, 282, 400, 348], belgeId: "kalkulus", notlar: { tr: "Teğet, yarıçapa diktir. Eğimler çarpımı -1", en: "The tangent is perpendicular to the radius. Product of slopes is -1" }, dk: 3 * 60 },
+  { s: 2, b: [96, 300, 620, 232], belgeId: "statik", notlar: { tr: "Önce serbest cisim diyagramı, sonra A’ya göre moment", en: "Free body diagram first, then moments about A" }, dk: 26 * 60 },
+  { s: 0, b: [62, 455, 676, 100], belgeId: "kalkulus", notlar: { tr: "Leibniz: du’lar sadeleşiyormuş gibi düşün", en: "Leibniz: think of the du’s as if they cancel" }, dk: 50 * 60 },
+  { s: 0, b: [62, 540, 676, 200], belgeId: "kalkulus", notlar: { tr: "", en: "" }, dk: 4 * 24 * 60 },
 ];
+const ornekNot = (o) => o.notlar[ingilizceMi ? "en" : "tr"];
 const KIRPINTI_OLCEK = 1.5;   // görüntü ölçeği: kenar boşluklu sütunda keskin kalsın
 const yaziBekle = () => Promise.race([Promise.resolve(SAYFALAR.yaziTipleri).catch(() => false), new Promise((r) => setTimeout(r, 3000))]);
 
@@ -3660,12 +4513,12 @@ async function ornekKirpintilar() {
   // Kesit kesit, her biri ayrı boş anda: ilk boyamayı ve kalemi bekletmesin
   const gorseller = await ornekKirpintiGorselleri(bosAn);
   if (store.kirpintilar.length) return;
-  const ad = (id) => belgeBul(id)?.ad || (id === "statik" ? "Statik" : "Kalkülüs II");
+  const ad = (id) => belgeBul(id)?.ad || (id === "statik" ? (ingilizceMi ? "Statics" : "Statik") : (ingilizceMi ? "Calculus II" : "Kalkülüs II"));
   // PDF düzenleyicide kaldığı sayfadan başlayan bir kesitle açılır; kırpıntının numarası o kesitteki numaradır
   const no = (id, i) => (belgeBul(id)?.sayfa || 1) + i;
   const t = Date.now();
   store.kirpintilar.push(...ORNEK_KIRPINTILAR.map((o, i) => ({
-    id: yeniId("k"), gorsel: gorseller[i], belgeId: o.belgeId, belgeAd: ad(o.belgeId), sayfa: no(o.belgeId, o.s), not: o.not,
+    id: yeniId("k"), gorsel: gorseller[i], belgeId: o.belgeId, belgeAd: ad(o.belgeId), sayfa: no(o.belgeId, o.s), not: ornekNot(o),
     zaman: t - o.dk * 6e4, ornekSira: i, ornekSurum: ORNEK_DEGISIM.kirpintilar,
   })));
   bus.emit("kirpintilar", { tur: "ornek" });   // pano çizilir ve kayda yazılır
@@ -3696,12 +4549,16 @@ function ornekKartlar() {
 // örnek kırpıntılar ve kartlar eski sayfa görüntülerini tutar. Açılışta bir kez:
 // kullanıcı bir şey eklemediyse örnek belge baştan kurulur (veri bırakılır, açılınca düzenleyici yeniden kurar);
 // eklediyse eski süsler kalkar, sayfalar yeni düzene taşınır, kullanıcının eklediği her şey kalır.
-// Dosyası olan (dosya: true) belgeye ve EPUB'lara dokunulmaz (EPUB örnek metni sürümler boyunca aynı).
-const SUS = { lacivert: "#1F3A68", kirmizi: "#C2412D", not: "Sınavda çıkar! İç fonksiyondan başla." };
+// Dosyası olan (dosya: true) belgeye dokunulmaz. Örnek EPUB'ları ornekEpubTasi taşır (3. sürümde kendi metinleri).
+// Örnek süsler kurulduğu dilde kalır (duzenleyici.js t() ile kurar), dil sonradan değişebilir: eşleştirme iki dili de tanır.
+// Sözlük doğrudan okunur, t() yalnız şu anki dili verirdi. (import bildirimi modülün başına çıkar, burada durabilir.)
+import { EN } from "./dil/en.js";
+const ikiDilde = (dizi) => new Set(dizi.flatMap((s) => (typeof EN[s] === "string" ? [s, EN[s]] : [s])));
+const SUS = { lacivert: "#1F3A68", kirmizi: "#C2412D", notlar: ikiDilde(["Sınavda çıkar! İç fonksiyondan başla."]) };
 // Diferansiyel Denklemler defterinin 1. sayfasındaki hazır çözüm: 6. turdaki düz metin ve 7. turdaki el yazısı (el: true)
-const DIFDENK_ESKI = new Set(["Örnek 2.1    y′ = 2y,   y(0) = 3", "Değişkenlerine ayır:", "dy / y = 2 dx", "∫ dy / y = ∫ 2 dx    ⇒    ln |y| = 2x + c",
+const DIFDENK_ESKI = ikiDilde(["Örnek 2.1    y′ = 2y,   y(0) = 3", "Değişkenlerine ayır:", "dy / y = 2 dx", "∫ dy / y = ∫ 2 dx    ⇒    ln |y| = 2x + c",
   "y = C · e²ˣ", "y(0) = 3    ⇒    C = 3", "y = 3 e²ˣ", "Sağlama: y′ = 6 e²ˣ = 2y"]);
-const DIFDENK_YENI = new Set(["Örnek 2.1", "y′ = 2y,  y(0) = 3", "Değişkenlerine ayır:", "dy", "y", "= 2 dx", "= ", "2 dx", "ln", "= 2x + c",
+const DIFDENK_YENI = ikiDilde(["Örnek 2.1", "y′ = 2y,  y(0) = 3", "Değişkenlerine ayır:", "dy", "y", "= 2 dx", "= ", "2 dx", "ln", "= 2x + c",
   "y = C · e", "2x", "y(0) = 3", "C = 3", "y = 3e", "Sağlama:  y′ = 6e", "= 2y"]);
 // 2. sürümün yazılmaya başladığı an (6. tur kaydı): son açılışı bundan önce olan belge kesin 1. sürümdedir
 const ORNEK_2_ONCESI = Date.parse("2026-10-27T03:36:29Z");
@@ -3713,7 +4570,7 @@ function otoSus(belgeId, alan, o) {
   const n = Array.isArray(o.p) ? o.p.length : 0;
   if (belgeId === "kalkulus") {
     if (alan === "cizgiler") return (o.tur === "fosforlu" && o.w === 24 && n === 25) || (o.tur === "tukenmez" && o.renk === SUS.kirmizi && o.w === 3 && n === 73);
-    if (alan === "notlar") return o.metin === SUS.not;
+    if (alan === "notlar") return SUS.notlar.has(o.metin);
     // Kullanıcının bandı rastgele eğimle (BANT_ACI ± 0,3) doğar; örnek bant tam -0,8
     if (alan === "bantlar") return o.desen === "murekkep" && o.aci === -0.8;
   }
@@ -3830,9 +4687,51 @@ function ornekVeriyiTasi(kayitSurumu) {
     bus.emit("belge:degisti", { belgeId: b.id });
     console.info("[kenar-notu] Örnek taşındı, eklenenler korundu:", b.id, "sürüm", surum, "->", ORNEK_SURUM);
   }
+  if (ornekEpubTasi(kayitSurumu)) degisti = true;
   kayit.ornekSurumAyarla(Math.max(kayitSurumu || 0, ORNEK_SURUM));
   // Sürüm damgası da yazılsın: bir dahaki açılış yeniden tahmin etmesin
   if (degisti || kayitSurumu !== ORNEK_SURUM) kayit.kaydetPlanla();
+}
+
+// 3. sürüm: örnek EPUB'lar (Suç ve Ceza, Dönüşüm) ortak deneme yerine kendi metnini açar. Eski kayıttaki verileri
+// denemenin paragraf numaralarını tutar: kullanıcı bir şey eklemediyse yalnız kaldığı yer bırakılır (yeni metnin
+// başından açılır, okuma süresi kalır); eklediyse notları kaymasın diye kitap denemede kalır (veri.ornekMetin,
+// okuma-metni.js ornekKitap). Eski örnek kelime kartları metinde olmayan sayfalara (34, 112, 287) bağlıydı:
+// her açılışta bakılır, okunan metindeki sayfaya çekilir (yeni sayfalar küçük, ikinci kez eşleşmez).
+const ESKI_KELIME_SAYFALARI = [34, 112, 287];
+// Örnek içeriğin dili (okuma-metni.js ORNEK_KITAPLAR): arayüz diliyle aynı; o dilde örnek yoksa okuma-metni.js Türkçeye düşer
+const ORNEK_DIL = ingilizceMi ? "en" : "tr";
+const EPUB_ALANLARI = ["vurgular", "cizgiler", "tuvaller", "izler", "yerImleri", "asistanNotlari"];
+const eskiKelimeKarti = (k) => k.belgeId === "sucveceza" && k.tur === "kelime" ? ESKI_KELIME_SAYFALARI.indexOf(Number(k.sayfa)) : -1;
+const epubEklemesi = (b) => EPUB_ALANLARI.some((a) => Array.isArray(b.veri[a]) && b.veri[a].length)
+  || store.kirpintilar.some((k) => k.belgeId === b.id)
+  || store.kartlar.some((k) => k.belgeId === b.id && eskiKelimeKarti(k) < 0);
+function ornekEpubTasi(kayitSurumu) {
+  let degisti = false;
+  for (const b of store.belgeler) {
+    if (b.dosya || b.tur !== "epub") continue;
+    // Kitaplık künyesi kayıtta durur: dil değişince kullanıcının değiştirmediği ad ve yazar seçilen dile çekilir
+    if (ORNEK_IDLER.has(b.id) && ornekKunyeDile(b, ORNEK_DIL)) degisti = true;
+    const v = b.veri;
+    // Eski yedekten gelen örnek EPUB kendi sürümünü taşır (kayit.js yedekYukle); işi bitince silinir
+    const yedekten = Number.isInteger(v?.ornekSurum) ? v.ornekSurum : null;
+    if (v && "ornekSurum" in v) { delete v.ornekSurum; degisti = true; bus.emit("belge:degisti", { belgeId: b.id }); }
+    const degisim = ORNEK_DEGISIM[b.id];
+    if (!degisim || !v || v.ornekMetin || !ORNEK_IDLER.has(b.id) || (yedekten ?? kayitSurumu) >= degisim) continue;
+    degisti = true;
+    if (epubEklemesi(b)) v.ornekMetin = "kagit";
+    else v.konum = null;
+    bus.emit("belge:degisti", { belgeId: b.id });
+    console.info("[kenar-notu] Örnek EPUB:", b.id, v.ornekMetin ? "notlar için denemede kaldı" : "kendi metnine geçti");
+  }
+  const sucKartlari = ornekKitapKartlari(belgeBul("sucveceza") || "sucveceza");
+  for (const k of store.kartlar) {
+    const sayfa = sucKartlari[eskiKelimeKarti(k)]?.sayfa;
+    if (!sayfa) continue;
+    kartGuncelle(k.id, { sayfa });
+    degisti = true;
+  }
+  return degisti;
 }
 
 // PNG dataURL'ün piksel ölçüsü (IHDR başlığından): [genişlik, yükseklik]
@@ -3853,7 +4752,7 @@ function ornekKirpintiSirasi(k) {
   if (Number.isInteger(k.ornekSira)) return ORNEK_KIRPINTILAR[k.ornekSira] ? k.ornekSira : -1;
   const olcu = pngOlcu(k.gorsel).join("x");
   let i = KIRPINTI_OLCULERI.findIndex((l, j) => l.includes(olcu) && ORNEK_KIRPINTILAR[j].belgeId === k.belgeId);
-  if (i < 0 && k.not) i = ORNEK_KIRPINTILAR.findIndex((o) => o.not === k.not && o.belgeId === k.belgeId);
+  if (i < 0 && k.not) i = ORNEK_KIRPINTILAR.findIndex((o) => (o.notlar.tr === k.not || o.notlar.en === k.not) && o.belgeId === k.belgeId);
   if (i < 0 && ESKI_KIRPINTI_NOTLARI[k.not] != null && ORNEK_KIRPINTILAR[ESKI_KIRPINTI_NOTLARI[k.not]].belgeId === k.belgeId) i = ESKI_KIRPINTI_NOTLARI[k.not];
   return i;
 }
@@ -3943,7 +4842,7 @@ function bosBasla() {
   store.kirpintilar.splice(0, store.kirpintilar.length);
   store.kartlar.splice(0, store.kartlar.length);
   store.belgeler.unshift({
-    id: yeniId("d"), tur: "defter", ad: "İlk defter", sayfaSayisi: 3, sayfa: 1, ilerleme: 0, favori: false,
+    id: yeniId("d"), tur: "defter", ad: ingilizceMi ? "First notebook" : "İlk defter", sayfaSayisi: 3, sayfa: 1, ilerleme: 0, favori: false,
     acilis: Date.now(), kapak: KAPAK_RENKLERI[0][1], kagit: "grid", veri: null,
   });
   // Boş başlayana örnek çizgi roman sonradan da eklenmez
@@ -3957,37 +4856,40 @@ function karsilamaAc() {
   K.ekran.inert = true;
   const secenek = (ikon, ad, aciklama, fn, birincil = false) => {
     const d = h("button", { class: "karsilama-secenek" + (birincil ? " birincil-secenek" : ""), type: "button" },
-      icon(ikon), h("b", {}, ad), h("small", {}, aciklama), birincil ? h("span", { class: "onerilen" }, "Önerilen") : null);
+      icon(ikon), h("b", {}, ad), h("small", {}, aciklama), birincil ? h("span", { class: "onerilen" }, t("Önerilen")) : null);
     d.addEventListener("click", () => sec(fn));
     return d;
   };
-  const ornek = secenek("tumu", "Örneklerle başla", "Ders notları, kitaplar, defterler, bir çizgi roman ve kartlarla dolu bir masa. İstediğinde Ayarlar’dan temizlersin.", ornekleBasla, true);
-  const bosD = secenek("yeni-defter", "Boş başla", "Yalnız boş bir defter. Kendi PDF, EPUB ve CBZ dosyalarını içe aktarırsın.", () => {
+  const ornek = secenek("tumu", t("Örneklerle başla"), t("Ders notları, kitaplar, defterler, bir çizgi roman ve kartlarla dolu bir masa. İstediğinde Ayarlar’dan temizlersin."), ornekleBasla, true);
+  const bosD = secenek("yeni-defter", t("Boş başla"), t("Yalnız boş bir defter. Kendi PDF, EPUB ve CBZ dosyalarını içe aktarırsın."), () => {
     bosBasla();
     klasorlerCiz();
     // Klasör seçebilen tarayıcıda bilgisayardaki kitaplar da önerilir (seçici dokunuşla açılır)
     setTimeout(() => (kayit.klasorDestegi()
-      ? toast("Boş bir defter hazır. Bilgisayardaki kitaplarını bir klasörden toplu alabilirsin.", { etiket: "Klasör seç", calistir: () => kitapKlasoruSec() })
-      : toast("Boş bir defter hazır. Yeni düğmesinden PDF, EPUB ya da CBZ içe aktarabilirsin.")), 400);
+      ? toast(t("Boş bir defter hazır. Bilgisayardaki kitaplarını bir klasörden toplu alabilirsin."), { etiket: t("Klasör seç"), calistir: () => kitapKlasoruSec() })
+      : toast(t("Boş bir defter hazır. Yeni düğmesinden PDF, EPUB ya da CBZ içe aktarabilirsin."))), 400);
   });
   // Alt satır platforma göre (TASARIM-4 1.2): telefonda çoğu kişinin kalemi yok, masaüstünde satır yok
-  const ipucu = { spen: "S Pen yazar, parmak kaydırır. Ayarlar’dan değişir.", pencil: "Apple Pencil yazar, parmak kaydırır. Ayarlar’dan değişir.",
-    kalem: "Kalem yazar, parmak kaydırır. Ayarlar’dan değişir.", parmak: "Parmağınla kaydır, kalem simgesiyle yaz." }[kalemTuru()] || null;
+  const ipucu = { spen: t("S Pen yazar, parmak kaydırır. Ayarlar’dan değişir."), pencil: t("Apple Pencil yazar, parmak kaydırır. Ayarlar’dan değişir."),
+    kalem: t("Kalem yazar, parmak kaydırır. Ayarlar’dan değişir."), parmak: t("Parmağınla kaydır, kalem simgesiyle yaz.") }[kalemTuru()] || null;
   // TASARIM-3 6.1: logo vitrinde, altında tek cümle ve bir kenar notu satırı (edebiyat solda, bilim sağda)
   // Kart seçili görünmesin: odak pencerenin kendisine gider, halka yalnız klavyeyle gezince kartta çıkar
-  const el = h("div", { class: "karsilama", role: "dialog", "aria-modal": "true", "aria-labelledby": "karsilamaBaslik", tabindex: "-1" },
+  // 7.0 (TASARIM-5 7.4): logo 64 px büyür, mürekkep izi bir kez soldan sağa çizilir; yalnız hareket serbestse
+  const el = h("div", { class: "karsilama" + (hareketAz() ? "" : " ilk-acilis"), role: "dialog", "aria-modal": "true", "aria-labelledby": "karsilamaBaslik", tabindex: "-1" },
     h("div", { class: "karsilama__ic" },
       h("div", { class: "logo" }, parca(LOGO_SVG)),
       h("h1", { class: "t-vitrin", id: "karsilamaBaslik" }, "Kenar Notu"),
-      h("p", {}, "PDF, kitap ve defterlerin kalemle yazılan bir masada. Yazdıkların yalnız bu cihazda kalır."),
-      h("p", { class: "karsilama__kenar" }, h("i", {}, "Kitabın kenarı, düşüncenin yeri.")),
-      h("p", { class: "karsilama__tarih t-deger-k", title: "Leibniz ∫ işaretini ilk kez 29 Ekim 1675’te yazdı" }, "∫ 29.10.1675"),
+      h("p", {}, t("PDF, kitap ve defterlerin kalemle yazılan bir masada. Yazdıkların yalnız bu cihazda kalır.")),
+      h("p", { class: "karsilama__kenar" }, h("i", {}, t("Kitabın kenarı, düşüncenin yeri."))),
+      h("p", { class: "karsilama__tarih t-deger-k", title: t("Leibniz ∫ işaretini ilk kez 29 Ekim 1675’te yazdı") }, t("∫ 29.10.1675")),
       h("div", { class: "karsilama__secenekler" }, ornek, bosD),
       ipucu ? h("p", { class: "karsilama__ipucu" }, ipucu) : null));
   let secildi = false;
   async function sec(fn) {
     if (secildi) return;
     secildi = true;
+    // Yeni kurulumda Yenilikler sheet'i çıkmaz: her şey zaten yeni
+    ayarla({ yeniliklerSurum: YENILIK_SURUMU });
     try { fn(); } catch (hata) { console.error("[kenar-notu] Başlangıç:", hata); }
     K.ekran.inert = false;
     kitaplikKirli = true;
@@ -4084,26 +4986,38 @@ const asistanHazir = import("./asistan.js").then((m) => m.kur?.()).catch((hata) 
 // Kayıt açılamadıysa (eski sürüm başka sekmede açık) ya da okunamadıysa yazılanlar bu oturumda kalır
 if (ilkDurum.baska) kayitUyarisi("baska");
 else if (ilkDurum.engel) toast(ilkDurum.kod === "okuma"
-  ? "Kayıt okunamadı; bu oturumda yapılanlar saklanmaz. Sayfayı yenilemeyi dene."
-  : "Kitaplık başka bir sekmede açık; kayıt için onu kapatıp yenile.", { kalici: true, etiket: "Tamam" });
+  ? t("Kayıt okunamadı; bu oturumda yapılanlar saklanmaz. Sayfayı yenilemeyi dene.")
+  : t("Kitaplık başka bir sekmede açık; kayıt için onu kapatıp yenile."), { kalici: true, etiket: t("Tamam") });
 // Yedekten yüklenip yenilendiyse sonucu söyle
 try {
   const y = JSON.parse(sessionStorage.getItem("kn-tasarim:yedek-sonuc") || "null");
   sessionStorage.removeItem("kn-tasarim:yedek-sonuc");
-  const eksik = y?.eksik ? ` Dosyası yedekte olmayan ${y.eksik} belge alınmadı.` : "";
-  if (y) toast((y.eklenen || y.guncellenen ? `Yedek yüklendi: ${y.eklenen} belge eklendi, ${y.guncellenen} güncellendi.` : "Yedek yüklendi; belgeler zaten güncel.") + eksik);
+  const eksik = y?.eksik ? " " + t("Dosyası yedekte olmayan {n} belge alınmadı.", { n: y.eksik }) : "";
+  if (y) toast((y.eklenen || y.guncellenen ? t("Yedek yüklendi: {eklenen} belge eklendi, {guncellenen} güncellendi.", { eklenen: y.eklenen, guncellenen: y.guncellenen }) : t("Yedek yüklendi; belgeler zaten güncel.")) + eksik);
 } catch { /* gizli pencere */ }
 // Karşılama açıksa seçim yapılınca başlar (silinecek örnekler dizinlenmesin)
 if (!karsilama) aramaDizininiBaslat();
 // iOS'ta Safari sekmesinde bir kez kurulum fişi
 if (!karsilama) setTimeout(() => iosKurulumFisi(), 3000);
+// 7.0'a ilk girişte bir kez Yenilikler (K9): kitaplık açıkken, başka pencere yokken
+if (!karsilama && store.ayarlar.yeniliklerSurum !== YENILIK_SURUMU) {
+  setTimeout(() => {
+    if (acik.ekran && acik.ekran !== "kitaplik") return;
+    if (document.querySelector("dialog[open], .alt-cekmece, .karsilama, .rehber-balon, .rehber-serit")) return;
+    ayarla({ yeniliklerSurum: YENILIK_SURUMU });
+    import("./hakkinda.js").then((m) => m.yeniliklerAc({ ilk: true })).catch(() => {});
+  }, 1600);
+}
+// Testler ve konsol için küçük kanca (üretimde zararsız): görünüm, seçim, sheet'ler
+window.__kn = { gorunumSec, secimKipi, kunye: (b) => b && kunyeAc(b), kisayollar: () => kisayollarAc(),
+  yenilikler: () => import("./hakkinda.js").then((m) => m.yeniliklerAc({})), parolaSor };
 // Yeni sürüm devreye girdi (sw.js skipWaiting ve claim): açık sayfa eski modüllerle kalır, sonradan yüklenen
 // ekranlar eski ortak.js ile uyuşmaz. Kullanıcıya yenilemesi söylenir; yenilemeden önce her şey yazılır.
 const ilkDenetci = navigator.serviceWorker?.controller;
 navigator.serviceWorker?.addEventListener("controllerchange", () => { if (ilkDenetci) guncellemeVar(); });
 // Hizmet çalışanı önbelleğe yazamadı (depo dolu): çevrimdışı açılış eksik kalabilir
 navigator.serviceWorker?.addEventListener("message", (e) => {
-  if (e.data?.tur === "kota") toast("Cihazda yer azaldı; çevrimdışı açılış eksik kalabilir. Yer aç ya da yedek al.", { etiket: "Yedekle", calistir: () => yedekPenceresi() });
+  if (e.data?.tur === "kota") toast(t("Cihazda yer azaldı; çevrimdışı açılış eksik kalabilir. Yer aç ya da yedek al."), { etiket: t("Yedekle"), calistir: () => yedekPenceresi() });
 });
 // "Açılışta son belgeyle başla" (TASARIM-4 3.4): kitaplık geçmişte kalır, geri hareketi oraya döner
 if (!karsilama && store.ayarlar.sonBelgeyleBasla && konumuOku().ekran === "kitaplik" && !location.hash) {
@@ -4147,5 +5061,5 @@ if ("launchQueue" in window) {
 if (!window.isSecureContext) {
   let soylendi = false;
   try { soylendi = sessionStorage.getItem("kn:guvensiz") === "1"; sessionStorage.setItem("kn:guvensiz", "1"); } catch { /* yoksa her açılışta */ }
-  if (!soylendi) setTimeout(() => toast("Güvenli bağlantı değil: çevrimdışı açılış ve paylaş menüsü kapalı. Tam sürüm için localhost ya da https ile aç."), 1200);
+  if (!soylendi) setTimeout(() => toast(t("Güvenli bağlantı değil: çevrimdışı açılış ve paylaş menüsü kapalı. Tam sürüm için localhost ya da https ile aç.")), 1200);
 }

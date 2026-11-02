@@ -1,6 +1,7 @@
 // Kenar Notu: çizgi roman motoru (OZELLIKLER-5 "cizgi-belge.js"). Arayüz yok; cizgi.js ve kabuk kullanır.
 //
-// cizgiAc(kaynak)   kaynak: CBZ Blob, PDF Blob ya da { pdf: pdfAc sonucu }
+// cizgiAc(kaynak, { parola })   kaynak: CBZ Blob, PDF Blob ya da { pdf: pdfAc sonucu }
+//   parola: parolalı PDF için (TASARIM-5 10.4: pdfAc(blob, { parola }); eksik ya da yanlışsa hata.kod "parola" | "parola-yanlis")
 //   -> { sayfaSayisi, bilgi: { baslik, seri, sayi, yazar, yon }, boyut(i) -> { w, h }, ciftMi(i),
 //        gorsel(i, { enFazla }) -> Promise<ImageBitmap>, paneller(i, { yon }?) -> Promise<[{ x, y, w, h }]>,
 //        kapak({ en }) -> Promise<Blob>, boyutlarHazir: Promise, kapat() }
@@ -14,6 +15,8 @@
 //   enFazla <= 512 küçük resim sayılır, ayrı ve küçük bir önbellekte durur (şerit sayfaları kovmasın).
 // bilgi.yon değiştirilebilir (Soldan sağa / Manga); paneller() sırayı o anki yöne göre verir.
 // kapat() yalnız kendi açtığını kapatır: { pdf } ile verilen PDF'i açan kapatır.
+
+import { t } from "./dil.js";
 
 const BUYUK_SINIR = 5;        // aynı anda çözülmüş büyük sayfa
 const KUCUK_SINIR = 40;       // küçük resim önbelleği
@@ -39,6 +42,8 @@ function jszip() {
 // ---------- küçük yardımcılar ----------
 const dogal = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const bosta = (ms = 600) => new Promise((r) => (globalThis.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: ms }) : setTimeout(r, 30)));
+// Kullanıcıya gösterilecek hata: ileti arayüz dilinde, cizgi.js goster işaretine bakar
+const bilinenHata = (metin) => Object.assign(new Error(t(metin)), { goster: true });
 const bosluk = (s) => String(s || "").replace(/\s+/g, " ").trim();
 
 // Gizli dosyalar, __MACOSX ve Thumbs.db atlanır; yalnız görsel uzantıları sayfadır
@@ -145,7 +150,7 @@ function comicInfo(metin) {
 async function cbzKaynak(blob) {
   const JSZip = await jszip();
   let zip;
-  try { zip = await JSZip.loadAsync(blob); } catch { throw new Error("Arşiv açılamadı. Dosya bozuk ya da CBZ değil."); }
+  try { zip = await JSZip.loadAsync(blob); } catch { throw bilinenHata("Arşiv açılamadı. Dosya bozuk ya da CBZ değil."); }
   const adlar = [];
   let infoAd = null;
   zip.forEach((yol, d) => {
@@ -156,7 +161,7 @@ async function cbzKaynak(blob) {
       if (!infoAd || yol.split("/").length < infoAd.split("/").length) infoAd = yol;
     }
   });
-  if (!adlar.length) throw new Error("Arşivde sayfa görseli bulunamadı.");
+  if (!adlar.length) throw bilinenHata("Arşivde sayfa görseli bulunamadı.");
   adlar.sort((a, b) => dogal.compare(a, b));
 
   let ci = comicInfo("");
@@ -252,14 +257,15 @@ function pdfKaynak(pdf, sahip) {
   };
 }
 
-async function kaynakAc(kaynak) {
+async function kaynakAc(kaynak, { parola } = {}) {
   if (kaynak && kaynak.pdf) return pdfKaynak(kaynak.pdf, false);
   if (!(kaynak instanceof Blob)) throw new Error("Çizgi roman kaynağı tanınmadı");
   const bas = await basBaytlar(kaynak);
-  if (rarMi(bas)) throw new Error("CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.");
+  if (rarMi(bas)) throw bilinenHata("CBR (RAR) desteklenmiyor. Dosyayı CBZ'ye çevirip tekrar dene.");
   if (pdfMi(bas)) {
     const { pdfAc } = await import("./pdf-belge.js");
-    return pdfKaynak(await pdfAc(kaynak), true);
+    // Parolasız yolda imza ve davranış aynı (masa paketi parolayı ikinci bağımsız değişkenle alır)
+    return pdfKaynak(await (parola ? pdfAc(kaynak, { parola }) : pdfAc(kaynak)), true);
   }
   return cbzKaynak(kaynak);
 }
@@ -356,8 +362,8 @@ function isciBirak() {
 }
 
 // ---------- motor ----------
-export async function cizgiAc(kaynak) {
-  const k = await kaynakAc(kaynak);
+export async function cizgiAc(kaynak, secenek = {}) {
+  const k = await kaynakAc(kaynak, secenek);
   const n = k.sayfaSayisi;
   let kapali = false;
   acikMotor++;

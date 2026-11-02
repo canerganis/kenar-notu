@@ -1,5 +1,7 @@
 // Tekrar kartlarını dışarı verme (OZELLIKLER-8 1.2 ve 1.3): Anki paketi (.apkg), TSV + görseller zip, takvim (.ics).
-// Sözleşme: ankiAktar(kartlar, { bicim: "apkg" | "tsv" }), takvimAktar({ saat: "HH:MM" }), ankiPaketi(kartlar), ankiTsvZip(kartlar), takvimIcs().
+// İçeri alma (TASARIM-5 11.5 R6): ankiIceOku(dosya) .apkg'yi okur, kart alanları listesi döner (kartları tekrar.js ekler).
+// Sözleşme: ankiAktar(kartlar, { bicim: "apkg" | "tsv" }), takvimAktar({ saat: "HH:MM" }), ankiPaketi(kartlar), ankiTsvZip(kartlar), takvimIcs(),
+//           ankiIceOku(dosya, { simdi }), gorselKucult(blob, enUzun). Boşluk doldurma metni tekrar.js boslukMetni ile.
 // sql.js (1.14.2, MIT, lib/sql-wasm.*) ve JSZip yalnız aktarırken yüklenir; ikisi de sw.js kabuğunda, çevrimdışı çalışır.
 //
 // .apkg: Anki 2.1'in eski şeması (collection.anki2, şema 11) + "media" JSON ({ "0": "ad.png" }) + numaralı medya dosyaları.
@@ -15,9 +17,12 @@
 
 import { store, belgeBul, gunBasi, gunFarki, fsrsHesapla, KUTU_ARALIK } from "./ortak.js";
 import { texParcala } from "./matematik.js";
+import { boslukMetni } from "./tekrar.js";
+import { t, ingilizceMi } from "./dil.js";
 
 const AYRAC = String.fromCharCode(31);     // Anki alan ayracı (US)
-const MODEL_ID = 1730419200000;            // sabit not türü kimliği: yeniden aktarımda aynı tür kullanılır
+// Sabit not türü kimliği: yeniden aktarımda aynı tür kullanılır. Alan adları dile göre değiştiği için İngilizce tür ayrı kimlikte
+const MODEL_ID = 1730419200000 + (ingilizceMi ? 1 : 0);
 const DESTE_KOK = "Kenar Notu";
 
 // ---------- tembel yükleme ----------
@@ -46,9 +51,9 @@ const satirHtml = (s) => kacis(s).replace(/\r?\n/g, "<br>").replace(/\t/g, " ");
 // Formüller Anki'nin MathJax sınırlayıcılarına çevrilir: \(...\) satır içi, \[...\] blok
 const metinHtml = (s) => texParcala(s).map((p) => (p.tex == null ? satirHtml(p.metin)
   : p.blok ? `\\[${kacis(p.tex)}\\]` : `\\(${kacis(p.tex)}\\)`)).join("");
-export const belgeAdi = (k) => belgeBul(k.belgeId)?.ad || k.belgeAd || "Genel";
+export const belgeAdi = (k) => belgeBul(k.belgeId)?.ad || k.belgeAd || k.deste || t("Genel");
 // Deste adında "::" alt deste demektir; belge adındaki iki nokta tek nokta olur
-export const desteAdi = (k) => `${DESTE_KOK}::${belgeAdi(k).replace(/:{2,}/g, ":").trim() || "Genel"}`;
+export const desteAdi = (k) => `${DESTE_KOK}::${belgeAdi(k).replace(/:{2,}/g, ":").trim() || t("Genel")}`;
 const UZANTI = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg" };
 
 // Kartların görsellerini toplar: { ad, blob } listesi ve her kart için iki alanın HTML'i
@@ -71,9 +76,13 @@ async function alanlar(kartlar) {
   }
   const notlar = [];
   for (const k of kartlar) {
-    const on = await yuz(k.on, `${k.id}-on`);
-    let arka = await yuz(k.arka, `${k.id}-arka`);
-    const kaynak = [belgeAdi(k), k.sayfa ? `s. ${k.sayfa}` : ""].filter(Boolean).join(" · ");
+    // Boşluk doldurma kartı Anki'ye düz iki alanlı kart olarak gider: önde [...], arkada cevap kalın
+    const bosluk = k.tur === "bosluk" && k.bosluk?.n;
+    const on = bosluk ? `<div>${metinHtml(boslukMetni(k.on?.metin || "", k.bosluk.n)).replace(/\[\.\.\.\]/g, "<b>[...]</b>")}</div>`
+      + (k.on?.gorsel ? await yuz({ gorsel: k.on.gorsel }, `${k.id}-on`) : "") : await yuz(k.on, `${k.id}-on`);
+    let arka = bosluk ? `<div>${metinHtml(boslukMetni(k.on?.metin || "", k.bosluk.n, { cevap: true }))}</div>` + await yuz(k.arka, `${k.id}-arka`)
+      : await yuz(k.arka, `${k.id}-arka`);
+    const kaynak = [belgeAdi(k), k.sayfa ? t("s. {n}", { n: k.sayfa }) : ""].filter(Boolean).join(" · ");
     if (kaynak) arka += `<div class="kaynak">${kacis(kaynak)}</div>`;
     notlar.push({ k, on: on || "&nbsp;", arka, deste: desteAdi(k), etiketler: ["Kenar_Notu", k.tur || "kart"] });
   }
@@ -124,7 +133,7 @@ export function ankiTakvim(k, simdi = Date.now()) {
   const revlog = [];
   let durum = { kutu: 1, gecmis: [] }, lapses = 0, basarili = false, onceki = 0;
   for (const g of gecmis) {
-    const c = fsrsHesapla(durum, g.bildi, g.zaman);
+    const c = fsrsHesapla(durum, g.derece ?? g.bildi, g.zaman);   // dört düğmeli cevapta derece
     if (!g.bildi && basarili) lapses++;
     if (g.bildi) basarili = true;
     const ivl = g.bildi ? c.aralik : UNUTMA_IVL;
@@ -188,10 +197,12 @@ function koleksiyonJson(desteler, simdiSn) {
   for (const [ad, id] of desteler) decks[id] = deste(id, ad);
   const ilkDeste = desteler.values().next().value || 1;
   const fld = (name, ord) => ({ name, ord, sticky: false, rtl: false, font: "Arial", size: 20, media: [] });
+  // Alan ve şablon adları Anki'de görünür: arayüz dilinde (İngilizce tür ayrı MODEL_ID'de)
+  const [on, arka] = ingilizceMi ? ["Front", "Back"] : ["Ön", "Arka"];
   const models = { [MODEL_ID]: {
-    id: MODEL_ID, name: "Kenar Notu (Ön/Arka)", type: 0, mod: simdiSn, usn: -1, sortf: 0, did: ilkDeste, tags: [], vers: [],
-    flds: [fld("Ön", 0), fld("Arka", 1)],
-    tmpls: [{ name: "Kart 1", ord: 0, qfmt: "{{Ön}}", afmt: "{{FrontSide}}\n\n<hr id=answer>\n\n{{Arka}}", bqfmt: "", bafmt: "", did: null, bfont: "", bsize: 0 }],
+    id: MODEL_ID, name: `Kenar Notu (${on}/${arka})`, type: 0, mod: simdiSn, usn: -1, sortf: 0, did: ilkDeste, tags: [], vers: [],
+    flds: [fld(on, 0), fld(arka, 1)],
+    tmpls: [{ name: ingilizceMi ? "Card 1" : "Kart 1", ord: 0, qfmt: `{{${on}}}`, afmt: `{{FrontSide}}\n\n<hr id=answer>\n\n{{${arka}}}`, bqfmt: "", bafmt: "", did: null, bfont: "", bsize: 0 }],
     css: KART_CSS, req: [[0, "any", [0]]],
     latexPre: "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}\n",
     latexPost: "\\end{document}",
@@ -263,9 +274,17 @@ export async function ankiTsvZip(kartlar) {
   // Türü içe aktarma ekranı seçer (son kullanılan, çoğunlukla iki alanlı Temel); ilk iki sütun sırayla Ön ve Arka alanına gider.
   const satirlar = ["#separator:tab", "#html:true", "#deck column:3", "#tags column:4", "#guid column:5"];
   for (const n of notlar) satirlar.push([n.on, n.arka, n.deste, n.etiketler.join(" "), guid(n.k)].map(alan).join("\t"));
-  const zip = new JSZip();
-  zip.file("kartlar.txt", satirlar.join("\n") + "\n");
-  zip.file("OKU.txt", [
+  // Zip içindeki dosya adları ve okuma notu arayüz dilinde (BICIM_NOT, tekrar.js, OKU.txt ya da README.txt der)
+  const ad = ingilizceMi ? { kartlar: "cards.txt", oku: "README.txt", medya: "media/" } : { kartlar: "kartlar.txt", oku: "OKU.txt", medya: "medya/" };
+  const oku = ingilizceMi ? [
+    "Kenar Notu cards (Anki text import)",
+    "",
+    "1. Copy the images in the media folder into Anki's collection.media folder",
+    "   (Anki desktop: Tools > Check Media > Open Media Folder).",
+    "2. In Anki, choose File > Import and pick cards.txt.",
+    "3. Pick the two-field Basic note type.",
+    "Deck and tags are read from the columns in the file.",
+  ] : [
     "Kenar Notu kartları (Anki metin içe aktarma)",
     "",
     "1. medya klasöründeki görselleri Anki'nin collection.media klasörüne kopyala",
@@ -273,8 +292,11 @@ export async function ankiTsvZip(kartlar) {
     "2. Anki'de Dosya > İçe aktar ile kartlar.txt dosyasını seç.",
     "3. Not türü olarak iki alanlı Temel (İngilizcede Basic) türünü seç.",
     "Deste ve etiketler dosyadaki sütunlardan okunur.",
-  ].join("\n") + "\n");
-  for (const m of medya) zip.file("medya/" + m.ad, m.blob);
+  ];
+  const zip = new JSZip();
+  zip.file(ad.kartlar, satirlar.join("\n") + "\n");
+  zip.file(ad.oku, oku.join("\n") + "\n");
+  for (const m of medya) zip.file(ad.medya + m.ad, m.blob);
   return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/zip" });
 }
 
@@ -316,16 +338,16 @@ export function saatCoz(saat) {
 export function takvimIcs({ kartlar = store.kartlar, gun = 14, saat = TAKVIM_SAAT, sure = 15, simdi = Date.now() } = {}) {
   const st = utcAn(simdi), { s: sa, d: dak } = saatCoz(saat);
   const satirlar = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Kenar Notu//Tekrar//TR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "X-WR-CALNAME:Kenar Notu tekrar"];
+    `X-WR-CALNAME:${icsMetin(t("Kenar Notu tekrar"))}`];
   for (const { bas, sayi } of takvimGunleri(kartlar, { gun, simdi })) {
     if (!sayi) continue;
     const tarih = yerelTarih(bas);
     const dk = Math.max(1, Math.round((sayi * 30) / 60));
-    const ozet = `Kenar Notu: ${sayi} kart tekrar`;
+    const ozet = t("Kenar Notu: {n} kart tekrar", { n: sayi });
     // Yerel saat (TZID'siz "kayan" saat): cihaz hangi saat dilimindeyse seçilen saat
     satirlar.push("BEGIN:VEVENT", `UID:kenar-notu-tekrar-${tarih}@kenar-notu`, `DTSTAMP:${st}`,
       `DTSTART:${tarih}T${iki(sa)}${iki(dak)}00`, `DURATION:PT${sure}M`, `SUMMARY:${icsMetin(ozet)}`,
-      `DESCRIPTION:${icsMetin(`Bugün ${sayi} kart bekliyor, yaklaşık ${dk} dk.`)}`, "TRANSP:TRANSPARENT",
+      `DESCRIPTION:${icsMetin(t("Bugün {n} kart bekliyor, yaklaşık {d} dk.", { n: sayi, d: dk }))}`, "TRANSP:TRANSPARENT",
       "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsMetin(ozet)}`, "TRIGGER:PT0M", "END:VALARM", "END:VEVENT");
   }
   satirlar.push("END:VCALENDAR");
@@ -345,5 +367,195 @@ export async function ankiAktar(kartlar, { bicim = "apkg" } = {}) {
 }
 export async function takvimAktar(secenek = {}) {
   const { paylas } = await import("./disa-aktar.js");
-  return paylas(new Blob([takvimIcs(secenek)], { type: "text/calendar" }), "Kenar Notu tekrar takvimi.ics");
+  return paylas(new Blob([takvimIcs(secenek)], { type: "text/calendar" }), t("Kenar Notu tekrar takvimi.ics"));
+}
+
+// ======================================================================
+// İçeri alma: .apkg (TASARIM-5 11.5 R6)
+// ======================================================================
+// Paket bir zip: collection.anki21 (2.1 eski uyumlu biçim) ya da collection.anki2 (2.0), "media" JSON ({ "0": "ad.png" })
+// ve numaralı medya dosyaları. Yeni Anki'nin sıkıştırılmış biçimi (collection.anki21b, zstd) ve .colpkg okunmaz: açık iletiyle
+// reddedilir. Not türleri: standart (Basic, Basic and reversed, isteğe bağlı ters, yazarak cevap) şablonları çözülerek,
+// Cloze (type 1) her cN için ayrı boşluk kartı. Alanlar HTML'den düz metne iner, formüller (\(..\), \[..\], [$]..[/$]) kalır,
+// ilk görsel kartın görseli olur. Deste adı kartın "deste" alanına yazılır ("Dil::Almanca" > "Dil › Almanca").
+// Zamanlama sıfırdan başlar: kart yeni girer (Anki geçmişi taşınmaz). Aynı not ve kart (guid + ord) ikinci kez gelmez.
+const kullaniciHatasi = (metin) => Object.assign(new Error(metin), { kullanici: true });
+
+// Büyük görsel 1600 px'e iner (kayıt ve yedek şişmesin); küçükse olduğu gibi kalır. Döner: dataURL
+export async function gorselKucult(blob, enUzun = 1600) {
+  const okuUrl = () => new Promise((tamam, hata) => { const r = new FileReader(); r.onload = () => tamam(r.result); r.onerror = () => hata(r.error); r.readAsDataURL(blob); });
+  if (!/^image\/(png|jpeg|webp|gif|bmp)$/.test(blob.type) || typeof createImageBitmap !== "function") return okuUrl();
+  let bmp;
+  try { bmp = await createImageBitmap(blob); } catch { return okuUrl(); }
+  const oran = Math.min(1, enUzun / Math.max(bmp.width, bmp.height));
+  if (oran >= 1 && blob.size < 900e3) { bmp.close?.(); return okuUrl(); }
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(bmp.width * oran)); c.height = Math.max(1, Math.round(bmp.height * oran));
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  const webp = c.toDataURL("image/webp", 0.88);
+  return webp.startsWith("data:image/webp") ? webp : c.toDataURL(blob.type === "image/jpeg" ? "image/jpeg" : "image/png", 0.9);
+}
+
+const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp" };
+const BLOK = new Set(["DIV", "P", "LI", "TR", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "PRE", "UL", "OL", "TABLE"]);
+
+// Anki alan HTML'i -> { metin, gorseller: [dosya adı] }. DOMParser betik çalıştırmaz; yalnız metin ve img src okunur.
+export function ankiAlanMetni(html) {
+  const s = String(html ?? "")
+    .replace(/\[sound:[^\]]*\]/g, "")
+    .replace(/\[\$\$\]([\s\S]*?)\[\/\$\$\]/g, (_, t) => `$$${t}$$`)
+    .replace(/\[\$\]([\s\S]*?)\[\/\$\]/g, (_, t) => `$${t}$`)
+    .replace(/\[latex\]([\s\S]*?)\[\/latex\]/g, (_, t) => `$$${t}$$`);
+  const doc = new DOMParser().parseFromString(`<body>${s}</body>`, "text/html");
+  const gorseller = [];
+  let out = "";
+  const gez = (n) => {
+    for (const c of n.childNodes) {
+      if (c.nodeType === 3) { out += c.nodeValue; continue; }
+      if (c.nodeType !== 1) continue;
+      const ad = c.tagName;
+      if (ad === "SCRIPT" || ad === "STYLE") continue;
+      if (ad === "IMG") { const src = c.getAttribute("src"); if (src && !/^(https?:|data:)/i.test(src)) gorseller.push(src); continue; }
+      if (ad === "BR") { out += "\n"; continue; }
+      if (ad === "LI") out += "• ";
+      if (ad === "TD" || ad === "TH") out += " ";
+      gez(c);
+      if (BLOK.has(ad)) out += "\n";
+    }
+  };
+  gez(doc.body);
+  const metin = out.replace(/ /g, " ").replace(/[ \t]+/g, " ").split("\n").map((x) => x.trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { metin, gorseller };
+}
+const bosAlan = (html) => !ankiAlanMetni(html).metin && !/<img/i.test(html || "");
+
+// Anki şablonu: {{Alan}}, {{#Alan}}..{{/Alan}}, {{^Alan}}..{{/Alan}}, {{FrontSide}}, süzgeçler ({{text:Alan}}, {{hint:Alan}}).
+// {{type:Alan}} (yazarak cevap) ve sesli okuma süzgeci boş geçer.
+function sablonCoz(fmt, alanlar, onYuz = "") {
+  let s = String(fmt || "");
+  for (let i = 0; i < 5; i++) {
+    const once = s;
+    s = s.replace(/\{\{([#^])\s*([^}]+?)\s*\}\}([\s\S]*?)\{\{\/\s*\2\s*\}\}/g, (_, t, ad, ic) => {
+      const dolu = !bosAlan(alanlar[ad.trim()] ?? "");
+      return (t === "#" ? dolu : !dolu) ? ic : "";
+    });
+    if (s === once) break;
+  }
+  return s.replace(/\{\{([^#^/{}][^{}]*?)\}\}/g, (_, ic) => {
+    ic = ic.trim();
+    if (ic === "FrontSide") return onYuz;
+    const parca = ic.split(":"), ad = parca.pop().trim(), suzgec = parca.map((x) => x.trim().toLowerCase());
+    if (suzgec.includes("type") || suzgec.some((x) => x.startsWith("tts"))) return "";
+    return alanlar[ad] ?? "";
+  });
+}
+// Cevap şablonundan yalnız cevap: <hr id=answer> sonrası; yoksa ön yüz çıkarılır
+function cevapKismi(afmt, alanlar) {
+  const a = sablonCoz(afmt, alanlar, "\u0000ON\u0000");
+  const parca = a.split(/<hr[^>]*id\s*=\s*["']?answer["']?[^>]*>/i);
+  return (parca.length > 1 ? parca.slice(1).join("") : a).replace(/\u0000ON\u0000/g, "");
+}
+
+// Döner: { kartlar: [kartEkle alanları], desteler: Map(ad -> kart sayısı), sayilar: { soru, ters, bosluk, gorsel }, atlanan, bos, notSayisi }.
+// varOlan: "guid:ord" kümesi (zaten içe alınmış kartlar atlanır). Ters kartın _tersKaynak alanı aynı notun ilk kartının alan nesnesidir.
+export async function ankiIceOku(dosya, { simdi = Date.now(), varOlan = null } = {}) {
+  const ad = String(dosya?.name || "").toLowerCase();
+  if (ad.endsWith(".colpkg")) throw kullaniciHatasi(t("Bu bir Anki koleksiyon yedeği (.colpkg). Yalnız deste paketleri içe gelir: Anki’de Dosya > Dışa aktar ile “Anki Deck Package (.apkg)” seç."));
+  const [SQL, JSZip] = await Promise.all([sqlJs(), jszip()]);
+  let zip;
+  try { zip = await JSZip.loadAsync(dosya); } catch { throw kullaniciHatasi(t("Dosya açılamadı: geçerli bir Anki paketi (.apkg) değil.")); }
+  const yeni = zip.file("collection.anki21b");
+  const kaynak = zip.file("collection.anki21") || (!yeni ? zip.file("collection.anki2") : null);
+  if (!kaynak) {
+    if (yeni) throw kullaniciHatasi(t("Bu paket Anki’nin yeni sıkıştırılmış biçiminde. Anki’de dışa aktarırken “Support older Anki versions” (eski sürümlerle uyumlu) seçeneğini işaretleyip yeniden dene."));
+    throw kullaniciHatasi(t("Pakette Anki destesi bulunamadı."));
+  }
+  // Medya haritası: eski biçim JSON; yeni biçim (zstd protobuf) okunamaz, görselsiz devam edilir
+  const medya = new Map();
+  try {
+    const m = JSON.parse((await zip.file("media")?.async("string")) || "{}");
+    for (const [anahtar, dosyaAdi] of Object.entries(m)) medya.set(String(dosyaAdi), anahtar);
+  } catch { /* görselsiz */ }
+
+  const BICIM = t("Bu Anki paketinin biçimi okunamadı. Anki’de “Support older Anki versions” seçeneğiyle yeniden dışa aktar.");
+  let db;
+  try { db = new SQL.Database(new Uint8Array(await kaynak.async("uint8array"))); } catch { throw kullaniciHatasi(BICIM); }
+  try {
+    const tek = (sql) => { const r = db.exec(sql); return r[0] ? r[0].values : []; };
+    let models, decks;
+    try { const [[m, d]] = tek("SELECT models, decks FROM col"); models = JSON.parse(m || "{}"); decks = JSON.parse(d || "{}"); }
+    catch { throw kullaniciHatasi(BICIM); }
+    if (!models || !Object.keys(models).length) throw kullaniciHatasi(BICIM);
+    const notlar = new Map(tek("SELECT id, guid, mid, flds FROM notes")
+      .map(([id, guid, mid, flds]) => [String(id), { guid: String(guid), mid: String(mid), flds: String(flds).split(AYRAC) }]));
+    const kartlar = tek("SELECT id, nid, did, ord FROM cards ORDER BY nid, ord");
+
+    // Görseller bir kez okunur ve küçültülür
+    const gorselOnbellek = new Map();
+    const gorselAl = async (adi) => {
+      let cozulmus = adi;
+      try { cozulmus = decodeURIComponent(adi); } catch {}
+      if (gorselOnbellek.has(cozulmus)) return gorselOnbellek.get(cozulmus);
+      let sonuc = null;
+      const anahtar = medya.get(cozulmus) ?? medya.get(adi);
+      const dosyaZip = anahtar != null ? zip.file(String(anahtar)) : null;
+      const uz = (cozulmus.split(".").pop() || "").toLowerCase();
+      if (dosyaZip && MIME[uz]) {
+        try { sonuc = await gorselKucult(new Blob([await dosyaZip.async("uint8array")], { type: MIME[uz] })); } catch { sonuc = null; }
+      }
+      gorselOnbellek.set(cozulmus, sonuc);
+      return sonuc;
+    };
+    const yuzYap = async (html) => {
+      const { metin, gorseller } = ankiAlanMetni(html);
+      const y = {};
+      if (metin) y.metin = metin;
+      for (const g of gorseller) { const d = await gorselAl(g); if (d) { y.gorsel = d; break; } }
+      return y;
+    };
+
+    const zatenVar = varOlan || new Set();
+    const desteler = new Map(), sayilar = { soru: 0, ters: 0, bosluk: 0, gorsel: 0 };
+    const sonuc = [], ilkKart = new Map();
+    let atlanan = 0, bos = 0;
+    for (const [, nid, did, ordHam] of kartlar) {
+      const ord = Number(ordHam);
+      const not = notlar.get(String(nid));
+      const model = not && models[not.mid];
+      if (!not || !model) { bos++; continue; }
+      if (zatenVar.has(`${not.guid}:${ord}`)) { atlanan++; continue; }
+      const adlar = (model.flds || []).slice().sort((a, b) => a.ord - b.ord).map((f) => f.name);
+      const alanlar = Object.fromEntries(adlar.map((a, i) => [a, not.flds[i] ?? ""]));
+      const desteAd = decks[String(did)]?.name || "Anki";
+      const deste = String(desteAd).split("::").map((x) => x.trim()).filter(Boolean).join(" › ") || "Anki";
+      const ortak = { deste, belgeId: null, belgeAd: "", kutu: 1, sonraki: simdi, gecmis: [], anki: { guid: not.guid, ord } };
+      let kart;
+      if (model.type === 1) {
+        // Cloze: metin alanı şablondaki {{cloze:X}}; ek bilgi öbür dolu alanlar
+        const t = (model.tmpls?.[0]?.qfmt || "").match(/\{\{cloze:([^}]+)\}\}/i);
+        const metinAd = t ? t[1].trim() : adlar[0];
+        const on = await yuzYap(alanlar[metinAd] ?? not.flds[0]);
+        const n = ord + 1;
+        if (!on.metin || !on.metin.includes(`{{c${n}::`)) { bos++; continue; }
+        const ekHtml = adlar.filter((a) => a !== metinAd && !bosAlan(alanlar[a])).map((a) => alanlar[a]).join("<br>");
+        kart = { ...ortak, tur: "bosluk", on, arka: ekHtml ? await yuzYap(ekHtml) : {}, bosluk: { kok: "anki-" + not.guid, n } };
+        sayilar.bosluk++;
+      } else {
+        const tmpl = (model.tmpls || []).find((x) => x.ord === ord) || model.tmpls?.[ord];
+        if (!tmpl) { bos++; continue; }
+        const on = await yuzYap(sablonCoz(tmpl.qfmt, alanlar)), arka = await yuzYap(cevapKismi(tmpl.afmt, alanlar));
+        if (!on.metin && !on.gorsel) { bos++; continue; }
+        // Tek sözcüklük ön yüz kelime kartı olur (Koltuk'un kelime kartı gibi büyük yazılır)
+        kart = { ...ortak, tur: on.metin && !on.gorsel && !/\s/.test(on.metin) && on.metin.length <= 32 ? "kelime" : "soru", on, arka };
+        if (ord > 0) { kart.ters = true; kart._tersNot = String(nid); sayilar.ters++; } else sayilar.soru++;
+      }
+      if (kart.on.gorsel || kart.arka?.gorsel) sayilar.gorsel++;
+      if (ord === 0) ilkKart.set(String(nid), kart);
+      desteler.set(deste, (desteler.get(deste) || 0) + 1);
+      sonuc.push(kart);
+    }
+    for (const k of sonuc) if (k._tersNot) { k._tersKaynak = ilkKart.get(k._tersNot) || null; delete k._tersNot; }
+    return { kartlar: sonuc, desteler, sayilar, atlanan, bos, notSayisi: notlar.size };
+  } finally { db.close(); }
 }

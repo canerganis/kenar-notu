@@ -7,6 +7,8 @@
 //   paketler() / paketIndir(kaynak, hedef, { ilerleme, signal }) / paketSil(kaynak, hedef)
 //   ceviriOnbellekSil(belgeId), ceviriOnbellekTemizle(), ceviriYeri(), cihazIndir(), hazirla()
 //   hesap yolu (arayüz değil): hesapMetni, hesapIleCevir, googleCeviriAdresi, googleCeviriAc
+//   7.0 (TASARIM-5 11.6 Y5): webAraDugmeleri({ metin, dil }) çeviri fişinin altına "Vikipedi" ve "Web'de ara" düğmeleri
+//       (iz-bag.js'ten; Koltuk ve Masa fişi ceviri.js'i zaten yüklediği için buradan da verilir). vikipediAdresi, webAramaAdresi.
 //
 // Motorlar, otomatik sırayla: cihaz (Chrome Translator API), paket (Bergamot WASM, ceviri-isci.js),
 // anahtar (asistandaki API anahtarı), hesap (ChatGPT/Gemini/Claude ya da Google Çeviri'ye götürür).
@@ -23,6 +25,8 @@
 // sunucusundan gelir; dosyaların kendisi CORS izni olan bir aynadan (Hugging Face) iner ve sha256 ile doğrulanır.
 
 import { store, bus, panoyaYaz, YZ_UYGULAMALAR, YZ_SAGLAYICILAR } from "./ortak.js";
+import { t, dil, yerel, ingilizceMi } from "./dil.js";
+export { webAraDugmeleri, vikipediAdresi, webAramaAdresi } from "./iz-bag.js";
 
 const VT = { ad: "kenar-notu-ceviri", surum: 1 };
 const SIRA = ["cihaz", "paket", "anahtar", "hesap"];
@@ -60,7 +64,8 @@ export class CeviriHatasi extends Error {
 const iptalHatasi = () => new DOMException("İptal edildi", "AbortError");
 const iptalMi = (e) => e?.name === "AbortError";
 const ayar = () => store.ayarlar.ceviri || {};
-const varsayilanHedef = () => kisaDil(ayar().hedef) || "tr";
+// Hedef seçilmemişse arayüz dili: İngilizce arayüzde İngilizceye çevrilir
+const varsayilanHedef = () => kisaDil(ayar().hedef) || (ingilizceMi ? "en" : "tr");
 const ciftId = (k, h) => `${k}-${h}`;
 const cevrimici = () => navigator.onLine !== false;
 const yay = (veri) => { durumBellek.clear(); try { bus.emit("ceviri", veri); } catch { /* dinleyici hatası çeviriyi düşürmez */ } };
@@ -75,7 +80,7 @@ export function kisaDil(kod) {
   return a === "nb" || a === "nn" ? a : a === "no" ? "nb" : a;
 }
 const adlar = {};
-export function dilAdi(kod, arayuz = "tr") {
+export function dilAdi(kod, arayuz = dil) {
   try { return (adlar[arayuz] ||= new Intl.DisplayNames([arayuz], { type: "language" })).of(kod) || kod; } catch { return kod; }
 }
 
@@ -504,7 +509,7 @@ async function sahteCevir(parcalar, { hedef, signal, metin }, ekle) {
 }
 
 /* ================= Durum ve seçim ================= */
-const MOTOR_ADI = { cihaz: "Cihazda", paket: "Çeviri paketi", hesap: "Hesabımla", sahte: "Sahte motor" };
+const MOTOR_ADI = { cihaz: t("Cihazda"), paket: t("Çeviri paketi"), hesap: t("Hesabımla"), sahte: t("Sahte motor") };
 
 async function paketDurumu(k, h) {
   if (typeof WebAssembly !== "object" || typeof Worker !== "function") return "yok";
@@ -537,7 +542,7 @@ async function durumHesapla(k, h) {
   motorlar.push({ id: "cihaz", ad: MOTOR_ADI.cihaz, durum: cihaz, cevrimdisi: true });
   motorlar.push({ id: "paket", ad: MOTOR_ADI.paket, durum: paket, cevrimdisi: true });
   const sg = anahtarSaglayici();
-  if (sg) motorlar.push({ id: "anahtar", ad: `${sg.ad} anahtarı`, durum: cevrimici() ? "hazir" : "yok", cevrimdisi: false });
+  if (sg) motorlar.push({ id: "anahtar", ad: t("{ad} anahtarı", { ad: sg.ad }), durum: cevrimici() ? "hazir" : "yok", cevrimdisi: false });
   motorlar.push({ id: "hesap", ad: MOTOR_ADI.hesap, durum: cevrimici() ? "hazir" : "yok", cevrimdisi: false });
   return { motorlar, secilen: motorSec(motorlar, ayar().motor) };
 }
@@ -632,8 +637,13 @@ function dilEki(ad, tur) {
   return ad + (sonSesli ? "y" : "") + (kalin ? "a" : "e");
 }
 export function hesapMetni(metin, { kaynak, hedef } = {}) {
-  const h = dilAdi(kisaDil(hedef) || varsayilanHedef());
   const k = kisaDil(kaynak);
+  // İngilizce arayüzde istem de İngilizce: Türkçe dil eki gerekmez
+  if (ingilizceMi) {
+    const he = dilAdi(kisaDil(hedef) || varsayilanHedef(), "en"), ke = k ? dilAdi(k, "en") : "";
+    return `Translate this text ${ke ? `from ${ke} ` : ""}into ${he}. Keep the meaning and style, and write only the translation:\n\n${String(metin || "").trim()}`;
+  }
+  const h = dilAdi(kisaDil(hedef) || varsayilanHedef());
   const yon = k ? `${dilEki(dilAdi(k), "den")} ${dilEki(h, "e")}` : dilEki(h, "e");
   return `Şu metni ${yon} çevir. Anlamı ve üslubu koru, yalnız çeviriyi yaz:\n\n${String(metin || "").trim()}`;
 }
@@ -714,7 +724,7 @@ export async function paketler({ bekleme = 5000 } = {}) {
   for (const [id, i] of inisler) { const s = satirlar.get(id); if (s && s.durum !== "yuklu") { s.durum = "iniyor"; s.ilerleme = i.ilerleme; } }
   if (SAHTE) for (const [id, i] of sahtePaketler) { const s = satirlar.get(id); if (s) { s.durum = i.durum; s.ilerleme = i.ilerleme; } }
   const derece = (s) => ((s.kaynak === "en" && s.hedef === h) || (s.kaynak === h && s.hedef === "en") ? 0 : s.hedef === h ? 1 : s.kaynak === h ? 2 : 3);
-  return [...satirlar.values()].sort((a, b) => derece(a) - derece(b) || dilAdi(a.kaynak).localeCompare(dilAdi(b.kaynak), "tr") || dilAdi(a.hedef).localeCompare(dilAdi(b.hedef), "tr"));
+  return [...satirlar.values()].sort((a, b) => derece(a) - derece(b) || dilAdi(a.kaynak).localeCompare(dilAdi(b.kaynak), yerel) || dilAdi(a.hedef).localeCompare(dilAdi(b.hedef), yerel));
 }
 
 // İndirme: dosya dosya, her dosya 2 MB'lık dilimlerle kaydedilir; kesilirse kaldığı yerden sürer (Range).

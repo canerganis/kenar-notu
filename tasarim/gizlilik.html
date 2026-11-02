@@ -6,47 +6,65 @@
 <meta name="color-scheme" content="light dark">
 <title>Kenar Notu: Gizlilik</title>
 <meta name="description" content="Kenar Notu gizlilik politikası. Privacy policy.">
-<link rel="icon" href="ikon/ikon.svg" type="image/svg+xml">
+<link rel="icon" href="ikon/ikon-kucuk.svg" sizes="16x16 32x32" type="image/svg+xml">
+<link rel="icon" href="ikon/ikon.svg" sizes="any" type="image/svg+xml">
 <style>
+  /* 7.0 Işıklı Kenar (TASARIM-5 8.1 madde 8): Aurora gündüz ve gece tokenları sabit; atmosfer katmanı yerine body'de tek ışık lekesi.
+     Gövde Literata 17/28, başlıklar Inter. Uygulamadan bağımsız açılır (çevrimdışı önbellekte durur). */
   :root {
     color-scheme: light;
-    --bg: #F7F5F0; --surface: #FDFCF9; --ink: #1C1B19; --ink-2: #4D4842; --muted: #69625A;
-    --line: #1C1B1914; --accent: #2B4A7E; --mark: #8C2B38;
+    --bg: #F4F5F9; --surface: #FFFFFF; --ink: #0E1016; --ink-2: #3A3F4D; --muted: #5A6072;
+    --line: rgb(14 16 22 / .08); --accent: #4B45D1; --vurgu-1: #5B4CF0; --vurgu-2: #1376A6;
+    --golge: 0 0 0 .5px rgb(14 16 22 / .10), 0 2px 6px rgb(14 16 22 / .04), 0 24px 56px -20px rgb(27 31 58 / .28);
     --f-okuma: Literata, "Literata Yedek", Georgia, "Times New Roman", serif;
     --f-arayuz: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --f-olcu: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root { color-scheme: dark; --bg: #141413; --surface: #1F1E1C; --ink: #EEEAE2; --ink-2: #BDB7AC; --muted: #9A948B;
-      --line: #EEEAE214; --accent: #A3B8DE; --mark: #E08D97; }
+    :root { color-scheme: dark; --bg: #0B0C11; --surface: #15161D; --ink: #ECEDF3; --ink-2: #B7BACA; --muted: #8D91A3;
+      --line: rgb(236 237 243 / .08); --accent: #A9A6FF; --vurgu-1: #A69BFF; --vurgu-2: #5ED6F2;
+      --golge: 0 0 0 .5px rgb(255 255 255 / .08), inset 0 .5px 0 rgb(255 255 255 / .07), 0 28px 64px -16px rgb(0 0 0 / .7); }
   }
   * { box-sizing: border-box; }
   html { background: var(--bg); -webkit-text-size-adjust: 100%; }
-  body { margin: 0; padding: max(24px, env(safe-area-inset-top)) 16px 48px; color: var(--ink); font: 400 17px/1.62 var(--f-okuma); }
-  main { max-width: 640px; margin: 0 auto; padding: 32px clamp(16px, 5vw, 48px) 40px; background: var(--surface);
-    border-radius: 6px; box-shadow: 0 0 0 .5px var(--line), 0 12px 32px -16px #00000029; }
-  nav { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 8px; font: 500 13px/1 var(--f-arayuz); }
-  nav a { padding: 8px 10px; border-radius: 4px; color: var(--ink-2); text-decoration: none; }
-  nav a:hover { background: var(--line); color: var(--ink); }
-  .kurdele { width: 22px; height: 56px; margin: -32px 0 16px; background: var(--mark);
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%); }
-  h1 { margin: 0 0 4px; font: 500 30px/1.2 var(--f-okuma); letter-spacing: -.01em; }
-  h2 { margin: 32px 0 8px; font: 600 15px/1.4 var(--f-arayuz); }
-  .tarih { margin: 0 0 24px; color: var(--muted); font: 400 12px/1.4 var(--f-olcu); letter-spacing: .04em; text-transform: uppercase; }
-  .ozet { margin: 0 0 8px; padding-left: 16px; border-left: 2px solid var(--mark); font-size: 19px; }
+  body { min-height: 100vh; margin: 0; padding: max(32px, env(safe-area-inset-top)) 16px 56px; color: var(--ink); font: 400 17px/28px var(--f-okuma);
+    background: radial-gradient(60% 45% at 50% -8%, color-mix(in srgb, var(--vurgu-1) 16%, transparent), transparent 70%) no-repeat, var(--bg); }
+  main { position: relative; max-width: 680px; margin: 0 auto; padding: 36px clamp(20px, 5vw, 56px) 44px; background: var(--surface);
+    border-radius: 28px; box-shadow: var(--golge); }
+  /* Işık çizgisi: üst kenarda iris > lagün */
+  main::before { content: ""; position: absolute; inset: 0 32px auto; height: 1px; opacity: .55;
+    background: linear-gradient(90deg, transparent, var(--vurgu-1) 30%, var(--vurgu-2) 70%, transparent); }
+  .ust { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .ust img { width: 28px; height: 28px; border-radius: 7px; box-shadow: 0 1px 2px #0B0C1133; }
+  .ust .marka { font: 640 17px/1 var(--f-arayuz); letter-spacing: -.02em; color: var(--ink); }
+  .ust .marka i { font: italic 500 18px/1 var(--f-okuma); letter-spacing: 0; }
+  nav { display: flex; gap: 4px; margin-left: auto; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 5%, transparent);
+    font: 560 13px/1 var(--f-arayuz); }
+  nav a { display: grid; place-items: center; min-height: 38px; padding: 0 14px; border-radius: 999px; color: var(--ink-2); text-decoration: none; }
+  nav a:hover, nav a[aria-current] { background: var(--surface); color: var(--ink); }
+  a:focus-visible { outline: 2px solid var(--vurgu-1); outline-offset: 2px; }
+  .kurdele { display: none; }
+  h1 { margin: 0 0 6px; font: 640 34px/40px var(--f-arayuz); letter-spacing: -.028em; }
+  h2 { margin: 36px 0 8px; font: 600 15px/20px var(--f-arayuz); letter-spacing: -.01em; color: var(--ink); }
+  .tarih { margin: 0 0 24px; color: var(--muted); font: 500 12px/16px var(--f-olcu); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+  .ozet { margin: 0 0 8px; padding: 14px 18px; border-radius: 16px; font-size: 18px; line-height: 29px; color: var(--ink);
+    background: color-mix(in srgb, var(--vurgu-1) 8%, var(--surface)); box-shadow: inset 2px 0 0 var(--vurgu-1); }
   p, li { color: var(--ink-2); }
   ul { padding-left: 1.2em; }
   li { margin: 6px 0; }
+  li::marker { color: var(--vurgu-1); }
   b { color: var(--ink); font-weight: 600; }
-  a { color: var(--accent); }
+  a { color: var(--accent); text-underline-offset: 3px; }
   code { font: 400 .85em var(--f-olcu); overflow-wrap: anywhere; }
   hr { margin: 48px 0 32px; border: 0; border-top: .5px solid var(--line); }
-  footer { margin-top: 32px; color: var(--muted); font: 400 13px/1.5 var(--f-arayuz); }
+  footer { margin-top: 32px; color: var(--muted); font: 450 13px/1.5 var(--f-arayuz); }
+  @media (max-width: 599px) { main { border-radius: 24px; padding-top: 28px; } h1 { font-size: 28px; line-height: 34px; } }
 </style>
 </head>
 <body>
 <main>
-  <nav aria-label="Dil / Language"><a href="#tr" lang="tr">Türkçe</a><a href="#en" lang="en">English</a></nav>
+  <div class="ust"><img src="ikon/ikon-kucuk.svg" alt="" width="28" height="28"><span class="marka">Kenar <i>Notu</i></span>
+  <nav aria-label="Dil / Language"><a href="#tr" lang="tr">Türkçe</a><a href="#en" lang="en">English</a></nav></div>
   <div class="kurdele" aria-hidden="true"></div>
 
   <article id="tr" lang="tr">
@@ -82,7 +100,7 @@
 
   <article id="en" lang="en">
     <h1>Privacy</h1>
-    <p class="tarih">Kenar Notu · Last updated 31 October 2026</p>
+    <p class="tarih">Kenar Notu · Last updated October 31, 2026</p>
     <p class="ozet">Kenar Notu needs no account and collects no personal data. No ads, no analytics, no telemetry. Your notes stay on your device.</p>
 
     <h2>Where your data lives</h2>
@@ -109,7 +127,49 @@
     <p>If this policy changes, the date above changes. For questions, use the issues page on GitHub: <a href="https://github.com/canerganis/kenar-notu/issues" rel="noopener">github.com/canerganis/kenar-notu/issues</a>.</p>
   </article>
 
-  <footer>Kenar Notu · <a href="./">Uygulamaya dön / Back to the app</a></footer>
+  <footer>Kenar Notu · <a href="./" id="don">Uygulamaya dön / Back to the app</a></footer>
 </main>
+<script>
+  // Tek dil göster: adres #tr ya da #en ise o; yoksa uygulamadaki seçim (localStorage "kn-dil", aynı köken),
+  // o da yoksa cihaz dili (dil.js ile aynı kural). Betik çalışmazsa iki bölüm alt alta kalır.
+  (function () {
+    var METIN = {
+      tr: { baslik: "Kenar Notu: Gizlilik", don: "Uygulamaya dön", dil: "Dil" },
+      en: { baslik: "Kenar Notu: Privacy", don: "Back to the app", dil: "Language" }
+    };
+    function secilen() {
+      var h = location.hash.slice(1);
+      if (h === "tr" || h === "en") return h;
+      try { var d = localStorage.getItem("kn-dil"); if (d === "tr" || d === "en") return d; } catch (e) { /* gizli pencere */ }
+      var l = String((navigator.languages && navigator.languages[0]) || navigator.language || "tr").toLowerCase();
+      return l.indexOf("tr") === 0 ? "tr" : "en";
+    }
+    function goster(d) {
+      var m = METIN[d];
+      document.documentElement.lang = d;
+      document.title = m.baslik;
+      document.getElementById("tr").hidden = d !== "tr";
+      document.getElementById("en").hidden = d !== "en";
+      document.querySelector("hr").hidden = true;
+      document.getElementById("don").textContent = m.don;
+      var nav = document.querySelector("nav");
+      nav.setAttribute("aria-label", m.dil);
+      nav.querySelectorAll("a").forEach(function (a) {
+        if (a.getAttribute("href") === "#" + d) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+      });
+    }
+    // Dil düğmesi sayfayı bölüme kaydırmasın; adresi değiştir, en üstte kal
+    document.querySelector("nav").addEventListener("click", function (e) {
+      var a = e.target.closest("a"); if (!a) return;
+      e.preventDefault();
+      var d = a.getAttribute("href").slice(1);
+      try { history.replaceState(null, "", "#" + d); } catch (x) { /* dosyadan açılınca */ }
+      goster(d);
+      window.scrollTo(0, 0);
+    });
+    window.addEventListener("hashchange", function () { goster(secilen()); });
+    goster(secilen());
+  })();
+</script>
 </body>
 </html>

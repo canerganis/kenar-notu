@@ -107,7 +107,7 @@
 .as-tur-alt { display: contents; }
 .as-eylem { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 48px; margin: 8px 0 0; padding: 0 6px;
   background: var(--surface); box-shadow: 0 -.5px 0 var(--line-strong); }
-.as-eylem .metin-dugme { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 0 10px; }
+.as-eylem .metin-dugme { display: inline-flex; align-items: center; gap: 8px; flex: none; min-height: 44px; padding: 0 10px; }
 .as-eylem .metin-dugme:disabled { opacity: .45; }
 .as-eylem .damga { align-self: center; margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
@@ -151,6 +151,9 @@
 .as-akis:empty::before { display: block; max-width: 34ch; font: italic 400 var(--fs-14)/32px var(--f-baslik);
   color: var(--muted); white-space: pre-line; content: "Yukarıdan bir tuş seç ya da aşağıya yaz.\A Cevap bu sayfaya yazılır."; }
 .asistan[data-yol="hesap"] .as-akis:empty::before { content: "Yukarıdan bir tuş seç ya da aşağıya yaz.\A Soru uygulamada açılır, cevabı buraya getirirsin."; }
+/* İngilizce arayüz (dil.js html lang="en" koyar) */
+html[lang="en"] .as-akis:empty::before { content: "Pick a button above or type below.\A The answer is written on this page."; }
+html[lang="en"] .asistan[data-yol="hesap"] .as-akis:empty::before { content: "Pick a button above or type below.\A The question opens in the app, and you bring the answer back here."; }
 
 /* ---------- 7.6 Boş durum ve hata fişi ---------- */
 .as-bos { display: grid; justify-items: center; gap: 10px; margin: 20px; text-align: center; }
@@ -187,3 +190,66 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .as-cevap { font-weight: 370; } }
 /* Ölçüm pulu cevap bitince durağan: fosfor cam değil, kıl çerçeveli ölçü yazısı */
 .as-olcu.cam { height: 24px; background: none; color: var(--muted); text-shadow: none; box-shadow: inset 0 0 0 .5px var(--line-strong); font: 400 var(--fs-11)/1 var(--f-olcu); }
+
+/* ================= 7.0 Işıklı Kenar (TASARIM-5 8.5.3, 3.4) ================= */
+/* Panel: kalem ve PDF tuvalinin üstünde durduğu için bulanıklık yok (sert kural 2). Saydam yüzeyde alttaki sayfanın
+   yazısı sezildiğinden zemin opak --surface, camı üst yansıma ve kıl ışık verir; içindeki kartlar ve çipler cam dilinde.
+   Cevap gövdesi opak --surface kartta (uzun metin kuralı). */
+.asistan { background: var(--cam-parilti, none), linear-gradient(180deg, color-mix(in srgb, var(--vurgu-1) 4%, var(--surface)), var(--surface) 40%);
+  box-shadow: -.5px 0 0 var(--line), var(--golge-4); }
+.asistan-ust { height: 60px; padding: 0 8px 0 20px; }
+.asistan-ust h2, .asistan-ust h2.t-b2 { font: 620 17px/1 var(--f-arayuz); letter-spacing: -.015em; }
+.as-pul, .as-pul.cam { height: 26px; background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: var(--cam-cizgi); color: var(--ink-2); }
+/* Osiloskop: ışıklı iz (#vurgu-iz gradyanı; renkleri kökün vurgusundan gelir, atmosfer değişince kendiliğinden yeniden boyanır) */
+.asistan > .iz { height: 18px; margin: 0 20px 4px; color: var(--accent); }
+.asistan > .iz path { stroke: url(#vurgu-iz); }
+.asistan > .iz .iz-golge { opacity: .22; }
+html[data-kip="gece"] .asistan > .iz .iz-golge { opacity: .4; }
+.asistan > .iz::before { background: var(--line-strong); }
+.asistan > .iz .iz-not { background: transparent; color: var(--ink-2); }
+/* Kaynak alıntısı ve hazır sorular */
+.as-kaynak { margin: 14px 16px 0; padding: 12px 14px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 60%, transparent); box-shadow: var(--cam-cizgi); }
+.as-etiket .etiket-sayfa { font: 600 11px/14px var(--f-arayuz); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.as-alinti { border-left-width: 2px; color: var(--ink-2); }
+.as-hazir { padding: 8px 16px; gap: 8px; }
+.as-hazir .cip { height: 34px; border-radius: var(--r-tam); background: color-mix(in srgb, var(--surface) 72%, transparent); box-shadow: var(--cam-cizgi); color: var(--ink-2); font: 560 13px/1 var(--f-arayuz); }
+.as-hazir .cip:is([aria-pressed="true"], .secili) { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--vurgu-1) 40%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--vurgu-1) 30%, transparent); }
+/* Tur = opak kart: soru ve cevap aynı kartta, eylem satırı kartın dibinde yapışık */
+.as-tur, .as-tur + .as-tur, .as-tur:first-child { margin: 12px 16px 0; padding: 4px 0 0; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--cam-cizgi), var(--golge-2); overflow: clip; }
+.as-soru { margin: 16px 18px 0; }
+.as-soru .t-daktilo { font: 600 11px/14px var(--f-arayuz); letter-spacing: .08em; text-transform: uppercase; }
+.as-cevap { margin: 16px 18px 0; }
+.as-soru + .as-cevap { margin-top: 8px; }
+.as-kayit { margin: 12px 18px 0; }
+.as-not { margin: 6px 18px 0; }
+.as-eylem { margin: 12px 0 0; height: 52px; padding: 0 8px; background: var(--surface); box-shadow: 0 -.5px 0 var(--line); }
+.as-eylem .metin-dugme { height: 44px; border-radius: var(--r-md); color: var(--accent); font: 560 14px/1 var(--f-arayuz); }
+@media (hover: hover) and (pointer: fine) { .as-eylem .metin-dugme:not(:disabled):hover { background: var(--accent-soft); } }
+.as-disari { margin: 12px 18px 0; }
+.as-akis > .as-disari { margin: 16px 16px 0; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--cam-cizgi), var(--golge-1); }
+.as-bekleme, .as-bekleme.kareli { margin: 16px 16px 0; background: var(--surface); box-shadow: var(--cam-cizgi), var(--golge-2); }
+.as-hata { margin: 16px 16px 0; border-radius: var(--r-md); background: var(--surface); box-shadow: inset 3px 0 0 var(--hata-cizgi, var(--danger)), var(--cam-cizgi); }
+/* Boş defter sayfası: çizgiler vurgu tonunda, kartın içinde */
+.as-akis:empty { margin: 20px 16px 0; padding: 0 16px; border-radius: var(--r-lg); box-shadow: var(--cam-cizgi);
+  background: repeating-linear-gradient(transparent 0 31px, color-mix(in srgb, var(--vurgu-1) 16%, transparent) 31px 32px) 0 0 / 100% 100%, color-mix(in srgb, var(--surface) 70%, transparent); }
+/* Alt alan: cam şerit, girdi 6.7 dili, gönder birincil gradyan disk */
+.as-alt { background: transparent; box-shadow: 0 -.5px 0 var(--line); padding: 12px 12px 12px 16px; }
+.as-alt textarea { border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 80%, transparent); box-shadow: var(--cam-cizgi); }
+.as-alt textarea:focus-visible { background: var(--surface); box-shadow: 0 0 0 2px var(--focus), 0 0 0 6px color-mix(in srgb, var(--focus) 18%, transparent); }
+.as-alt .gonder { color: var(--birincil-yazi); background: none; position: relative; isolation: isolate; }
+.as-alt .gonder::before { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; translate: -50% -50%; border-radius: 50%; z-index: -1;
+  background: var(--birincil-zemin); box-shadow: var(--birincil-isilti, none); }
+.as-alt .gonder:disabled { color: var(--muted); background: none; }
+.as-alt .gonder:disabled::before { background: var(--surface-3, var(--surface-2)); box-shadow: inset 0 0 0 .5px var(--line-strong); }
+.as-alt .gonder.durdur { color: var(--birincil-yazi); }
+/* Sağlayıcı düğmeleri ikincil (6.2): cam yüzey, kıl kenar, seçilide vurgu halkası */
+.as-uygulamalar .element { border-radius: var(--r-md); background: var(--cam-parilti, none), color-mix(in srgb, var(--surface) 80%, transparent); box-shadow: var(--cam-cizgi), var(--golge-1); color: var(--ink); }
+.as-uygulamalar .element[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--vurgu-1) 60%, transparent), var(--golge-1); }
+/* Alt çekmece kipinde (telefon, dikey tablet) sheet: üst kenarda ışık çizgisi */
+@media (max-width: 699px), (max-width: 999px) and (orientation: portrait) {
+  .asistan { border-radius: var(--r-2xl) var(--r-2xl) 0 0; }
+  .asistan::before { content: ""; position: absolute; inset: 0 24px auto; height: 1px; background: var(--vurgu-cizgi); opacity: .5; pointer-events: none; }
+}
+:root[data-kip="gece"] .as-cevap { font-weight: 370; }
+@media (prefers-contrast: more) { .asistan, .as-kaynak, .as-hazir .cip { background: var(--surface); } }
+@media (forced-colors: active) { .asistan::before { display: none; } .asistan > .iz path { stroke: CanvasText; } }

@@ -9,6 +9,7 @@
 
 import { h, icon, toast, bus, hareketAz } from "./ortak.js";
 import * as kayit from "./kayit.js";
+import { t, yerel } from "./dil.js";
 
 const KITAP_ADI = /\.(pdf|epub|cbz)$/i;
 // Gizli ve sistem klasörleri taranmaz; çok derin ya da çok kalabalık klasörde tarama sınırda durur
@@ -98,7 +99,7 @@ async function siniflandir(liste) {
   }
   return liste;
 }
-const sirala = (liste) => liste.sort((a, b) => a.yol.localeCompare(b.yol, "tr") || a.ad.localeCompare(b.ad, "tr", { numeric: true }));
+const sirala = (liste) => liste.sort((a, b) => a.yol.localeCompare(b.yol, yerel) || a.ad.localeCompare(b.ad, yerel, { numeric: true }));
 
 /* ---------- kayıt ve izin ---------- */
 async function izinDurumu(t) {
@@ -127,7 +128,7 @@ export async function sec() {
   try {
     tutamac = await globalThis.showDirectoryPicker({ id: "kenar-notu-kitaplar", mode: "read", startIn: eski?.tutamac || "documents" });
   } catch (hata) {
-    if (hata?.name !== "AbortError") { console.warn("[kenar-notu] Kitap klasörü seçilemedi:", hata); toast("Klasör açılamadı."); }
+    if (hata?.name !== "AbortError") { console.warn("[kenar-notu] Kitap klasörü seçilemedi:", hata); toast(t("Klasör açılamadı.")); }
     return;
   }
   // Aynı klasör yeniden seçildiyse daha önce gösterilenler bilinir kalır
@@ -142,7 +143,7 @@ export async function sec() {
 export async function ac() {
   const k = await kayit.kitapKlasoruOku();
   if (!k?.tutamac) return sec();
-  if (!(await izinIste(k.tutamac))) { toast(`“${k.tutamac.name}” klasörüne izin verilmedi.`); return; }
+  if (!(await izinIste(k.tutamac))) { toast(t("“{ad}” klasörüne izin verilmedi.", { ad: k.tutamac.name })); return; }
   fisKapat();
   if (k.izinFisiKapali) await kayit.kitapKlasoruYaz({ ...k, izinFisiKapali: false }).catch(() => {});
   return goster({ tutamac: k.tutamac, bilinen: new Set(k.bilinen || []) });
@@ -173,7 +174,7 @@ export async function acilisTaramasi() {
     const yeni = liste.filter((o) => o.durum === "yeni" && !bilinen.has(o.anahtar));
     const sure = Math.round(performance.now() - t0);
     if (yeni.length) {
-      fisGoster(`${ad} klasöründe ${yeni.length} yeni kitap var.`, "Göster",
+      fisGoster(t("{ad} klasöründe {n} yeni kitap var.", { ad, n: yeni.length }), t("Göster"),
         () => goster({ tutamac: k.tutamac, liste, bilinen, sinir: durum.sinir }),
         () => bilinenEkle(yeni));
     }
@@ -181,7 +182,7 @@ export async function acilisTaramasi() {
   }
   if (izin !== "prompt" || k.izinFisiKapali) return { durum: "izin-yok" };
   try { if (sessionStorage.getItem(IZIN_FISI)) return { durum: "izin-yok" }; sessionStorage.setItem(IZIN_FISI, "1"); } catch { /* gizli pencere */ }
-  fisGoster(`${ad} klasöründe yeni kitap var mı, bakalım mı?`, "Bak", () => ac(),
+  fisGoster(t("{ad} klasöründe yeni kitap var mı, bakalım mı?", { ad }), t("Bak"), () => ac(),
     () => kayit.kitapKlasoruOku().then((x) => x?.tutamac && kayit.kitapKlasoruYaz({ ...x, izinFisiKapali: true })).catch(() => {}));
   return { durum: "izin-fisi" };
 }
@@ -194,7 +195,7 @@ function fisGoster(metin, etiket, calistir, kapaninca) {
     icon("klasor", "i-20"),
     h("span", {}, metin),
     h("button", { class: "metin-dugme vurgulu", type: "button", onclick: () => { fisKapat(); calistir(); } }, etiket),
-    h("button", { class: "ikon-dugme", type: "button", "aria-label": "Kapat", onclick: () => { fisKapat(); kapaninca?.(); } }, icon("kapat", "i-20")));
+    h("button", { class: "ikon-dugme", type: "button", "aria-label": t("Kapat"), onclick: () => { fisKapat(); kapaninca?.(); } }, icon("kapat", "i-20")));
   kab.replaceChildren(el);
   kab.hidden = false;
 }
@@ -208,16 +209,16 @@ function fisKapat() {
 /* ---------- bırakılan klasör ---------- */
 // app.js drop olayında her öğe için webkitGetAsEntry() ve getAsFileSystemHandle() sözünü alır (olaydan sonra geçersizleşir)
 export async function birakilanlar({ girdiler = [], tutamaclar = [] } = {}) {
-  const t = await Promise.all(tutamaclar.map((p) => Promise.resolve(p).catch(() => null)));
-  const tutamacla = t.length && t.every(Boolean);
-  const klasorler = tutamacla ? t.filter((x) => x.kind === "directory") : girdiler.filter((g) => g?.isDirectory);
-  const tekKlasor = klasorler.length === 1 && (tutamacla ? t : girdiler.filter(Boolean)).length === 1;
-  const baslik = tekKlasor ? klasorler[0].name : "Bırakılan klasörler";
+  const tt = await Promise.all(tutamaclar.map((p) => Promise.resolve(p).catch(() => null)));
+  const tutamacla = tt.length && tt.every(Boolean);
+  const klasorler = tutamacla ? tt.filter((x) => x.kind === "directory") : girdiler.filter((g) => g?.isDirectory);
+  const tekKlasor = klasorler.length === 1 && (tutamacla ? tt : girdiler.filter(Boolean)).length === 1;
+  const baslik = tekKlasor ? klasorler[0].name : t("Bırakılan klasörler");
   return goster({
     baslik,
     tara: async (durum, liste) => {
       if (tutamacla) {
-        for (const x of t) {
+        for (const x of tt) {
           if (x.kind === "directory") await tutamacTara(x, tekKlasor ? "" : x.name, 0, liste, durum);
           else if (kitapMi(x.name)) { try { liste.push(oge(await x.getFile(), "")); } catch { /* okunamadı */ } }
         }
@@ -231,7 +232,7 @@ export async function birakilanlar({ girdiler = [], tutamaclar = [] } = {}) {
 /* ---------- liste penceresi ---------- */
 // tutamac: kayıtlı ya da yeni seçilen kitap klasörü (bilinen kümesi oradan); liste verilirse yeniden taranmaz.
 // Seçili gelenler: kitaplıkta olmayan ve daha önce gösterilmemiş dosyalar (ilk seçimde hepsi).
-async function goster({ tutamac = null, baslik = tutamac?.name || "Klasör", liste = null, bilinen = null, tara = null, sinir = false, ilk = false }) {
+async function goster({ tutamac = null, baslik = tutamac?.name || t("Klasör"), liste = null, bilinen = null, tara = null, sinir = false, ilk = false }) {
   const durum = { sayi: 0, iptal: false, sinir };
   const p = pencere(baslik, { klasor: !!tutamac, durum });
   if (!liste) {
@@ -250,19 +251,19 @@ async function goster({ tutamac = null, baslik = tutamac?.name || "Klasör", lis
 
 function pencere(baslik, { klasor, durum }) {
   const dlg = h("dialog", { class: "pencere kitap-klasoru", "aria-labelledby": "kkBaslik" });
-  const alt = h("p", { class: "kk-ozet", role: "status" }, "Klasör taranıyor…");
+  const alt = h("p", { class: "kk-ozet", role: "status" }, t("Klasör taranıyor…"));
   const govde = h("div", { class: "kk-govde" }, h("div", { class: "kk-bekle" }, h("span", { class: "cv-ilerleme kk-cizgi", "aria-hidden": "true" }, h("b"))));
-  const kapat = h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, "Kapat");
+  const kapat = h("button", { class: "metin-dugme", type: "button", onclick: () => dlg.close() }, t("Kapat"));
   const altSatir = h("div", { class: "pencere-alt" }, kapat);
   dlg.append(
     h("h2", { class: "t-b2", id: "kkBaslik" }, icon("klasor", "i-22"), h("span", {}, baslik)),
-    h("p", { class: "kk-aciklama" }, "Alt klasörlerle birlikte PDF, EPUB ve CBZ. Seçtiklerin kitaplığa kopyalanır; klasördeki dosyalara dokunulmaz."),
+    h("p", { class: "kk-aciklama" }, t("Alt klasörlerle birlikte PDF, EPUB ve CBZ. Seçtiklerin kitaplığa kopyalanır; klasördeki dosyalara dokunulmaz.")),
     alt, govde, altSatir);
   let aktariliyor = null;
   dlg.addEventListener("close", () => { durum.iptal = true; });
   B.pencereKur(dlg);
 
-  const tarama = (n, k) => { alt.textContent = `Klasör taranıyor… ${n} dosyaya bakıldı, ${k} kitap.`; };
+  const tarama = (n, k) => { alt.textContent = t("Klasör taranıyor… {n} dosyaya bakıldı, {k} kitap.", { n, k }); };
 
   function doldur(liste, { bilinen, sinir }) {
     const sayac = { var: 0, kopya: 0, yeni: 0 };
@@ -273,26 +274,26 @@ function pencere(baslik, { klasor, durum }) {
     const secilebilir = liste.filter((o) => o.durum === "yeni");
     // Yeniden bakışta yalnız yeniler seçili gelir; ilk bakışta kitaplıkta olmayan hepsi
     const secili = new Set(secilebilir.filter((o) => !bilinen || !bilinen.has(o.anahtar)));
-    alt.textContent = !liste.length ? "Bu klasörde PDF, EPUB ya da CBZ bulunamadı."
-      : [`${liste.length} kitap`, sayac.var ? `${sayac.var} tanesi kitaplıkta` : "", sayac.kopya ? `${sayac.kopya} kopya` : "",
-        bilinen && sayac.yeni ? `${sayac.yeni} yeni` : ""].filter(Boolean).join(" · ") + (sinir ? `. İlk ${EN_COK} dosya listelendi.` : ".");
+    alt.textContent = !liste.length ? t("Bu klasörde PDF, EPUB ya da CBZ bulunamadı.")
+      : [t("{n} kitap", { n: liste.length }), sayac.var ? t("{n} tanesi kitaplıkta", { n: sayac.var }) : "", sayac.kopya ? t("{n} kopya", { n: sayac.kopya }) : "",
+        bilinen && sayac.yeni ? t("{n} yeni", { n: sayac.yeni }) : ""].filter(Boolean).join(" · ") + (sinir ? ". " + t("İlk {n} dosya listelendi.", { n: EN_COK }) : ".");
     if (!liste.length) {
       govde.replaceChildren();
-      if (klasor) altSatir.prepend(h("button", { class: "ikincil", type: "button", onclick: () => { dlg.close(); sec(); } }, "Başka klasör seç"));
+      if (klasor) altSatir.prepend(h("button", { class: "ikincil", type: "button", onclick: () => { dlg.close(); sec(); } }, t("Başka klasör seç")));
       return;
     }
     const listeEl = h("div", { class: "kk-liste", role: "list" });
     const satirlar = new Map();
     const aktar = h("button", { class: "birincil", type: "button" });
-    const hepsi = h("button", { class: "metin-dugme", type: "button" }, "Hepsini seç");
-    const hicbiri = h("button", { class: "metin-dugme", type: "button" }, "Hiçbiri");
-    const ara = liste.length > 12 ? h("input", { class: "kk-ara", type: "search", placeholder: "Listede ara", "aria-label": "Listede ara", autocomplete: "off", spellcheck: "false" }) : null;
+    const hepsi = h("button", { class: "metin-dugme", type: "button" }, t("Hepsini seç"));
+    const hicbiri = h("button", { class: "metin-dugme", type: "button" }, t("Hiçbiri"));
+    const ara = liste.length > 12 ? h("input", { class: "kk-ara", type: "search", placeholder: t("Listede ara"), "aria-label": t("Listede ara"), autocomplete: "off", spellcheck: "false" }) : null;
     const katla = (s) => s.toLocaleLowerCase("tr");
     let q = "";
     const gorunur = (o) => !q || katla(`${o.yol}/${o.ad}`).includes(q);
     const guncelle = () => {
       const toplam = [...secili].reduce((t, o) => t + o.boyut, 0);
-      aktar.textContent = secili.size ? `${secili.size} kitabı içe aktar · ${B.boyutMetni(toplam)}` : "İçe aktar";
+      aktar.textContent = secili.size ? t("{n} kitabı içe aktar · {boyut}", { n: secili.size, boyut: B.boyutMetni(toplam) }) : t("İçe aktar");
       aktar.disabled = !secili.size || !!aktariliyor;
     };
     const kutuYaz = (o) => { const s = satirlar.get(o); if (s) s.kutu.checked = secili.has(o); };
@@ -301,9 +302,9 @@ function pencere(baslik, { klasor, durum }) {
       const secilemez = o.durum !== "yeni";
       const kutu = h("input", { type: "checkbox", class: "kk-kutu", disabled: secilemez });
       kutu.checked = secili.has(o);
-      const etiket = o.durum === "var" ? "Kitaplıkta" : o.durum === "kopya" ? "Kopya" : bilinen && !bilinen.has(o.anahtar) ? "Yeni" : "";
+      const etiket = o.durum === "var" ? t("Kitaplıkta") : o.durum === "kopya" ? t("Kopya") : bilinen && !bilinen.has(o.anahtar) ? t("Yeni") : "";
       const durumEl = h("span", { class: "kk-durum" + (o.durum === "yeni" && etiket ? " yeni" : "") }, etiket);
-      const meta = [B.boyutMetni(o.boyut), o.yol || null, o.durum === "kopya" ? `aynısı: ${altYol(o.kopyasi.yol, o.kopyasi.ad)}` : null].filter(Boolean).join(" · ");
+      const meta = [B.boyutMetni(o.boyut), o.yol || null, o.durum === "kopya" ? t("aynısı: {yol}", { yol: altYol(o.kopyasi.yol, o.kopyasi.ad) }) : null].filter(Boolean).join(" · ");
       const el = h("label", { class: "kk-satir" + (secilemez ? " kk-pasif" : ""), role: "listitem", hidden: !gorunur(o) },
         kutu, h("span", { class: `kk-tur kk-${o.tur}` }, TUR_ADI[o.tur]),
         h("span", { class: "kk-ad" }, h("b", {}, o.ad), h("small", {}, meta)), durumEl);
@@ -339,9 +340,9 @@ function pencere(baslik, { klasor, durum }) {
       if (aktariliyor || !secilenler.length) return;
       const cizgi = h("span", { class: "cv-ilerleme kk-cizgi", "aria-hidden": "true" }, h("b"));
       const yazi = h("span", { class: "kk-ilerleme__yazi" });
-      const durdur = h("button", { class: "metin-dugme", type: "button" }, "Durdur");
+      const durdur = h("button", { class: "metin-dugme", type: "button" }, t("Durdur"));
       aktariliyor = { durdu: false };
-      durdur.addEventListener("click", () => { aktariliyor.durdu = true; durdur.disabled = true; durdur.textContent = "Duruyor…"; });
+      durdur.addEventListener("click", () => { aktariliyor.durdu = true; durdur.disabled = true; durdur.textContent = t("Duruyor…"); });
       altSatir.replaceChildren(h("div", { class: "kk-ilerleme", role: "status" }, yazi, cizgi), durdur);
       for (const s of satirlar.values()) s.kutu.disabled = true;
       hepsi.disabled = hicbiri.disabled = true;
@@ -351,37 +352,37 @@ function pencere(baslik, { klasor, durum }) {
         yazi.textContent = `${n + 1} / ${secilenler.length} · ${o.ad}`;
         cizgi.firstChild.style.transform = `scaleX(${n / secilenler.length})`;
         const s = satirlar.get(o);
-        if (s) { s.durumEl.className = "kk-durum suruyor"; s.durumEl.textContent = "Aktarılıyor"; if (dlg.open) s.el.scrollIntoView({ block: "nearest", behavior: hareketAz() ? "auto" : "smooth" }); }
+        if (s) { s.durumEl.className = "kk-durum suruyor"; s.durumEl.textContent = t("Aktarılıyor"); if (dlg.open) s.el.scrollIntoView({ block: "nearest", behavior: hareketAz() ? "auto" : "smooth" }); }
         try {
           const { b, vardi } = await B.iceAktar(o.file);
           o.sonuc = vardi ? "vardi" : "eklendi";
           if (vardi) sonuc.vardi++; else sonuc.eklendi.push(b);
-          if (s) { s.durumEl.className = "kk-durum tamam"; s.durumEl.textContent = vardi ? "Kitaplıkta" : "Eklendi"; s.el.classList.add("kk-pasif"); }
+          if (s) { s.durumEl.className = "kk-durum tamam"; s.durumEl.textContent = vardi ? t("Kitaplıkta") : t("Eklendi"); s.el.classList.add("kk-pasif"); }
         } catch (hata) {
           o.sonuc = "hata";
           sonuc.hata++;
           console.warn("[kenar-notu] Klasörden içe aktarılamadı:", o.ad, hata);
           const m = hataMetni(hata);
-          if (s) { s.durumEl.className = "kk-durum hata"; s.durumEl.textContent = "Açılamadı"; s.durumEl.title = m; s.el.querySelector(".kk-ad small").textContent = m; }
+          if (s) { s.durumEl.className = "kk-durum hata"; s.durumEl.textContent = t("Açılamadı"); s.durumEl.title = m; s.el.querySelector(".kk-ad small").textContent = m; }
         }
         secili.delete(o);
       }
       cizgi.firstChild.style.transform = "scaleX(1)";
       const n = sonuc.eklendi.length;
-      const ozet = [n ? `${n} kitap eklendi` : "Yeni kitap eklenmedi", sonuc.vardi ? `${sonuc.vardi} zaten vardı` : "", sonuc.hata ? `${sonuc.hata} açılamadı` : "",
-        aktariliyor.durdu ? "durduruldu" : ""].filter(Boolean).join(", ") + ".";
+      const ozet = [n ? t("{n} kitap eklendi", { n }) : t("Yeni kitap eklenmedi"), sonuc.vardi ? t("{n} zaten vardı", { n: sonuc.vardi }) : "", sonuc.hata ? t("{n} açılamadı", { n: sonuc.hata }) : "",
+        aktariliyor.durdu ? t("durduruldu") : ""].filter(Boolean).join(", ") + ".";
       aktariliyor = null;
       B.bitince?.(n);
       for (const [o, s] of satirlar) s.kutu.disabled = o.durum !== "yeni" || !!o.sonuc;
       hepsi.disabled = hicbiri.disabled = false;
       if (dlg.open) {
         alt.textContent = ozet;
-        const ac = n === 1 ? h("button", { class: "ikincil", type: "button", onclick: () => { dlg.close(); B.belgeAc(sonuc.eklendi[0]); } }, "Aç") : null;
+        const ac = n === 1 ? h("button", { class: "ikincil", type: "button", onclick: () => { dlg.close(); B.belgeAc(sonuc.eklendi[0]); } }, t("Aç")) : null;
         // replaceChildren null'u "null" yazısına çevirir: olmayan düğme eklenmez
         altSatir.replaceChildren(...[kapat, ac, aktar].filter(Boolean));
         guncelle();
         (ac || kapat).focus({ preventScroll: true });
-      } else if (n === 1) toast(`“${sonuc.eklendi[0].ad}” kitaplığa eklendi`, { etiket: "Aç", calistir: () => B.belgeAc(sonuc.eklendi[0]) });
+      } else if (n === 1) toast(t("“{ad}” kitaplığa eklendi", { ad: sonuc.eklendi[0].ad }), { etiket: t("Aç"), calistir: () => B.belgeAc(sonuc.eklendi[0]) });
       else toast(ozet);
     }
   }
@@ -389,10 +390,10 @@ function pencere(baslik, { klasor, durum }) {
 }
 
 const hataMetni = (hata) => (hata?.kod === "bozuk" || hata?.kod === "cbr" ? hata.message
-  : hata?.kod === "yedek" ? "Bu bir Kenar Notu yedeği; Yedekten yükle ile aç."
-    : hata?.kod === "tur" ? "Yalnız PDF, EPUB ve CBZ açılır."
-      : hata?.name === "NotReadableError" || hata?.name === "NotFoundError" ? "Dosya değişmiş ya da taşınmış; klasöre yeniden bak."
-        : "İçe aktarılamadı.");
+  : hata?.kod === "yedek" ? t("Bu bir Kenar Notu yedeği; Yedekten yükle ile aç.")
+    : hata?.kod === "tur" ? t("Yalnız PDF, EPUB ve CBZ açılır.")
+      : hata?.name === "NotReadableError" || hata?.name === "NotFoundError" ? t("Dosya değişmiş ya da taşınmış; klasöre yeniden bak.")
+        : t("İçe aktarılamadı."));
 
 /* ---------- Ayarlar ---------- */
 // Ayarlar'da klasörün durumu: seçili klasör adı, son bakış, Şimdi bak, Değiştir, Unut
@@ -401,19 +402,19 @@ export function ayarDenetimi(el) {
     const k = await kayit.kitapKlasoruOku();
     if (!el.isConnected && el.dataset.cizildi) { coz(); return; }
     el.dataset.cizildi = "1";
-    const secD = h("button", { class: "ikincil", type: "button", onclick: () => sec() }, icon("klasor", "i-20"), k?.tutamac ? "Değiştir" : "Kitap klasörü seç");
+    const secD = h("button", { class: "ikincil", type: "button", onclick: () => sec() }, icon("klasor", "i-20"), k?.tutamac ? t("Değiştir") : t("Kitap klasörü seç"));
     if (!k?.tutamac) {
-      el.replaceChildren(h("p", { class: "ayar-not" }, "Bir klasör seç: içindeki PDF, EPUB ve CBZ dosyaları alt klasörlerle birlikte listelenir, seçtiklerin kitaplığa kopyalanır. Klasöre hiç yazılmaz."),
+      el.replaceChildren(h("p", { class: "ayar-not" }, t("Bir klasör seç: içindeki PDF, EPUB ve CBZ dosyaları alt klasörlerle birlikte listelenir, seçtiklerin kitaplığa kopyalanır. Klasöre hiç yazılmaz.")),
         h("div", { class: "ayar-yedek__dugmeler" }, secD));
       return;
     }
     const izin = await izinDurumu(k.tutamac);
-    const alt = izin !== "granted" ? "Bakmak için izin gerekir" : k.son ? `Son bakış: ${B.neZaman(k.son)}` : "Henüz bakılmadı";
+    const alt = izin !== "granted" ? t("Bakmak için izin gerekir") : k.son ? t("Son bakış: {zaman}", { zaman: B.neZaman(k.son) }) : t("Henüz bakılmadı");
     el.replaceChildren(
       h("p", { class: "oto-yedek__klasor" }, icon("klasor", "i-20"), h("span", {}, k.tutamac.name, h("small", {}, alt))),
       h("div", { class: "ayar-yedek__dugmeler" },
-        h("button", { class: "ikincil", type: "button", onclick: () => ac() }, icon("yeniden", "i-20"), "Şimdi bak"), secD,
-        h("button", { class: "metin-dugme", type: "button", onclick: () => unut().then(() => toast("Kitap klasörü unutuldu; klasördeki dosyalar ve kitaplık yerinde.")) }, "Unut")));
+        h("button", { class: "ikincil", type: "button", onclick: () => ac() }, icon("yeniden", "i-20"), t("Şimdi bak")), secD,
+        h("button", { class: "metin-dugme", type: "button", onclick: () => unut().then(() => toast(t("Kitap klasörü unutuldu; klasördeki dosyalar ve kitaplık yerinde."))) }, t("Unut"))));
   };
   const coz = bus.on("kitap-klasoru", () => ciz());
   ciz();
