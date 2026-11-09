@@ -5,6 +5,8 @@
    Caveat (wght 400..700), Newsreader (opsz 6..72, wght 300..600, italik dahil; Lapis atmosferinin başlık yüzü).
    IBM Plex Mono 400, 500, 600 durağan. Noto Sans Math yalnız damga paletinin glifleri.
    Playpen Sans burada yok: okuma.js yalnız el yazısı seçilince playpen.css'i yükler.
+   Atkinson Hyperlegible Next (wght 200..800, italik dahil; Braille Institute, OFL) okunaklı yazı: googlefonts deposunun
+   webfonts klasöründen (2.001), alt kümesiz tek dosya (362 glif, Türkçe tam). Yalnız seçilince (Aa ya da Rahat kullanım) kullanılır.
    Bu klasörde bir dosya değişirse tasarim/sw.js içinde LIB_SURUM artırılır. */
 
 /* Noto Sans Math, damga paleti: ∫∑∏√∂∇∞≈≠≤≥±→⇒⇔∀∃∈∉⊂∪∩ℝℕ αβγδεθλμπστφω ΔΣΩ ↑↓℞♂♀Ø⊕⊖ ~DxT °⌀∠⊥∥≅ */
@@ -64,3 +66,7 @@
 /* Newsreader 300 600, latin */
 @font-face { font-family: Newsreader; font-style: normal; font-weight: 300 600; font-display: swap; src: url("newsreader-latin.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* Atkinson Hyperlegible Next 200 800, tek dosya (latin ve latin-ext birlikte) */
+@font-face { font-family: "Atkinson Hyperlegible Next"; font-style: normal; font-weight: 200 800; font-display: swap; src: url("atkinson-hyperlegible-next.woff2") format("woff2"); }
+/* Atkinson Hyperlegible Next italik 200 800 */
+@font-face { font-family: "Atkinson Hyperlegible Next"; font-style: italic; font-weight: 200 800; font-display: swap; src: url("atkinson-hyperlegible-next-italic.woff2") format("woff2"); }

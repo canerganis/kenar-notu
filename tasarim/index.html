@@ -45,6 +45,11 @@
     if (a.tema === "acik") k.dataset.theme = "light";
     if (a.tema === "koyu") k.dataset.theme = "dark";
     if (a.sadeHareket) k.dataset.hareket = "sade";
+    // Rahat kullanım: yazı boyutu, yüksek kontrast ve renk körü görünümü de ilk boyamada (app.js aynılarını yazar)
+    if (a.arayuzYazi === "buyuk" || a.arayuzYazi === "kucuk") k.dataset.yazi = a.arayuzYazi;
+    if (a.yuksekKontrast) k.dataset.kontrast = "yuksek";
+    if (a.renkKoru) k.dataset.renkKoru = "";
+    if (a.okunakliArayuz) k.dataset.okunakli = "";   // okunaklı arayüz yazısı (Atkinson), açılışta Inter'den sıçramasın
     if (a.elYazisi === false) k.dataset.notYazi = "duz";
     var gece = a.tema === "koyu" || (a.tema !== "acik" && matchMedia("(prefers-color-scheme: dark)").matches);
     var R = { lapis: ["#F3EBDB", "#0E1838"], aurora: ["#F4F5F9", "#0B0C11"], nebula: ["#F6F3FC", "#0D0A16"], okyanus: ["#F2F7F8", "#071216"], grafit: ["#F3F3F4", "#0E0E10"],
@@ -251,6 +256,8 @@
   <symbol id="i-ses" viewBox="0 0 24 24"><path d="M9.5 6a2.5 2.5 0 0 1 5 0v5.5a2.5 2.5 0 0 1-5 0ZM6 11.5a6 6 0 0 0 12 0M12 17.5v3M9 20.5h6"/></symbol>
   <symbol id="i-oynat" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5Z"/></symbol>
   <symbol id="i-durdur" viewBox="0 0 24 24"><path d="M7 7h10v10H7Z"/></symbol>
+  <!-- Sesli oku: düğmesi sesli-okuma.js yüklenmeden görünür (PDF Koltuk çubuğu, ⋯ menüsü, Ctrl+K), bu yüzden sprite'ta -->
+  <symbol id="i-sesli-oku" viewBox="0 0 24 24"><path class="d" d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.4 7.4 0 0 1 0 10.4"/></symbol>
   <symbol id="i-kamera" viewBox="0 0 24 24"><path d="M3.5 8h4L9 5.5h6L16.5 8h4v11h-17Z"/><circle cx="12" cy="13.3" r="3.3"/></symbol>
   <symbol id="i-gorsel" viewBox="0 0 24 24"><path d="M4 5h16v14H4ZM4 16.5l5-5 4 4 2.5-2.5 4.5 4.5"/><circle cx="15.5" cy="9" r="1.5"/></symbol>
   <symbol id="i-damga" viewBox="0 0 24 24"><circle cx="12" cy="5.3" r="2"/><path d="M11 7.2 10.3 11h3.4L13 7.2"/><path d="M5.5 11h13v3.5h-13Z"/><path d="M5.5 18.5h13" stroke-dasharray="2 2"/></symbol>
