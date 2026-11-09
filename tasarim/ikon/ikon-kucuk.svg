@@ -1,33 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<!-- Kenar Notu, "Yazan K" (TASARIM-5 7.2). Gövde: sayfa kenarı. Üst kol: kalem. Alt kol: ışıklı mürekkep izi. 512 ızgara. -->
-<!-- Küçük boy (16 ve 32 px favicon): yarık, delik, ışıma ve gölge yok; kalınlıklar artırıldı, gövde 32'lik ızgarada -->
-<title>Kenar Notu</title>
-<defs>
-  <!-- Zemin: yumuşak köşeli kare (squircle), köşe 116 -->
-  <path id="kn-squircle" d="M326.4 0c64.97 0 97.45 0 122.26 12.64a116 116 0 0 1 50.69 50.69c12.64 24.81 12.64 57.3 12.64 122.26V326.4c0 64.97 0 97.45 -12.64 122.26a116 116 0 0 1 -50.69 50.69c-24.81 12.64 -57.3 12.64 -122.26 12.64H185.6c-64.97 0 -97.45 0 -122.26 -12.64a116 116 0 0 1 -50.69 -50.69c-12.64 -24.81 -12.64 -57.3 -12.64 -122.26V185.6c0 -64.97 0 -97.45 12.64 -122.26a116 116 0 0 1 50.69 -50.69c24.81 -12.64 57.3 -12.64 122.26 -12.64Z"/>
-  <clipPath id="kn-kirp"><use href="#kn-squircle"/></clipPath>
-  <!-- Gece zemini 160°, üstte iris ışığı, sağ altta mürekkebin ışığı -->
-  <linearGradient id="kn-zemin" x1=".32" y1="0" x2=".68" y2="1"><stop offset="0" stop-color="#17153A"/><stop offset="1" stop-color="#0B0C11"/></linearGradient>
-  <radialGradient id="kn-tepe" cx=".18" cy="-.04" r=".62"><stop offset="0" stop-color="#8B7CFF" stop-opacity=".16"/><stop offset="1" stop-color="#8B7CFF" stop-opacity="0"/></radialGradient>
-  <radialGradient id="kn-isik" cx=".7" cy=".72" r=".5"><stop offset="0" stop-color="#5B4CF0" stop-opacity=".22"/><stop offset="1" stop-color="#5B4CF0" stop-opacity="0"/></radialGradient>
-  <!-- Kalem kendi ekseninde: (0,0) üst uç, +x uca doğru; gövde 60 kalın, uç 64 birimde daralır -->
-  <g id="kn-kalem-sekil"><path d="M0 -30H158.8V30H0A30 30 0 0 1 0 -30Z"/><path d="M158.8 -30C188.24 -30 208.8 -13.8 222.8 0C208.8 13.8 188.24 30 158.8 30Z"/></g>
-  <!-- Mürekkep izi: 60 birimden 44 birime incelen kaligrafik vuruş -->
-  <path id="kn-iz-yol" d="M181.12 296.05C185.13 298.32 196.72 304.55 205.2 309.67C213.68 314.79 222.78 320.7 231.99 326.75C241.21 332.8 250.84 339.42 260.5 345.97C270.16 352.52 280.09 359.43 289.95 366.06C299.81 372.7 309.81 379.47 319.66 385.79C329.51 392.11 339.39 398.36 349.05 403.97C358.72 409.57 372.88 416.84 377.65 419.41A22 22 0 0 0 398.35 380.59C394.26 377.96 382.28 370.62 373.77 364.84C365.27 359.05 356.32 352.53 347.33 345.87C338.33 339.21 329.04 332.02 319.8 324.89C310.56 317.76 301.15 310.29 291.87 303.08C282.59 295.86 273.26 288.51 264.12 281.59C254.98 274.66 245.91 267.8 237.04 261.53C228.16 255.26 215.24 246.88 210.88 243.95A30 30 0 0 0 181.12 296.05Z"/>
-  <linearGradient id="kn-govde" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD8FF"/></linearGradient>
-  <linearGradient id="kn-kalem" gradientUnits="userSpaceOnUse" x1="0" y1="30" x2="0" y2="-30"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F4F3FF"/><stop offset="1" stop-color="#CFCAF7"/></linearGradient>
-  <linearGradient id="kn-iz" gradientUnits="userSpaceOnUse" x1="196" y1="270" x2="388" y2="400"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#38C6F0"/></linearGradient>
-  <!-- İz kalemin çevresinde 12 birim açılır: kalem kâğıda değmeden önceki an -->
-  <mask id="kn-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(366 128) rotate(143.03)" fill="#000" stroke="#000" stroke-width="24" stroke-linejoin="round"><use href="#kn-kalem-sekil"/></g></mask>
-</defs>
-<use href="#kn-squircle" fill="url(#kn-zemin)"/>
-<use href="#kn-squircle" fill="url(#kn-tepe)"/>
-<use href="#kn-squircle" fill="url(#kn-isik)"/>
-<g>
-<g>
-  <rect x="96" y="96" width="64" height="320" rx="32" fill="url(#kn-govde)"/>
-  <g transform="translate(366 128) rotate(143.03)" fill="url(#kn-kalem)"><use href="#kn-kalem-sekil"/></g>
-  <use href="#kn-iz-yol" fill="url(#kn-iz)" mask="url(#kn-iz-maske)"/>
-</g>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- Küçük boy (16 ve 32 px favicon, 28 px kelime işareti simgesi): işaret 64 birim -->
+<title>Luxmente</title>
+<path d="M50 0C78 0 89 0 94.5 5.5C100 11 100 22 100 50C100 78 100 89 94.5 94.5C89 100 78 100 50 100C22 100 11 100 5.5 94.5C0 89 0 78 0 50C0 22 0 11 5.5 5.5C11 0 22 0 50 0Z" fill="#1B2C5E"/>
+<g transform="translate(19 17) scale(0.53333)"><path d="M0 0H24A96 96 0 0 0 120 96V120H0Z" fill="#C6A15B"/><circle cx="90" cy="30" r="30" fill="#EAD39A"/></g>
 </svg>

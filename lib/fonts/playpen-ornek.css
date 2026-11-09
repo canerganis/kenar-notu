@@ -1,0 +1,4 @@
+/* Aa balonundaki "Ağ" örneği: Playpen Sans'tan yalnız A, g, ğ (9 KB). Tam playpen.css sonra yüklenirse onun kuralları
+   sonra tanımlandığı için önce o denenir. */
+@font-face { font-family: "Playpen Sans"; font-style: normal; font-weight: 400; font-display: swap; src: url("playpen-sans-ornek.woff2") format("woff2");
+  unicode-range: U+41, U+67, U+102, U+11f, U+306; }

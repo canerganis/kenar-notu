@@ -1,35 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<!-- Kenar Notu, "Yazan K" (TASARIM-5 7.2). Gövde: sayfa kenarı. Üst kol: kalem. Alt kol: ışıklı mürekkep izi. 512 ızgara. -->
-<!-- Maskable: köşesiz zemin, işaret merkez etrafında 0.8 ölçekte; güvenli alan merkezden 204,8 birimlik daire -->
-<title>Kenar Notu</title>
-<defs>
-  <!-- Gece zemini 160°, üstte iris ışığı, sağ altta mürekkebin ışığı -->
-  <linearGradient id="kn-zemin" x1=".32" y1="0" x2=".68" y2="1"><stop offset="0" stop-color="#17153A"/><stop offset="1" stop-color="#0B0C11"/></linearGradient>
-  <radialGradient id="kn-tepe" cx=".18" cy="-.04" r=".62"><stop offset="0" stop-color="#8B7CFF" stop-opacity=".16"/><stop offset="1" stop-color="#8B7CFF" stop-opacity="0"/></radialGradient>
-  <radialGradient id="kn-isik" cx=".7" cy=".72" r=".5"><stop offset="0" stop-color="#5B4CF0" stop-opacity=".22"/><stop offset="1" stop-color="#5B4CF0" stop-opacity="0"/></radialGradient>
-  <!-- Kalem kendi ekseninde: (0,0) üst uç, +x uca doğru; gövde 40 kalın, uç 52 birimde daralır -->
-  <g id="kn-kalem-sekil"><path d="M0 -20H164.25V20H0A20 20 0 0 1 0 -20Z"/><path d="M170.25 -17C194.17 -17 208.25 -7.82 222.25 0C208.25 7.82 194.17 17 170.25 17Z"/></g>
-  <!-- Mürekkep izi: 38 birimden 14 birime incelen kaligrafik vuruş -->
-  <path id="kn-iz-yol" d="M196.57 284.5C200.47 286.72 211.96 292.73 219.97 297.87C227.99 303.01 236.33 309.07 244.69 315.34C253.04 321.6 261.58 328.55 270.1 335.46C278.62 342.36 287.24 349.71 295.82 356.78C304.39 363.85 313.01 371.13 321.55 377.89C330.09 384.66 338.62 391.39 347.05 397.37C355.48 403.36 367.94 411.08 372.12 413.82A7 7 0 0 0 379.88 402.18C376.23 399.11 365.4 390.45 357.99 383.8C350.57 377.16 343.03 369.79 335.41 362.31C327.79 354.83 320.07 346.83 312.29 338.94C304.51 331.04 296.65 322.84 288.74 314.95C280.82 307.05 272.85 299.06 264.81 291.57C256.76 284.08 248.69 276.69 240.46 270.02C232.23 263.34 219.6 254.59 215.43 251.5A19 19 0 0 0 196.57 284.5Z"/>
-  <linearGradient id="kn-govde" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD8FF"/></linearGradient>
-  <linearGradient id="kn-kalem" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="-20"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F4F3FF"/><stop offset="1" stop-color="#CFCAF7"/></linearGradient>
-  <linearGradient id="kn-iz" gradientUnits="userSpaceOnUse" x1="206" y1="268" x2="376" y2="408"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#38C6F0"/></linearGradient>
-  <filter id="kn-isima" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
-  <filter id="kn-golge" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#05060A" flood-opacity=".55"/></filter>
-  <!-- Dolma kalem ucu: 6 birimlik yarık ve 7 yarıçaplı nefes deliği zemini gösterir -->
-  <mask id="kn-yarik" maskUnits="userSpaceOnUse" x="-40" y="-40" width="320" height="80"><rect x="-40" y="-40" width="320" height="80" fill="#fff"/><g fill="#000"><path d="M188.25 -3H224.25V3H188.25Z"/><circle cx="188.25" cy="0" r="7"/></g></mask>
-  <!-- İz kalemin çevresinde 5 birim açılır: kalem kâğıda değmeden önceki an -->
-  <mask id="kn-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(364 112) rotate(137.55)" fill="#000" stroke="#000" stroke-width="10" stroke-linejoin="round"><use href="#kn-kalem-sekil"/></g></mask>
-</defs>
-<rect width="512" height="512" fill="url(#kn-zemin)"/>
-<rect width="512" height="512" fill="url(#kn-tepe)"/>
-<rect width="512" height="512" fill="url(#kn-isik)"/>
-<g transform="translate(51.2 51.2) scale(0.8)">
-<use href="#kn-iz-yol" fill="url(#kn-iz)" opacity=".45" filter="url(#kn-isima)"/>
-<g filter="url(#kn-golge)">
-  <rect x="136" y="104" width="40" height="304" rx="20" fill="url(#kn-govde)"/>
-  <g transform="translate(364 112) rotate(137.55)" fill="url(#kn-kalem)" mask="url(#kn-yarik)"><use href="#kn-kalem-sekil"/></g>
-  <use href="#kn-iz-yol" fill="url(#kn-iz)" mask="url(#kn-iz-maske)"/>
-</g>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- Maskable: köşesiz zemin, işaret 42 birim; köşesi merkezden en çok 31 birim (güvenli alan 40) -->
+<title>Luxmente</title>
+<rect width="100" height="100" fill="#1B2C5E"/>
+<g transform="translate(30 28) scale(0.35)"><path d="M0 0H24A96 96 0 0 0 120 96V120H0Z" fill="#C6A15B"/><circle cx="90" cy="30" r="30" fill="#EAD39A"/></g>
 </svg>

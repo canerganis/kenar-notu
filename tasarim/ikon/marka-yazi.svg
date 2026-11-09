@@ -1,24 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 458 120" fill="currentColor">
-<!-- Kenar Notu, "Yazan K" (TASARIM-5 7.2). Gövde: sayfa kenarı. Üst kol: kalem. Alt kol: ışıklı mürekkep izi. 512 ızgara. -->
-<!-- İşaret ve kelime işareti. Gövde, kalem ve yazı currentColor; iz iki temada da okunan iris > lagün. Yazı tipleri sayfadan gelir, yoksa sistem yedekleri -->
-<title>Kenar Notu</title>
-<defs>
-  <!-- Kalem kendi ekseninde: (0,0) üst uç, +x uca doğru; gövde 40 kalın, uç 52 birimde daralır -->
-  <g id="kn-kalem-sekil"><path d="M0 -20H164.25V20H0A20 20 0 0 1 0 -20Z"/><path d="M170.25 -17C194.17 -17 208.25 -7.82 222.25 0C208.25 7.82 194.17 17 170.25 17Z"/></g>
-  <!-- Mürekkep izi: 38 birimden 14 birime incelen kaligrafik vuruş -->
-  <path id="kn-iz-yol" d="M196.57 284.5C200.47 286.72 211.96 292.73 219.97 297.87C227.99 303.01 236.33 309.07 244.69 315.34C253.04 321.6 261.58 328.55 270.1 335.46C278.62 342.36 287.24 349.71 295.82 356.78C304.39 363.85 313.01 371.13 321.55 377.89C330.09 384.66 338.62 391.39 347.05 397.37C355.48 403.36 367.94 411.08 372.12 413.82A7 7 0 0 0 379.88 402.18C376.23 399.11 365.4 390.45 357.99 383.8C350.57 377.16 343.03 369.79 335.41 362.31C327.79 354.83 320.07 346.83 312.29 338.94C304.51 331.04 296.65 322.84 288.74 314.95C280.82 307.05 272.85 299.06 264.81 291.57C256.76 284.08 248.69 276.69 240.46 270.02C232.23 263.34 219.6 254.59 215.43 251.5A19 19 0 0 0 196.57 284.5Z"/>
-  <linearGradient id="kn-iz" gradientUnits="userSpaceOnUse" x1="206" y1="268" x2="376" y2="408"><stop offset="0" stop-color="#7A6CF7"/><stop offset="1" stop-color="#1E9BCB"/></linearGradient>
-  <!-- Dolma kalem ucu: 6 birimlik yarık ve 7 yarıçaplı nefes deliği zemini gösterir -->
-  <mask id="kn-yarik" maskUnits="userSpaceOnUse" x="-40" y="-40" width="320" height="80"><rect x="-40" y="-40" width="320" height="80" fill="#fff"/><g fill="#000"><path d="M188.25 -3H224.25V3H188.25Z"/><circle cx="188.25" cy="0" r="7"/></g></mask>
-  <!-- İz kalemin çevresinde 5 birim açılır: kalem kâğıda değmeden önceki an -->
-  <mask id="kn-iz-maske" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(364 112) rotate(137.55)" fill="#000" stroke="#000" stroke-width="10" stroke-linejoin="round"><use href="#kn-kalem-sekil"/></g></mask>
-</defs>
-<g transform="translate(-36.42 -15.35) scale(0.2972)">
-<g>
-  <rect x="136" y="104" width="40" height="304" rx="20" fill="currentColor"/>
-  <g transform="translate(364 112) rotate(137.55)" fill="currentColor" mask="url(#kn-yarik)"><use href="#kn-kalem-sekil"/></g>
-  <use href="#kn-iz-yol" fill="url(#kn-iz)" mask="url(#kn-iz-maske)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 424 72">
+<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- Yatay kilit: işaret 72, boşluk 24, kelime işareti Newsreader 350 68 px (yola çevrildi). Nokta lamba: kâğıtta altın, koyuda lamba sarısı -->
+<title>Luxmente</title>
+<style>.l{fill:#1B2C5E}.o{fill:#C6A15B}.y{fill:#17130E}@media (prefers-color-scheme: dark){.l{fill:#C6A15B}.o{fill:#EAD39A}.y{fill:#F6EFE0}}</style>
+<g transform="scale(.6)"><path class="l" d="M0 0H24A96 96 0 0 0 120 96V120H0Z"/><circle class="o" cx="90" cy="30" r="30"/></g>
+<g class="y">
+<path d="M1080 -52L1072 -52L964 0L289 0L289 53L1066 53L947 31L1162 393L1184 387ZM410 1361L410 0L67 0L67 25L246 62L246 1361L67 1399L67 1423L590 1423L590 1399Z" transform="translate(96 51.98) scale(0.034 -0.034)"/>
+<path d="M324 317Q324 237 346.5 187Q369 137 418 114Q467 91 548 91Q628 91 705.5 117Q783 143 835 177L848 156Q773 102 718 67.5Q663 33 619 13.5Q575 -6 534 -13Q493 -20 449 -20Q304 -20 240 56.5Q176 133 176 302L176 937L-8 973L-8 1005L333 1024L324 940ZM801 -26L800 152L800 937L615 973L615 1005L959 1024L948 940L948 90Q957 86 978.5 79.5Q1000 73 1026 65.5Q1052 58 1076.5 50.5Q1101 43 1117 38L1117 20L808 -26Z" transform="translate(136.97 51.98) scale(0.034 -0.034)"/>
+<path d="M955 57L1096 27L1096 0L637 0L637 27L783 55L502 460L494 472L163 951L21 985L21 1011L475 1011L475 985L334 955L591 583L598 573ZM546 497L208 51L336 27L336 0L5 0L5 27L138 51L526 537L543 544L862 960L727 985L727 1011L1057 1011L1057 985L930 960L564 505Z" transform="translate(175.31 51.98) scale(0.034 -0.034)"/>
+<path d="M340 860L340 50L483 23L483 0L46 0L46 23L192 50L192 881Q176 888 143 903.5Q110 919 42 952L42 969L332 1041L338 1041ZM947 738L947 50L1092 23L1092 0L655 0L655 23L799 50L799 710Q799 782 777.5 826.5Q756 871 710.5 893Q665 915 590 915Q516 915 442.5 893Q369 871 318 840L308 863Q378 915 431 948Q484 981 526.5 999Q569 1017 607 1024Q645 1031 688 1031Q781 1031 838.5 999.5Q896 968 921.5 903.5Q947 839 947 738ZM1555 726L1555 50L1699 23L1699 0L1261 0L1261 23L1407 50L1407 702Q1407 780 1385 826Q1363 872 1316.5 893.5Q1270 915 1195 915Q1120 915 1045.5 892.5Q971 870 921 839L909 862Q980 914 1033.5 947Q1087 980 1129.5 998.5Q1172 1017 1211 1024Q1250 1031 1292 1031Q1433 1031 1494 960Q1555 889 1555 726Z" transform="translate(233.89 51.98) scale(0.034 -0.034)"/>
+<path d="M545 1031Q649 1031 726 986.5Q803 942 847 859.5Q891 777 898 661L215 661L216 709L804 710L746 677Q735 781 707.5 849Q680 917 632.5 951.5Q585 986 518 986Q423 986 358 936.5Q293 887 260 795.5Q227 704 227 576Q227 412 272 306.5Q317 201 400.5 149.5Q484 98 605 98Q663 98 716 113.5Q769 129 817.5 160.5Q866 192 909 245L925 233Q860 138 799 83Q738 28 672.5 4Q607 -20 529 -20Q398 -20 295.5 38Q193 96 135 210Q77 324 77 491Q77 637 132.5 760Q188 883 292.5 957Q397 1031 545 1031Z" transform="translate(292.63 51.98) scale(0.034 -0.034)"/>
+<path d="M340 856L340 50L484 23L484 0L46 0L46 23L192 50L192 881Q176 888 143 903.5Q110 919 42 952L42 969L332 1041L338 1041ZM698 23L844 50L844 682Q844 765 820.5 816.5Q797 868 747 891.5Q697 915 617 915Q533 915 453.5 890Q374 865 319 833L308 853Q383 908 439.5 943.5Q496 979 541.5 998Q587 1017 628.5 1024Q670 1031 715 1031Q863 1031 927.5 953.5Q992 876 992 705L992 50L1137 23L1137 0L698 0Z" transform="translate(325.68 51.98) scale(0.034 -0.034)"/>
+<path d="M317 246Q317 171 362 131Q407 91 488 91Q534 91 581.5 99Q629 107 693 126L693 102Q606 54 552.5 28.5Q499 3 461 -7.5Q423 -18 381 -18Q326 -18 277.5 7Q229 32 198.5 85.5Q168 139 168 224L168 901L41 972L41 985Q60 995 79.5 1007Q99 1019 121.5 1033Q144 1047 171.5 1064.5Q199 1082 233 1103Q267 1124 308 1149L317 1149L317 976ZM267 920L267 1011L665 1011L651 920Z" transform="translate(365.28 51.98) scale(0.034 -0.034)"/>
+<path d="M545 1031Q649 1031 726 986.5Q803 942 847 859.5Q891 777 898 661L215 661L216 709L804 710L746 677Q735 781 707.5 849Q680 917 632.5 951.5Q585 986 518 986Q423 986 358 936.5Q293 887 260 795.5Q227 704 227 576Q227 412 272 306.5Q317 201 400.5 149.5Q484 98 605 98Q663 98 716 113.5Q769 129 817.5 160.5Q866 192 909 245L925 233Q860 138 799 83Q738 28 672.5 4Q607 -20 529 -20Q398 -20 295.5 38Q193 96 135 210Q77 324 77 491Q77 637 132.5 760Q188 883 292.5 957Q397 1031 545 1031Z" transform="translate(388.12 51.98) scale(0.034 -0.034)"/>
 </g>
-</g>
-<text x="106" y="83" font-size="62"><tspan font-family="Inter, 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-weight="640" letter-spacing="-0.02em">Kenar</tspan><tspan dx=".25em" font-family="Literata, Georgia, 'Times New Roman', serif" font-style="italic" font-weight="500">Notu</tspan></text>
+<circle class="o" cx="223.69" cy="34.98" r="4.76"/>
 </svg>
