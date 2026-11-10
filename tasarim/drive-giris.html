@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Luxmente: Google Drive</title>
+<style>
+  :root { color-scheme: light; --bg: #F4F5F9; --ink: #0E1016; --muted: #5A6072; }
+  @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg: #0B0C11; --ink: #ECEDF3; --muted: #8D91A3; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px; box-sizing: border-box; text-align: center; }
+  p { margin: 0; max-width: 32ch; }
+  small { display: block; margin-top: 8px; color: var(--muted); }
+</style>
+</head>
+<body>
+<p id="ileti">&nbsp;</p>
+<script>
+// Google girişinin dönüş sayfası (drive-api.js). Adresin #parçasındaki belirteç (ya da hata) yalnız bu kökenin uygulamasına
+// verilir: açılır pencere ve görünmez çerçevede BroadcastChannel ve postMessage ile, yönlendirmede sessionStorage ile.
+// Belirteç adres çubuğunda ve geçmişte kalmasın diye önce silinir. Sayfa hiçbir yere istek atmaz.
+(function () {
+  "use strict";
+  var ham = (location.hash || "").slice(1) || (location.search || "").slice(1);
+  try { history.replaceState(null, "", location.pathname); } catch (e) { /* eski tarayıcı */ }
+  var cevap = {};
+  new URLSearchParams(ham).forEach(function (v, k) { cevap[k] = v; });
+  var ingilizce = false;
+  try { ingilizce = (localStorage.getItem("kn-dil") || navigator.language || "").toLowerCase().indexOf("en") === 0; } catch (e) { /* gizli pencere */ }
+  var yaz = function (tr, en, alt) {
+    var p = document.getElementById("ileti");
+    p.textContent = ingilizce ? en : tr;
+    if (alt) { var s = document.createElement("small"); s.textContent = ingilizce ? alt[1] : alt[0]; p.appendChild(s); }
+  };
+  var durum = String(cevap.state || "");
+  if (!durum) { yaz("Bu sayfa Google Drive girişinin dönüş sayfası.", "This is the Google Drive sign-in return page."); return; }
+  if (durum.charAt(0) === "y") {
+    // Yönlendirme: uygulama açılınca belirteci bir kez alıp siler (drive-api.js yonlendirmeDonusu)
+    try {
+      var k = JSON.parse(sessionStorage.getItem("kn-drive-yonlendirme") || "null");
+      if (k && k.durum === durum) sessionStorage.setItem("kn-drive-yonlendirme", JSON.stringify({ durum: durum, cevap: cevap }));
+    } catch (e) { /* uygulama giriş yapılmamış sayar */ }
+    location.replace("./");
+    return;
+  }
+  var ileti = { tur: "kn-drive-giris", cevap: cevap };
+  try { var kanal = new BroadcastChannel("kn-drive-giris"); kanal.postMessage(ileti); kanal.close(); } catch (e) { /* yok */ }
+  try { if (window.parent && window.parent !== window) window.parent.postMessage(ileti, location.origin); } catch (e) { /* yok */ }
+  try { if (window.opener) window.opener.postMessage(ileti, location.origin); } catch (e) { /* yok */ }
+  if (durum.charAt(0) === "p") {
+    if (cevap.error) yaz("Bağlanmadı.", "Not connected.", ["Bu pencereyi kapatıp yeniden deneyebilirsin.", "You can close this window and try again."]);
+    else yaz("Google Drive bağlandı.", "Google Drive connected.", ["Bu pencereyi kapatabilirsin.", "You can close this window."]);
+    setTimeout(function () { try { window.close(); } catch (e) { /* elle kapanır */ } }, 300);
+  }
+})();
+</script>
+</body>
+</html>
