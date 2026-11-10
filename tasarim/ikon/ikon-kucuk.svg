@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
-<!-- Küçük boy (16 ve 32 px favicon, 28 px kelime işareti simgesi): işaret 64 birim -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- Luxmente, "korunan lamba": sayfa lambayı el gibi sarar; kalan biçim Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- A · İncelik, küçük boy (16, 24, 32 px). 24 px ızgara, düz kenarlar 3'ün katında: kutu, gövde ve ayak 16, 24 ve 32 px'te tam piksele oturur. Kutu 18, gövde 3, lamba çapı 9 (üst ve sağ kenara değer), boşluk 4.14 -->
 <title>Luxmente</title>
-<path d="M50 0C78 0 89 0 94.5 5.5C100 11 100 22 100 50C100 78 100 89 94.5 94.5C89 100 78 100 50 100C22 100 11 100 5.5 94.5C0 89 0 78 0 50C0 22 0 11 5.5 5.5C11 0 22 0 50 0Z" fill="#1B2C5E"/>
-<g transform="translate(19 17) scale(0.53333)"><path d="M0 0H24A96 96 0 0 0 120 96V120H0Z" fill="#C6A15B"/><circle cx="90" cy="30" r="30" fill="#EAD39A"/></g>
+<g transform="scale(21.33333)">
+<path d="M12 0C18.72 0 21.36 0 22.68 1.32C24 2.64 24 5.28 24 12C24 18.72 24 21.36 22.68 22.68C21.36 24 18.72 24 12 24C5.28 24 2.64 24 1.32 22.68C0 21.36 0 18.72 0 12C0 5.28 0 2.64 1.32 1.32C2.64 0 5.28 0 12 0Z" fill="#1B2C5E"/>
+<g transform="translate(3 3)"><path d="M0 0H3A15 15 0 0 0 18 15V18H0V0Z" fill="#C6A15B"/><circle cx="13.5" cy="4.5" r="4.5" fill="#EAD39A"/></g>
+</g>
 </svg>

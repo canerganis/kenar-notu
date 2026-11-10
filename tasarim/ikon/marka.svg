@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
-<!-- Yalnız işaret, 120 ızgara. Kâğıtta lapis ve altın, koyu temada altın ve lamba sarısı -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -1 121 121">
+<!-- Luxmente, "korunan lamba": sayfa lambayı el gibi sarar; kalan biçim Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- Yalnız işaret, 120 ızgara (A · İncelik); lamba kutudan üstten ve sağdan 1 birim taşar, viewBox bunu karşılar. Kâğıtta lapis ve altın, koyu temada altın ve lamba sarısı -->
 <title>Luxmente</title>
 <style>.l{fill:#1B2C5E}.o{fill:#C6A15B}.y{fill:#17130E}@media (prefers-color-scheme: dark){.l{fill:#C6A15B}.o{fill:#EAD39A}.y{fill:#F6EFE0}}</style>
-<path class="l" d="M0 0H24A96 96 0 0 0 120 96V120H0Z"/><circle class="o" cx="90" cy="30" r="30"/>
+<path class="l" d="M2.5 0H25A95 95 0 0 0 120 95V117.5A2.5 2.5 0 0 1 117.5 120H2.5A2.5 2.5 0 0 1 0 117.5V2.5A2.5 2.5 0 0 1 2.5 0Z"/><circle class="o" cx="92" cy="28" r="29"/>
 </svg>

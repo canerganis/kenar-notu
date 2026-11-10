@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
-<!-- Tek renk: saydam zemin, yalnız beyaz; maskable ile aynı yerleşim -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- Luxmente, "korunan lamba": sayfa lambayı el gibi sarar; kalan biçim Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- A · İncelik, tek renk. Saydam zemin, yalnız beyaz; maskable ile aynı yerleşim (Android temalı simge). Lamba sayfadan yalnız boşlukla ayrılır. -->
 <title>Luxmente</title>
-<g transform="translate(30 28) scale(0.35)"><path d="M0 0H24A96 96 0 0 0 120 96V120H0Z" fill="#FFFFFF"/><circle cx="90" cy="30" r="30" fill="#FFFFFF"/></g>
+<g transform="translate(150.82 143.054) scale(1.818)"><path d="M2.5 0H25A95 95 0 0 0 120 95V117.5A2.5 2.5 0 0 1 117.5 120H2.5A2.5 2.5 0 0 1 0 117.5V2.5A2.5 2.5 0 0 1 2.5 0Z" fill="#FFFFFF"/><circle cx="92" cy="28" r="29" fill="#FFFFFF"/></g>
 </svg>

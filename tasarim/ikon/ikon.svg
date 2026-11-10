@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<!-- Luxmente, "korunan lamba": sayfa bir lambayı el gibi sarar; kalan L, Lux'un L'si, lamba Lux·mente'nin noktası. -->
-<!-- 100 birim: lapis squircle, işaret 50 birim, optik merkez (51, 49) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- Luxmente, "korunan lamba": sayfa lambayı el gibi sarar; kalan biçim Lux'un L'si, lamba Lux·mente'nin noktası. -->
+<!-- A · İncelik. 512 ızgara, lapis squircle, işaret 265.98 x 265.32, optik kayma (5.93, -5.778). İşaret 120 birimlik kendi ızgarasında çizilir. -->
 <title>Luxmente</title>
-<path d="M50 0C78 0 89 0 94.5 5.5C100 11 100 22 100 50C100 78 100 89 94.5 94.5C89 100 78 100 50 100C22 100 11 100 5.5 94.5C0 89 0 78 0 50C0 22 0 11 5.5 5.5C11 0 22 0 50 0Z" fill="#1B2C5E"/>
-<g transform="translate(26 24) scale(.41667)"><path d="M0 0H24A96 96 0 0 0 120 96V120H0Z" fill="#C6A15B"/><circle cx="90" cy="30" r="30" fill="#EAD39A"/></g>
+<path d="M256 0C399.36 0 455.68 0 483.84 28.16C512 56.32 512 112.64 512 256C512 399.36 512 455.68 483.84 483.84C455.68 512 399.36 512 256 512C112.64 512 56.32 512 28.16 483.84C0 455.68 0 399.36 0 256C0 112.64 0 56.32 28.16 28.16C56.32 0 112.64 0 256 0Z" fill="#1B2C5E"/>
+<g transform="translate(128.72 119.322) scale(2.2)"><path d="M2.5 0H25A95 95 0 0 0 120 95V117.5A2.5 2.5 0 0 1 117.5 120H2.5A2.5 2.5 0 0 1 0 117.5V2.5A2.5 2.5 0 0 1 2.5 0Z" fill="#C6A15B"/><circle cx="92" cy="28" r="29" fill="#EAD39A"/></g>
 </svg>

@@ -1,0 +1,1 @@
+import{gocEsle as r}from"./not-gocu-eslestir.js";self.onmessage=t=>{const s=t.data||{};if(s.tur==="esle")try{const e=r({...s,ilerleme:a=>self.postMessage({tur:"ilerleme",oran:a})});self.postMessage({tur:"tamam",sonuc:e})}catch(e){self.postMessage({tur:"hata",mesaj:String(e?.message||e)})}},self.postMessage({tur:"hazir"});
