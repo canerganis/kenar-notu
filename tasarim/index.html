@@ -117,7 +117,15 @@
     window.knAcilisBitti = function () {
       window.knUygulamaHazir();
       var el = document.getElementById("acilis");
-      if (!el || el.classList.contains("hata") || el.classList.contains("gidiyor")) return;
+      if (!el || el.classList.contains("gidiyor")) return;
+      // Hata ekranı açıldıktan sonra uygulama yine de hazır oldu (yavaş cihazda açılış 4 saniyeyi aştı, hata zararsızdı):
+      // ekran çalışan uygulamanın önünde kalmasın
+      if (el.classList.contains("hata")) {
+        // Odak Yenile düğmesindeyse kaldırılınca body'ye düşer (ekran okuyucu bağlamı yitirir): ana alana taşınır
+        var m = document.getElementById("sahne");
+        if (m && el.contains(document.activeElement)) { m.setAttribute("tabindex", "-1"); try { m.focus({ preventScroll: true }); } catch (e) { /* odak verilemedi */ } }
+        el.remove(); return;
+      }
       if (document.documentElement.dataset.hareket === "sade" || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.remove(); return; }
       el.classList.add("gidiyor");
       setTimeout(function () { el.remove(); }, 220);
