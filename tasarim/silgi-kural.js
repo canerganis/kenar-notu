@@ -1,0 +1,1 @@
+export const TUVAL_SILGI_ORAN=.5,TUVAL_SILGI_EN_AZ=4;export function silgiYaricapi(t,e){return!e||!(t>0)?t:Math.min(t,Math.max(4,t*.5))}export function kutudaMi(t,e){if(!e)return!1;for(const r of e)if(t[0]>=r.x&&t[0]<=r.x+r.w&&t[1]>=r.y&&t[1]<=r.y+r.h)return!0;return!1}
