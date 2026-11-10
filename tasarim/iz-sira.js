@@ -1,0 +1,1 @@
+export const IZ_SIRALARI=["sayfa","yeni","eski"],izSiraGecerli=i=>IZ_SIRALARI.includes(i)?i:"sayfa",tarihSirasi=i=>i==="yeni"||i==="eski";export function izlerTarihSirala(i,t){const s=t==="eski"?1:-1;return i.slice().sort((e,a)=>{const r=e.zaman||0,n=a.zaman||0;return!r!=!n?r?-1:1:(r-n)*s||(e.sira||0)-(a.sira||0)})}
