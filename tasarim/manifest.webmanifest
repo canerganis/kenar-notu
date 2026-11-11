@@ -39,9 +39,16 @@
           "accept": [
             ".pdf",
             ".epub",
+            ".mobi",
+            ".azw",
+            ".azw3",
+            ".fb2",
             ".cbz",
             "application/pdf",
             "application/epub+zip",
+            "application/x-mobipocket-ebook",
+            "application/vnd.amazon.ebook",
+            "application/x-fictionbook+xml",
             "application/vnd.comicbook+zip",
             "image/*"
           ]
@@ -58,6 +65,16 @@
         ],
         "application/epub+zip": [
           ".epub"
+        ],
+        "application/x-mobipocket-ebook": [
+          ".mobi"
+        ],
+        "application/vnd.amazon.ebook": [
+          ".azw",
+          ".azw3"
+        ],
+        "application/x-fictionbook+xml": [
+          ".fb2"
         ],
         "application/vnd.comicbook+zip": [
           ".cbz"
