@@ -12,7 +12,9 @@
 <!-- Yazı tipleri uygulamayla birlikte gelir (../lib/fonts), Google'a istek yok -->
 <link rel="stylesheet" href="../lib/fonts/yazi-tipleri.css">
 <style>
-  /* 7.0 Işıklı Kenar (TASARIM-5 8.1 madde 8): Aurora gündüz ve gece tokenları sabit; atmosfer katmanı yerine body'de tek ışık lekesi.
+  /* 7.0 Işıklı Kenar (TASARIM-5 8.1 madde 8): Aurora gündüz ve gece tokenları varsayılan; atmosfer katmanı yerine body'de tek ışık lekesi.
+     Uygulamanın kaydı varsa (aynı köken, localStorage "kn-tasarim:ayarlar") <head> sonundaki betik tema ve atmosferi ondan alır; kayıt yoksa
+     bu Aurora ve sistem teması kalır (web'den doğrudan açılış, mağaza gizlilik adresi).
      Gövde Literata 17/28, başlıklar Inter. Uygulamadan bağımsız açılır (çevrimdışı önbellekte durur). */
   :root {
     color-scheme: light;
@@ -23,11 +25,16 @@
     --f-arayuz: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --f-olcu: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   }
+  /* Koyu: sistem koyuysa ve uygulamada Açık seçilmediyse (data-theme="light" değilse), ya da uygulamada Koyu seçildiyse.
+     Aynı değerler iki kez yazılır: CSS bir media bloğu ile bir niteliği tek kuralda birleştiremez. */
   @media (prefers-color-scheme: dark) {
-    :root { color-scheme: dark; --bg: #0B0C11; --surface: #15161D; --ink: #ECEDF3; --ink-2: #B7BACA; --muted: #8D91A3;
+    :root:not([data-theme="light"]) { color-scheme: dark; --bg: #0B0C11; --surface: #15161D; --ink: #ECEDF3; --ink-2: #B7BACA; --muted: #8D91A3;
       --line: rgb(236 237 243 / .08); --accent: #A9A6FF; --vurgu-1: #A69BFF; --vurgu-2: #5ED6F2;
       --golge: 0 0 0 .5px rgb(255 255 255 / .08), inset 0 .5px 0 rgb(255 255 255 / .07), 0 28px 64px -16px rgb(0 0 0 / .7); }
   }
+  :root[data-theme="dark"] { color-scheme: dark; --bg: #0B0C11; --surface: #15161D; --ink: #ECEDF3; --ink-2: #B7BACA; --muted: #8D91A3;
+    --line: rgb(236 237 243 / .08); --accent: #A9A6FF; --vurgu-1: #A69BFF; --vurgu-2: #5ED6F2;
+    --golge: 0 0 0 .5px rgb(255 255 255 / .08), inset 0 .5px 0 rgb(255 255 255 / .07), 0 28px 64px -16px rgb(0 0 0 / .7); }
   * { box-sizing: border-box; }
   html { background: var(--bg); -webkit-text-size-adjust: 100%; }
   body { min-height: 100vh; margin: 0; padding: max(32px, env(safe-area-inset-top)) 16px 56px; color: var(--ink); font: 400 17px/28px var(--f-okuma);
@@ -42,7 +49,8 @@
   /* Kelime işareti Lux·mente: Newsreader 350, aradaki altın nokta lamba (kâğıtta altın, gecede lamba sarısı) */
   .ust .marka { font: 350 19px/1 Newsreader, var(--f-okuma); letter-spacing: -.005em; color: var(--ink); white-space: nowrap; }
   .ust .marka i { display: inline-block; width: .14em; height: .14em; margin: 0 .08em 0 .095em; border-radius: 50%; background: #C6A15B; vertical-align: .18em; }
-  @media (prefers-color-scheme: dark) { .ust .marka i { background: #EAD39A; } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ust .marka i { background: #EAD39A; } }
+  :root[data-theme="dark"] .ust .marka i { background: #EAD39A; }
   nav { display: flex; gap: 4px; margin-left: auto; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 5%, transparent);
     font: 560 13px/1 var(--f-arayuz); }
   nav a { display: grid; place-items: center; min-height: 38px; padding: 0 14px; border-radius: 999px; color: var(--ink-2); text-decoration: none; }
@@ -65,6 +73,41 @@
   footer { margin-top: 32px; color: var(--muted); font: 450 13px/1.5 var(--f-arayuz); }
   @media (max-width: 599px) { main { border-radius: 24px; padding-top: 28px; } h1 { font-size: 28px; line-height: 34px; } }
 </style>
+<script>
+  // Uygulamanın teması ve atmosferi (ayarlar kaydı, dil betiğiyle aynı kaynak). Uygulama içinde bir çerçevede açılınca çevresiyle
+  // aynı renkte durur. Atmosfer renkleri atmosfer.css'in zemin, yüzey, yazı ve vurgu değerlerinden: "bg,yüzey,yazı,yazı-2,soluk,bağ,vurgu-1,vurgu-2"
+  // (gündüz, gece). OLED ve Sepya gece gündüzde Grafit ve Kâğıt olur. Kayıt ya da erişim yoksa hiçbir şey yazılmaz: Aurora ve sistem teması.
+  (function () {
+    try {
+      var a = JSON.parse(localStorage.getItem("kn-tasarim:ayarlar") || "null");
+      if (!a || typeof a !== "object") return;
+      var k = document.documentElement;
+      if (a.tema === "acik") k.setAttribute("data-theme", "light");
+      if (a.tema === "koyu") k.setAttribute("data-theme", "dark");
+      var gece = a.tema === "koyu" || (a.tema !== "acik" && matchMedia("(prefers-color-scheme: dark)").matches);
+      var T = {
+        lapis: ["F3EBDB,FBF7EE,17130E,4A4336,665D4C,7A5A22,7D5E25,8C6B30", "0E1838,15214A,EFE6D2,C9BFA8,9C9480,D7B56F,C6A15B,EAD39A"],
+        aurora: ["F4F5F9,FFFFFF,0E1016,3A3F4D,5A6072,4B45D1,5B4CF0,1376A6", "0B0C11,15161D,ECEDF3,B7BACA,8D91A3,A9A6FF,A69BFF,5ED6F2"],
+        nebula: ["F6F3FC,FFFFFF,150F22,43395A,635A78,6B3FD0,7444E0,B8327F", "0D0A16,18132A,EEE9FB,BDB4D6,9188AE,C4A8FF,C4A8FF,FF9AD5"],
+        okyanus: ["F2F7F8,FFFFFF,0A1518,33464C,52666C,0B6E8C,0B7593,2E5BD6", "071216,0E1D23,E6F2F4,AFC5CA,84A0A6,6FD6E8,6FD6E8,7FA6FF"],
+        grafit: ["F3F3F4,FFFFFF,111113,3F3F45,5E5E66,3B5BA9,26262B,4A4A55", "0E0E10,18181B,EDEDEF,B5B5BC,8E8E97,A8B8E8,F2F2F4,BFC3CC"],
+        oled: [0, "000000,0B0B0C,F2F2F2,B8B8B8,8F8F8F,7CE0FF,7CE0FF,A99BFF"],
+        kagit: ["F7F5F0,FDFCF9,1C1B19,4D4842,69625A,2B4A7E,2B4A7E,2B4A7E", "141413,1F1E1C,EEEAE2,BDB7AC,9A948B,A3B8DE,A3B8DE,A3B8DE"],
+        "sepya-gece": [0, "15110C,211A12,F0E4CF,CDBB9C,A6937A,F0B867,F0B867,E58A5B"],
+        orman: ["F2F5F0,FFFFFF,0F1A12,36473A,546657,2F6B3F,2F7547,0F7268", "0A110C,131D16,E5EFE6,AFC2B2,87A08B,8FD9A0,8FD9A0,C8E07A"]
+      };
+      var ES = { oled: "grafit", "sepya-gece": "kagit" };
+      var id = T.hasOwnProperty(a.atmosfer) ? a.atmosfer : "aurora";
+      var s = gece ? T[id][1] : T[!T[id][0] ? ES[id] : id][0];
+      var v = s.split(","), ad = ["--bg", "--surface", "--ink", "--ink-2", "--muted", "--accent", "--vurgu-1", "--vurgu-2"];
+      for (var i = 0; i < ad.length; i++) k.style.setProperty(ad[i], "#" + v[i]);
+      k.style.setProperty("--line", "color-mix(in srgb, var(--ink) 8%, transparent)");
+      k.style.colorScheme = gece ? "dark" : "light";
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute("content", "#" + v[0]);
+    } catch (e) { /* Aurora ve sistem teması kalır */ }
+  })();
+</script>
 </head>
 <body>
 <main>

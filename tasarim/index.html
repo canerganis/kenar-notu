@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- Tarayıcı çubuğu açılışta gece rengi (#acilis ile aynı); kabuk kurulunca app.js atmosferin rengini yazar -->
+<!-- Tarayıcı çubuğu açılışta seçilen atmosferin gece rengi (#acilis ile aynı): aşağıdaki ilk boyama betiği yazar, bu değer yedek; kabuk kurulunca app.js kipin rengini yazar -->
 <meta name="theme-color" content="#0E1838">
 <meta name="color-scheme" content="light dark">
 <title>Luxmente</title>
@@ -61,8 +61,15 @@
     k.dataset.atmosfer = !gece && ES[secim] ? ES[secim] : secim;
     if (VURGU.indexOf(a.vurgu) >= 0) k.dataset.vurgu = a.vurgu;
     if (a.canliZemin && !a.sadeHareket && !matchMedia("(prefers-reduced-motion: reduce)").matches) k.dataset.canliZemin = "";
-    // Açılış ekranı (#acilis) her atmosferde gece rengindedir (#0E1838); tarayıcı çubuğu da öyle kalır (meta yukarıda).
-    // Atmosferin çubuk rengini kabuk kurulunca app.js temaRengi() yazar.
+    // Açılış ekranı (#acilis) ve tarayıcı çubuğu, seçilen atmosferin GECE rengini alır (R[secim][1]). Gece rengi bilinçli:
+    // açılış işareti ve sloganı koyu zemin için çizildi, gündüz kipinde de okunur kalır. Yazılamazsa #acilis CSS yedeği
+    // (#0E1838) ve meta kalır. Kabuk kurulunca app.js temaRengi() çubuğu kipin rengine düzeltir.
+    // manifest.webmanifest tek değer taşır (theme_color, background_color #0E1838): soğuk açılışın sistem splash'i atmosfere uymaz.
+    try {
+      var z = R[secim][1], m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute("content", z);
+      k.style.setProperty("--acilis-zemin", z);
+    } catch (e) { /* yedek renkler kalır */ }
   })();
 
   // Açılış ekranı ve açılış hatası. app.js açılış adımlarını bitirince knUygulamaHazir(), ilk ekran çizilince
@@ -140,7 +147,7 @@
      Lux·mente (yola çevrilmiş, yazı tipi beklemez), çift altın çizgi ve lamba sarısı slogan. CSS dosyalarından bağımsız.
      Hata ekranı da aynı zeminde. */
   #acilis { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px;
-    background: #0E1838; color: #F6EFE0; text-align: center; transition: opacity .2s ease-out; }
+    background: var(--acilis-zemin, #0E1838); color: #F6EFE0; text-align: center; transition: opacity .2s ease-out; }
   #acilis.gidiyor { opacity: 0; pointer-events: none; }
   #acilis .acilis__marka { display: grid; justify-items: center; gap: 16px; animation: acilis-gel .4s ease-out .25s both; }
   #acilis .acilis__isaret { display: block; width: clamp(64px, 14vw, 88px); height: auto; }
