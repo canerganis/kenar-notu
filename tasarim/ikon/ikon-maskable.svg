@@ -1,7 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<!-- Luxmente, "korunan lamba": sayfa lambayı el gibi sarar; kalan biçim Lux'un L'si, lamba Lux·mente'nin noktası. -->
-<!-- A · İncelik, maskable. Köşesiz zemin; işaretin merkezden en uzak noktası 154.079 (güvenli daire yarıçapı 156, Android 66/108 dp) -->
-<title>Luxmente</title>
-<rect width="512" height="512" fill="#1B2C5E"/>
-<g transform="translate(150.82 143.054) scale(1.818)"><path d="M2.5 0H25A95 95 0 0 0 120 95V117.5A2.5 2.5 0 0 1 117.5 120H2.5A2.5 2.5 0 0 1 0 117.5V2.5A2.5 2.5 0 0 1 2.5 0Z" fill="#C6A15B"/><circle cx="92" cy="28" r="29" fill="#EAD39A"/></g>
-</svg>
+<!-- Luxmente, Mühürlü Alev: Altın mürekkeple yazılmış bir ex libris halkası; içinden çapraz duran kalem ucu alev gibi taşar ve halkanın dışına ilk noktayı koyar. -->
+<title>Luxmente</title><rect width="512" height="512" fill="#1B2C5E"/><defs><radialGradient id="lux-isik" cx=".7" cy=".27" r=".78"><stop offset="0" stop-color="#4766B4" stop-opacity=".62"/><stop offset=".42" stop-color="#2D4688" stop-opacity=".3"/><stop offset="1" stop-color="#1B2C5E" stop-opacity="0"/></radialGradient></defs><rect width="512" height="512" fill="url(#lux-isik)"/><g transform="translate(103.5 106) scale(2.5)"><path fill="#C6A15B" d="M105.033 36A52 52 0 1 1 86 16.967L82.8 22.509A45.6 45.6 0 1 0 99.491 39.2Z"/><g transform="translate(60 62) rotate(45) scale(0.8) translate(-60 -81.5)"><path fill="#F3EBDB" fill-rule="evenodd" d="M60 4C69 26 92 44 92 72C92 86 86.5 97 81.2 107.4Q79.8 110 76.8 110H43.2Q40.2 110 38.8 107.4C33.5 97 28 86 28 72C28 44 51 26 60 4ZM57.7 17H62.3V62H57.7ZM60 61A11 11 0 1 0 60 83A11 11 0 1 0 60 61Z"/></g><circle fill="#EAD39A" cx="112.326" cy="9.674" r="7.5"/></g></svg>
