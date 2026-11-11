@@ -1,0 +1,32 @@
+Cihazda OCR motoru (web, iPad, PC): Tesseract.js 6.0.1 (Tesseract OCR'ın WebAssembly sürümü) ve çekirdeği tesseract.js-core 6.1.2 (tesseract.js 6.0.1 bağımlılığı ^6.0.0).
+Dosyalar npm kayıt defterinden "npm pack" ile alındı ve aynen kopyalandı (hiçbir betik çalıştırılmadı).
+Lisans: Apache License 2.0 (bkz. LICENSE). Kaynak: https://github.com/naptha/tesseract.js ve https://github.com/naptha/tesseract.js-core
+Dil verisi: Tesseract tessdata_best, tamsayıya nicemlenmiş LSTM (4.0.0_best_int, tesseract.js'in varsayılanı). tessdata_fast gzip'li pakette yoktu; "4.0.0" klasörü 8 ila 11 MB'lık kayan noktalı sürümdür, seçilmedi.
+
+Kullanım: createWorker(["tur","eng"], 1, { workerPath, corePath: ".../core/", langPath: ".../lang", gzip: true, cacheMethod: "none" }). Çalışma zamanı çekirdeği SIMD varsa tesseract-core-simd-lstm.wasm.js, yoksa tesseract-core-lstm.wasm.js olarak seçer (oem 1 LSTM).
+
+Dosyalar:
+tesseract.esm.min.js
+  paket: tesseract.js@6.0.1, paket içi yol: package/dist/tesseract.esm.min.js
+  sha256: da6267cfe5036ae718a59eece3b5744a4655b0b8faa9f16259362b783d74c9bb, boyut: 63220 bayt
+worker.min.js
+  paket: tesseract.js@6.0.1, paket içi yol: package/dist/worker.min.js
+  sha256: 38645599043239c0eb6db08a6504a92dcdc292200535f3e9339cd77c4443b842, boyut: 111162 bayt
+core/tesseract-core-simd-lstm.wasm.js
+  paket: tesseract.js-core@6.1.2, paket içi yol: package/tesseract-core-simd-lstm.wasm.js
+  sha256: 9d7c43fb206dc9f48475228b46bf35f888fa9e6259da2e67d5a75c77049f2dc7, boyut: 3954569 bayt
+core/tesseract-core-lstm.wasm.js
+  paket: tesseract.js-core@6.1.2, paket içi yol: package/tesseract-core-lstm.wasm.js
+  sha256: 775a35df6f2ae100e02609443e6bd5cafcd07983dd6175454ca4a432a7730687, boyut: 3954181 bayt
+lang/tur.traineddata.gz
+  paket: @tesseract.js-data/tur@1.0.0, paket içi yol: package/4.0.0_best_int/tur.traineddata.gz
+  sha256: 384ba0dc28040451b7818d7d60e0a88df0d3003fa5a01d713a468779bc3d8c04, boyut: 2141291 bayt
+lang/eng.traineddata.gz
+  paket: @tesseract.js-data/eng@1.0.0, paket içi yol: package/4.0.0_best_int/eng.traineddata.gz
+  sha256: 45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91, boyut: 2952873 bayt
+
+Toplam: 13177296 bayt (12.57 MiB).
+
+Güncelleme: npm pack tesseract.js@<sürüm> tesseract.js-core@<sürüm> @tesseract.js-data/tur @tesseract.js-data/eng ile boş bir klasöre indir, tar ile aç, yukarıdaki yollardaki dosyaları aynen kopyala (worker.min.js içindeki çekirdek dosya adlarını denetle), bu dosyadaki sürüm ve sha256'ları yenile, lib/ değiştiği için sw.js LIB_SURUM'u artır.
+Bu klasör Android mağaza paketine gömülmez: Android'de Google ML Kit tanır (android-kabuk/derle.mjs lib/tesseract/ yolunu atlar). Yalnız web yayınında (gh-pages) bulunur.
+Tüketen OCR kodu (sonraki görev): Android algılanınca ML Kit'e dallanmalı, bu klasör yalnız web/iPad/PC yolunda yüklenmeli; Android paketinde bu yol yoktur (404 verir).
