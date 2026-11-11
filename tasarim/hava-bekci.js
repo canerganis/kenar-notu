@@ -1,0 +1,1 @@
+export const HAVA_BEKCI_MS=450;export function havaBekcisi({gizle:e,sure:i=450,kur:u=(t,r)=>setTimeout(t,r),iptal:o=t=>clearTimeout(t)}={}){let t=0;const r=()=>{t&&(o(t),t=0)};return{kur(){r(),t=n()},iptal:r,bekliyor:()=>t!==0};function n(){return u(()=>{t=0,e()},i)}}
