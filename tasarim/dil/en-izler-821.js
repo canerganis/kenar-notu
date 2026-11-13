@@ -1,1 +1,1 @@
-export default{};
+const n=e=>String(e)==="1";export default{"El yazısından tanındı":"Recognized from handwriting","Bugün {n} kart bekliyor":e=>n(e.n)?"1 card due today":`${e.n} cards due today`,"Tekrar'ı aç":"Open Review","Bugünün tekrarı bitti":"Today's review is done",Kılavuz:"Guide"};

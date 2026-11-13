@@ -1,0 +1,1 @@
+export function bugunTekrarEdildi(r,u){return Array.isArray(r)?r.some(t=>Array.isArray(t?.gecmis)&&t.gecmis.some(i=>Number(i?.zaman)>=u)):!1}export function tekrarDurumu(r,u,t){if(!Array.isArray(r)||!r.length)return null;const i=Math.max(0,Math.floor(Number(typeof u=="function"?u():u)||0));return i>0?{tur:"bekliyor",n:i}:bugunTekrarEdildi(r,t)?{tur:"bitti"}:null}

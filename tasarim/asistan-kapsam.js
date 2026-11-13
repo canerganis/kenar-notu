@@ -1,0 +1,7 @@
+export const KAPSAMLAR=["secim","sayfa","notlar"],SAYFA_SINIR=6e3,NOT_SINIR=4e3,NOT_ADET=40,NOT_PARCA=280;function c(e,r){const n=String(e||"").trim();if(n.length<=r)return n;const a=n.slice(0,r+1),s=Math.max(a.lastIndexOf(" "),a.lastIndexOf(`
+`));return n.slice(0,Math.max(s,Math.floor(r*.8))).trim()+" …"}const m=e=>String(e??"").replace(/\s+/g," ").trim();export function sayfaMetni(e,r=6e3){const n=String(e??"").replace(/\r\n?/g,`
+`).replace(/[^\S\n]+/g," ").replace(/ *\n */g,`
+`).replace(/\n{3,}/g,`
+
+`).trim();return n.length<=r?{metin:n,kesildi:!1}:{metin:c(n,r),kesildi:!0}}export function notlarMetni(e,{sinir:r=4e3,adet:n=40,parca:a=280,t:s=i=>i}={}){const i=(Array.isArray(e)?e:[]).filter(t=>t&&typeof t=="object").map(t=>({sayfa:t.sayfa,metin:m(t.metin),not:m(t.not),zaman:Number.isFinite(Number(t.zaman))?Number(t.zaman):-1/0})).filter(t=>t.metin||t.not).sort((t,l)=>l.zaman-t.zaman),o=[];let f=0;for(const t of i){if(o.length>=n)break;const l=Number.isInteger(t.sayfa)&&t.sayfa>0?`${s("s. {sayfa}",{sayfa:t.sayfa})} · `:"",p=[t.metin?`“${c(t.metin,a)}”`:"",t.not?s("Not: {not}",{not:c(t.not,a)}):""].filter(Boolean).join(" · "),u=l+p,g=(o.length?1:0)+u.length;if(f+g>r)break;o.push(u),f+=g}return{metin:o.join(`
+`),adet:o.length,toplam:i.length}}export function kapsamOnizleme(e,r=180){const n=m(e);if(n.length<=r)return n;const a=n.lastIndexOf(" ",r);return n.slice(0,a>r/2?a:r).trim()+"…"}export function kapsamUygula(e,r,n){return r==="secim"||!String(n??"").trim()?e:e?.gorsel?{...e,ekBaglam:n}:{...e,metin:n}}
