@@ -51,6 +51,8 @@
     if (a.renkKoru) k.dataset.renkKoru = "";
     if (a.okunakliArayuz) k.dataset.okunakli = "";   // okunaklı arayüz yazısı (Atkinson), açılışta Inter'den sıçramasın
     if (a.elYazisi === false) k.dataset.notYazi = "duz";
+    // Android kabuğu açılışı kendisi oynattı (android-kabuk acilis_lamba.xml): #acilis yanık lambayla başlar, beklemez
+    if (window.LuxYerel) k.dataset.yerelAcilis = "";
     var gece = a.tema === "koyu" || (a.tema !== "acik" && matchMedia("(prefers-color-scheme: dark)").matches);
     var R = { lapis: ["#F3EBDB", "#0E1838"], aurora: ["#F4F5F9", "#0B0C11"], nebula: ["#F6F3FC", "#0D0A16"], okyanus: ["#F2F7F8", "#071216"], grafit: ["#F3F3F4", "#0E0E10"],
       oled: ["#F3F3F4", "#000000"], kagit: ["#F7F5F0", "#141413"], "sepya-gece": ["#F7F5F0", "#15110C"], orman: ["#F2F5F0", "#0A110C"] };
@@ -121,10 +123,14 @@
       bekle = setTimeout(goster, 4000);
     };
     window.knUygulamaHazir = function () { hazir = true; clearTimeout(bekle); };
+    // "Lamba yanar" açılışı (aşağıdaki #acilis CSS'i) ~0,76 saniyede lamba yanmış, ışık halkayı dolaşmış olur. Uygulama daha
+    // erken hazırsa perde o ana kadar bekler, sonra söner (en çok 0,76 sn; yavaş açılışta hiç beklenmez). Sade hareket,
+    // azaltılmış hareket ve Android kabuğu (canlı açılışı kabuk oynattı, data-yerel-acilis) beklemez, yalnız söner.
+    var bitiyor = false;
     window.knAcilisBitti = function () {
       window.knUygulamaHazir();
       var el = document.getElementById("acilis");
-      if (!el || el.classList.contains("gidiyor")) return;
+      if (!el || bitiyor) return;
       // Hata ekranı açıldıktan sonra uygulama yine de hazır oldu (yavaş cihazda açılış 4 saniyeyi aştı, hata zararsızdı):
       // ekran çalışan uygulamanın önünde kalmasın
       if (el.classList.contains("hata")) {
@@ -133,9 +139,16 @@
         if (m && el.contains(document.activeElement)) { m.setAttribute("tabindex", "-1"); try { m.focus({ preventScroll: true }); } catch (e) { /* odak verilemedi */ } }
         el.remove(); return;
       }
-      if (document.documentElement.dataset.hareket === "sade" || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.remove(); return; }
-      el.classList.add("gidiyor");
-      setTimeout(function () { el.remove(); }, 220);
+      bitiyor = true;
+      var k = document.documentElement.dataset;
+      var canli = k.hareket !== "sade" && k.yerelAcilis === undefined && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var kalan = canli && typeof performance !== "undefined" && window.__knAcilisT0 != null ? window.__knAcilisT0 + 760 - performance.now() : 0;
+      function son() {
+        if (el.classList.contains("hata")) { el.remove(); return; }
+        el.classList.add("gidiyor");
+        setTimeout(function () { el.remove(); }, 220);
+      }
+      if (kalan > 0) setTimeout(son, kalan); else son();
     };
     // ResizeObserver döngü uyarısı hata olayı olarak gelir ama zararsızdır
     addEventListener("error", function (e) { if (!/ResizeObserver loop/.test(e.message || "")) window.knAcilisHata(e.error || e.message, "error"); });
@@ -143,19 +156,42 @@
   })();
 </script>
 <style>
-  /* Açılış ekranı (Luxmente kimliği, dikey kilit "Stacked · night"): gece zemininde altın L ve lamba, fildişi
-     Lux·mente (yola çevrilmiş, yazı tipi beklemez), çift altın çizgi ve lamba sarısı slogan. CSS dosyalarından bağımsız.
-     Hata ekranı da aynı zeminde. */
+  /* Açılış ekranı (Luxmente kimliği): gece zemininde Mühürlü Alev (varak halka, krem uç, yanan lamba), fildişi Lux·mente
+     (yola çevrilmiş, yazı tipi beklemez; nokta yanan lamba), çift altın çizgi ve lamba sarısı slogan. CSS dosyalarından
+     bağımsız; işaret ve kelime işaretini marka-oneri/canli-set.mjs yazar. Hata ekranı da aynı zeminde. */
   #acilis { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px;
     background: var(--acilis-zemin, #0E1838); color: #F6EFE0; text-align: center; transition: opacity .2s ease-out; }
   #acilis.gidiyor { opacity: 0; pointer-events: none; }
-  #acilis .acilis__marka { display: grid; justify-items: center; gap: 16px; animation: acilis-gel .4s ease-out .25s both; }
-  #acilis .acilis__isaret { display: block; width: clamp(64px, 14vw, 88px); height: auto; }
-  #acilis .acilis__ad { display: block; width: clamp(176px, 44vw, 248px); height: auto; }
+  /* İşaret ekranın tam ortasında, 288 px kutuda (Android 12+ açılış simgesiyle aynı yer ve boy: kabuktan sayfaya geçişte
+     kıpırdamaz). Kelime işareti, çizgi ve slogan altında. Lambanın ışığı zemine yayılır (::before, lambanın yerinde). */
+  #acilis .acilis__isaret { position: absolute; left: 50%; top: 50%; width: 288px; height: 288px; margin: -144px 0 0 -144px; overflow: visible; }
+  #acilis::before { content: ""; position: absolute; left: calc(50% + 52.7px - 300px); top: calc(50% - 52.7px - 300px); width: 600px; height: 600px;
+    border-radius: 50%; background: radial-gradient(closest-side, rgba(98, 136, 234, .34), rgba(98, 136, 234, .1) 50%, rgba(98, 136, 234, 0)); pointer-events: none; }
+  #acilis.hata::before { content: none; }
+  #acilis .acilis__marka { position: absolute; left: 0; right: 0; top: calc(50% + 92px); display: grid; justify-items: center; gap: 14px; padding: 0 24px; }
+  #acilis .acilis__ad { display: block; width: clamp(176px, 44vw, 232px); height: auto; overflow: visible; }
   #acilis .acilis__cizgi { width: 52px; height: 3px; box-sizing: border-box; border-top: 1px solid #C6A15B; border-bottom: 1px solid rgba(198, 161, 91, .55); }
   #acilis .acilis__slogan { margin: 0; font: italic 300 clamp(15px, 3.4vw, 18px)/1.3 "Newsreader", Georgia, serif; color: #EAD39A; }
-  @keyframes acilis-gel { from { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { #acilis .acilis__marka { animation: none; } }
+  #acilis .acilis__isik { opacity: 0; stroke-dasharray: 18 200; }
+  #acilis :is(.acilis__lamba, .acilis__hale) { transform-box: fill-box; transform-origin: center; }
+  /* "Lamba yanar" (0,86 sn): işaret belirir, lamba yanar ve ışığı zemine yayılır, ışık halkada lambadan çıkıp dolaşır ve
+     lambaya döner; kelime işareti ve slogan gelir. Android 12+ kabuğunda aynı çizelge acilis_lamba.xml'de
+     (marka-oneri/canli-acilis.mjs ZAMAN). Sade ve azaltılmış harekette çizelge yok: son hâl görünür, perde yalnız söner. */
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis .acilis__isaret { animation: ac-gel 260ms cubic-bezier(.2, .7, .3, 1) both; }
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis .acilis__lamba { animation: ac-lamba 320ms ease-out 200ms both; }
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis .acilis__hale { animation: ac-hale 380ms ease-out 200ms both; }
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis .acilis__isik { animation: ac-isik 480ms cubic-bezier(.4, 0, .2, 1) 380ms both; }
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis::before { animation: ac-sol 420ms ease-out 240ms both; }
+  html:not([data-hareket="sade"]):not([data-yerel-acilis]) #acilis .acilis__marka { animation: ac-sol 380ms ease-out 320ms both; }
+  /* Android kabuğu: işaret kabuğun açılışından yanık gelir; ışık ve yazı kısaca belirir */
+  html[data-yerel-acilis]:not([data-hareket="sade"]) #acilis::before, html[data-yerel-acilis]:not([data-hareket="sade"]) #acilis .acilis__marka { animation: ac-sol 200ms ease-out both; }
+  #acilis .acilis__isik { filter: drop-shadow(0 0 2px rgba(255, 231, 168, .9)); }
+  @keyframes ac-gel { from { opacity: 0; transform: scale(.94); } }
+  @keyframes ac-lamba { from { opacity: .3; transform: scale(.7); } }
+  @keyframes ac-hale { from { opacity: 0; transform: scale(.3); } }
+  @keyframes ac-isik { 0% { stroke-dashoffset: 18; opacity: .9; } 100% { stroke-dashoffset: -100; opacity: .9; } }
+  @keyframes ac-sol { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #acilis :is(.acilis__isaret, .acilis__lamba, .acilis__hale, .acilis__isik, .acilis__marka), #acilis::before { animation: none !important; } }
   #acilis.hata h1 { margin: 0; font: 400 28px/1.2 "Literata", Georgia, serif; }
   #acilis.hata p { max-width: 420px; margin: 0; font: 15px/1.5 system-ui, sans-serif; color: #B9AF9B; }
   #acilis .acilis__eylem { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
@@ -165,13 +201,16 @@
 </style>
 </head>
 <body>
-<div id="acilis" aria-hidden="true"><div class="acilis__marka">
-  <svg class="acilis__isaret" viewBox="0 -1 121 121" width="88" height="88"><path d="M2.5 0H25A95 95 0 0 0 120 95V117.5A2.5 2.5 0 0 1 117.5 120H2.5A2.5 2.5 0 0 1 0 117.5V2.5A2.5 2.5 0 0 1 2.5 0Z" fill="#C6A15B"/><circle cx="92" cy="28" r="29" fill="#EAD39A"/></svg>
-  <svg class="acilis__ad" viewBox="94 2 332 54" width="248" height="40"><g fill="#F6EFE0"><path d="M1080 -52L1072 -52L964 0L289 0L289 53L1066 53L947 31L1162 393L1184 387ZM410 1361L410 0L67 0L67 25L246 62L246 1361L67 1399L67 1423L590 1423L590 1399Z" transform="translate(96 51.98) scale(0.034 -0.034)"/> <path d="M324 317Q324 237 346.5 187Q369 137 418 114Q467 91 548 91Q628 91 705.5 117Q783 143 835 177L848 156Q773 102 718 67.5Q663 33 619 13.5Q575 -6 534 -13Q493 -20 449 -20Q304 -20 240 56.5Q176 133 176 302L176 937L-8 973L-8 1005L333 1024L324 940ZM801 -26L800 152L800 937L615 973L615 1005L959 1024L948 940L948 90Q957 86 978.5 79.5Q1000 73 1026 65.5Q1052 58 1076.5 50.5Q1101 43 1117 38L1117 20L808 -26Z" transform="translate(136.97 51.98) scale(0.034 -0.034)"/> <path d="M955 57L1096 27L1096 0L637 0L637 27L783 55L502 460L494 472L163 951L21 985L21 1011L475 1011L475 985L334 955L591 583L598 573ZM546 497L208 51L336 27L336 0L5 0L5 27L138 51L526 537L543 544L862 960L727 985L727 1011L1057 1011L1057 985L930 960L564 505Z" transform="translate(175.31 51.98) scale(0.034 -0.034)"/> <path d="M340 860L340 50L483 23L483 0L46 0L46 23L192 50L192 881Q176 888 143 903.5Q110 919 42 952L42 969L332 1041L338 1041ZM947 738L947 50L1092 23L1092 0L655 0L655 23L799 50L799 710Q799 782 777.5 826.5Q756 871 710.5 893Q665 915 590 915Q516 915 442.5 893Q369 871 318 840L308 863Q378 915 431 948Q484 981 526.5 999Q569 1017 607 1024Q645 1031 688 1031Q781 1031 838.5 999.5Q896 968 921.5 903.5Q947 839 947 738ZM1555 726L1555 50L1699 23L1699 0L1261 0L1261 23L1407 50L1407 702Q1407 780 1385 826Q1363 872 1316.5 893.5Q1270 915 1195 915Q1120 915 1045.5 892.5Q971 870 921 839L909 862Q980 914 1033.5 947Q1087 980 1129.5 998.5Q1172 1017 1211 1024Q1250 1031 1292 1031Q1433 1031 1494 960Q1555 889 1555 726Z" transform="translate(233.89 51.98) scale(0.034 -0.034)"/> <path d="M545 1031Q649 1031 726 986.5Q803 942 847 859.5Q891 777 898 661L215 661L216 709L804 710L746 677Q735 781 707.5 849Q680 917 632.5 951.5Q585 986 518 986Q423 986 358 936.5Q293 887 260 795.5Q227 704 227 576Q227 412 272 306.5Q317 201 400.5 149.5Q484 98 605 98Q663 98 716 113.5Q769 129 817.5 160.5Q866 192 909 245L925 233Q860 138 799 83Q738 28 672.5 4Q607 -20 529 -20Q398 -20 295.5 38Q193 96 135 210Q77 324 77 491Q77 637 132.5 760Q188 883 292.5 957Q397 1031 545 1031Z" transform="translate(292.63 51.98) scale(0.034 -0.034)"/> <path d="M340 856L340 50L484 23L484 0L46 0L46 23L192 50L192 881Q176 888 143 903.5Q110 919 42 952L42 969L332 1041L338 1041ZM698 23L844 50L844 682Q844 765 820.5 816.5Q797 868 747 891.5Q697 915 617 915Q533 915 453.5 890Q374 865 319 833L308 853Q383 908 439.5 943.5Q496 979 541.5 998Q587 1017 628.5 1024Q670 1031 715 1031Q863 1031 927.5 953.5Q992 876 992 705L992 50L1137 23L1137 0L698 0Z" transform="translate(325.68 51.98) scale(0.034 -0.034)"/> <path d="M317 246Q317 171 362 131Q407 91 488 91Q534 91 581.5 99Q629 107 693 126L693 102Q606 54 552.5 28.5Q499 3 461 -7.5Q423 -18 381 -18Q326 -18 277.5 7Q229 32 198.5 85.5Q168 139 168 224L168 901L41 972L41 985Q60 995 79.5 1007Q99 1019 121.5 1033Q144 1047 171.5 1064.5Q199 1082 233 1103Q267 1124 308 1149L317 1149L317 976ZM267 920L267 1011L665 1011L651 920Z" transform="translate(365.28 51.98) scale(0.034 -0.034)"/> <path d="M545 1031Q649 1031 726 986.5Q803 942 847 859.5Q891 777 898 661L215 661L216 709L804 710L746 677Q735 781 707.5 849Q680 917 632.5 951.5Q585 986 518 986Q423 986 358 936.5Q293 887 260 795.5Q227 704 227 576Q227 412 272 306.5Q317 201 400.5 149.5Q484 98 605 98Q663 98 716 113.5Q769 129 817.5 160.5Q866 192 909 245L925 233Q860 138 799 83Q738 28 672.5 4Q607 -20 529 -20Q398 -20 295.5 38Q193 96 135 210Q77 324 77 491Q77 637 132.5 760Q188 883 292.5 957Q397 1031 545 1031Z" transform="translate(388.12 51.98) scale(0.034 -0.034)"/></g><circle fill="#EAD39A" cx="223.69" cy="34.98" r="4.76"/></svg>
+<div id="acilis" aria-hidden="true">
+  <svg class="acilis__isaret" viewBox="0 0 264 264" width="288" height="288" aria-hidden="true"><defs><linearGradient id="ac-h" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2D693"/><stop offset=".5" stop-color="#CDA75E"/><stop offset="1" stop-color="#9C7836"/></linearGradient><linearGradient id="ac-u" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFCF5"/><stop offset="1" stop-color="#EBDFC6"/></linearGradient><radialGradient id="ac-n" cx=".38" cy=".34" r=".7"><stop offset="0" stop-color="#FFF8E2"/><stop offset=".55" stop-color="#F0D898"/><stop offset="1" stop-color="#D7B263"/></radialGradient><radialGradient id="ac-a"><stop offset="0" stop-color="#FFE7A8" stop-opacity=".75"/><stop offset=".35" stop-color="#F3D07E" stop-opacity=".26"/><stop offset="1" stop-color="#F3D07E" stop-opacity="0"/></radialGradient></defs><g transform="translate(68 74)"><path class="acilis__halka" fill="url(#ac-h)" d="M105.033 36A52 52 0 1 1 86 16.967L82.3 23.375A44.6 44.6 0 1 0 98.625 39.7Z"/><path class="acilis__isik" fill="none" stroke="#FFF3C8" stroke-width="7.4" pathLength="100" d="M101.829 37.85A48.3 48.3 0 1 1 84.15 20.171"/><g transform="translate(60 62) rotate(45) scale(0.8) translate(-60 -81.5)"><path class="acilis__uc" fill="url(#ac-u)" fill-rule="evenodd" d="M60 4C69 26 92 44 92 72C92 86 86.5 97 81.2 107.4Q79.8 110 76.8 110H43.2Q40.2 110 38.8 107.4C33.5 97 28 86 28 72C28 44 51 26 60 4ZM57.7 17H62.3V62H57.7ZM60 61A11 11 0 1 0 60 83A11 11 0 1 0 60 61Z"/></g><circle class="acilis__hale" cx="112.326" cy="9.674" r="22" fill="url(#ac-a)"/><circle class="acilis__lamba" cx="112.326" cy="9.674" r="8.2" fill="url(#ac-n)"/></g></svg>
+  <div class="acilis__marka">
+  <svg class="acilis__ad" viewBox="94 2 326 54" width="248" height="40" aria-hidden="true"><defs><radialGradient id="ac-yn" cx=".38" cy=".34" r=".7"><stop offset="0" stop-color="#FFF8E2"/><stop offset=".55" stop-color="#F0D898"/><stop offset="1" stop-color="#D7B263"/></radialGradient><radialGradient id="ac-ya"><stop offset="0" stop-color="#FFE7A8" stop-opacity="0.55"/><stop offset=".35" stop-color="#F3D07E" stop-opacity="0.193"/><stop offset="1" stop-color="#F3D07E" stop-opacity="0"/></radialGradient></defs><g fill="#F6EFE0"><path d="M1076 -58L1059 -58L935 0L309 0L309 85L1058 85L914 56L1129 406L1167 396ZM428 1285L428 0L78 0L78 36L242 85L242 1285L78 1334L78 1370L593 1370L593 1334Z" transform="translate(96 51.98) scale(0.034 -0.034)"/><path d="M334 294Q334 232 353 194Q372 156 414.5 138.5Q457 121 527 121Q599 121 663 146Q727 171 760 206L790 173Q730 117 682 79Q634 41 591.5 19Q549 -3 507 -11.5Q465 -20 416 -20Q288 -20 227.5 57.5Q167 135 167 292L167 816L14 867L14 907L344 923L334 818ZM745 -19L734 165L734 816L582 867L582 907L912 923L902 817L902 130Q911 122 927.5 112.5Q944 103 964 93.5Q984 84 1003.5 76.5Q1023 69 1039 66L1039 39L760 -19Z" transform="translate(137.51 51.98) scale(0.034 -0.034)"/><path d="M885 82L1014 40L1014 0L571 0L571 40L700 79L469 398L450 419L156 826L27 871L27 910L468 910L468 871L340 831L551 538L570 517ZM512 431L224 74L345 40L345 0L16 0L16 40L131 74L475 484L508 506L775 837L653 871L653 910L979 910L979 871L867 837L543 452Z" transform="translate(174.81 51.98) scale(0.034 -0.034)"/><path d="M363 745L363 76L505 34L505 0L49 0L49 34L196 76L196 732Q180 747 148.5 764.5Q117 782 50 811L50 834L326 934L342 934ZM924 667L924 76L1065 34L1065 0L615 0L615 34L757 76L757 619Q757 676 734.5 712.5Q712 749 670 768Q628 787 570 787Q503 787 439.5 763.5Q376 740 345 707L317 741Q375 796 422.5 832Q470 868 513 890Q556 912 598 921Q640 930 688 930Q772 930 824.5 896Q877 862 900.5 802.5Q924 743 924 667ZM1485 629L1485 76L1634 34L1634 0L1176 0L1176 34L1318 76L1318 619Q1318 675 1295.5 712Q1273 749 1231 768Q1189 787 1131 787Q1064 787 1000.5 763.5Q937 740 906 707L878 741Q936 796 983.5 832Q1031 868 1074 890Q1117 912 1159 921Q1201 930 1249 930Q1374 930 1429.5 854Q1485 778 1485 629Z" transform="translate(232.31 51.98) scale(0.034 -0.034)"/><path d="M503 930Q603 930 677 887Q751 844 794.5 760Q838 676 848 555L218 555L220 620L745 636L670 595Q663 679 640 738Q617 797 578.5 828.5Q540 860 482 860Q410 860 356.5 820Q303 780 274 701Q245 622 245 508Q245 379 288 290Q331 201 409.5 156.5Q488 112 596 112Q641 112 683 123.5Q725 135 764.5 158Q804 181 837 215L859 193Q805 118 749 71Q693 24 631 2Q569 -20 497 -20Q375 -20 279.5 37Q184 94 129 197.5Q74 301 74 441Q74 574 125 685.5Q176 797 272 863.5Q368 930 503 930Z" transform="translate(289.39 51.98) scale(0.034 -0.034)"/><path d="M363 745L363 76L511 34L511 0L49 0L49 34L196 76L196 732Q180 747 148.5 764.5Q117 782 50 811L50 834L326 934L342 934ZM648 34L796 76L796 604Q796 662 773.5 702.5Q751 743 706 764.5Q661 786 593 786Q516 786 448.5 760Q381 734 348 700L317 729Q379 787 430 825.5Q481 864 526.5 887Q572 910 617 920Q662 930 712 930Q843 930 903.5 852.5Q964 775 964 606L964 76L1113 34L1113 0L648 0Z" transform="translate(321.42 51.98) scale(0.034 -0.034)"/><path d="M329 249Q329 180 371.5 145.5Q414 111 489 111Q527 111 571 118.5Q615 126 668 142L668 100Q598 54 548.5 28Q499 2 461.5 -8.5Q424 -19 386 -19Q321 -19 270.5 6.5Q220 32 190.5 84Q161 136 161 215L161 774L46 853L46 869Q64 882 86 898Q108 914 133.5 932Q159 950 185.5 970Q212 990 242 1011Q272 1032 304 1054L329 1054L329 878ZM267 810L267 910L639 910L623 810Z" transform="translate(360.75 51.98) scale(0.034 -0.034)"/><path d="M503 930Q603 930 677 887Q751 844 794.5 760Q838 676 848 555L218 555L220 620L745 636L670 595Q663 679 640 738Q617 797 578.5 828.5Q540 860 482 860Q410 860 356.5 820Q303 780 274 701Q245 622 245 508Q245 379 288 290Q331 201 409.5 156.5Q488 112 596 112Q641 112 683 123.5Q725 135 764.5 158Q804 181 837 215L859 193Q805 118 749 71Q693 24 631 2Q569 -20 497 -20Q375 -20 279.5 37Q184 94 129 197.5Q74 301 74 441Q74 574 125 685.5Q176 797 272 863.5Q368 930 503 930Z" transform="translate(384.08 51.98) scale(0.034 -0.034)"/></g><circle cx="220.41" cy="34.98" r="13.26" fill="url(#ac-ya)"/><circle cx="220.41" cy="34.98" r="5.1" fill="url(#ac-yn)"/></svg>
   <span class="acilis__cizgi"></span>
   <p class="acilis__slogan">Lamba ışığında oku. Mürekkeple düşün.</p>
 </div></div>
 <script>
+  // Açılışın başladığı an: knAcilisBitti lamba yanıp ışık dolaşana kadar (0,76 sn) perdeyi bu andan sayar
+  window.__knAcilisT0 = performance.now();
   // Slogan arayüz dilinde (dil.js dilBul ile aynı seçim; modüller daha gelmedi)
   (function () {
     // Kayıtlı seçim yalnız "tr" ya da "en" ise geçerli; yoksa (ya da depo okunamazsa) cihaz dili
