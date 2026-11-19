@@ -1,0 +1,1 @@
+export default{"Bu dosya çok büyük; çevrilebilecek belge en çok {mb} MB olabilir.":"This file is too large. Documents can be at most {mb} MB to convert.","Dosyada okunacak metin bulunamadı.":"No readable text was found in the file.",Dipnotlar:"Footnotes"};
