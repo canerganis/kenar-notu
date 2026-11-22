@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="duzenleyici.css">
 <link rel="stylesheet" href="okuma.css">
 <link rel="stylesheet" href="koltuk.css">
+<link rel="stylesheet" href="kalem-tepsisi.css">
 <!-- tekrar, asistan, arama, ses, izler ve cizgi.css açılışta yüklenmez: modülleri ortak.js stilYukle() ile bu sıraya ekler -->
 <script>
   // Kayıtlı tema, atmosfer ve sade hareket ilk boyamadan önce uygulanır, açılışta renk sıçraması olmaz.
@@ -39,7 +40,7 @@
   (function () {
     var k = document.documentElement, a = null;
     try { a = JSON.parse(localStorage.getItem("kn-tasarim:ayarlar") || "null"); } catch (e) { /* gizli pencere: varsayılanlar */ }
-    // Kayıt hiç yoksa yeni kurulum: Lapis (ortak.js YENI_KURULUM ile aynı). Kaydı olup atmosferi olmayan eski kullanıcı Aurora
+    // Hiç ayar kaydı yoksa (yeni kurulum) Kâğıt ve mürekkep, kayıtlı ama atmosfer yazılı değilse (eski kayıt) Aurora: ortak.js YENI_KURULUM ile aynı
     var yeni = !(a && typeof a === "object");
     a = a && typeof a === "object" ? a : {};
     if (a.tema === "acik") k.dataset.theme = "light";
@@ -54,13 +55,15 @@
     // Android kabuğu açılışı kendisi oynattı (android-kabuk acilis_lamba.xml): #acilis yanık lambayla başlar, beklemez
     if (window.LuxYerel) k.dataset.yerelAcilis = "";
     var gece = a.tema === "koyu" || (a.tema !== "acik" && matchMedia("(prefers-color-scheme: dark)").matches);
-    var R = { lapis: ["#F3EBDB", "#0E1838"], aurora: ["#F4F5F9", "#0B0C11"], nebula: ["#F6F3FC", "#0D0A16"], okyanus: ["#F2F7F8", "#071216"], grafit: ["#F3F3F4", "#0E0E10"],
+    var R = { murekkep: ["#F4F0E8", "#161512"], lapis: ["#F3EBDB", "#0E1838"], aurora: ["#F4F5F9", "#0B0C11"], nebula: ["#F6F3FC", "#0D0A16"], okyanus: ["#F2F7F8", "#071216"], grafit: ["#F3F3F4", "#0E0E10"],
       oled: ["#F3F3F4", "#000000"], kagit: ["#F7F5F0", "#141413"], "sepya-gece": ["#F7F5F0", "#15110C"], orman: ["#F2F5F0", "#0A110C"] };
     var ES = { oled: "grafit", "sepya-gece": "kagit" };
     var VURGU = ["altin", "iris", "lagun", "zumrut", "kehribar", "mercan", "gul", "gok", "gumus"];
-    var secim = R.hasOwnProperty(a.atmosfer) ? a.atmosfer : yeni ? "lapis" : "aurora";
+    var DUZ = { lapis: 1, murekkep: 1 };
+    var secim = R.hasOwnProperty(a.atmosfer) ? a.atmosfer : yeni ? "murekkep" : "aurora";
     k.dataset.kip = gece ? "gece" : "gunduz";
     k.dataset.atmosfer = !gece && ES[secim] ? ES[secim] : secim;
+    if (DUZ.hasOwnProperty(k.dataset.atmosfer)) k.dataset.krom = "duz";   // app.js gorunumYaz ile aynı: ortak.js ATMOSFERLER duz olanlar
     if (VURGU.indexOf(a.vurgu) >= 0) k.dataset.vurgu = a.vurgu;
     if (a.canliZemin && !a.sadeHareket && !matchMedia("(prefers-reduced-motion: reduce)").matches) k.dataset.canliZemin = "";
     // Açılış ekranı (#acilis) ve tarayıcı çubuğu, seçilen atmosferin GECE rengini alır (R[secim][1]). Gece rengi bilinçli:
